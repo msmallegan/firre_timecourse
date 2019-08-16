@@ -22,6 +22,7 @@ nextflow run nf-core/rnaseq -r 1.3 \
 -resume \
 --reads 'fastq/*{_read1,_read2}.fastq.gz' \
 --skip_genebody_coverage \
+--saveAlignedIntermediates \
 --genome GRCm38 \
 --email michael.smallegan@colorado.edu \
 --igenomes_base '/scratch/Shares/rinn/Michael/genomes/references/' \
