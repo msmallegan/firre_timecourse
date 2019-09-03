@@ -1,0 +1,273 @@
+---
+title: "Differential Expression: Zero timepoint comparisons"
+author: "`r getOption('author')`"
+date: "`r Sys.Date()`"
+params:
+  # Design formula must contain columns defined in `colData()`
+  # Multiple contrasts are supported
+  design: !r formula("~ firre")
+  contrasts: !r list(
+        c(factor = "firre",
+        numerator = "KO",
+        denominator = "WT")
+       )
+  alpha: 0.01
+  lfc_threshold: 0.5
+  data_dir: !r file.path("../data", Sys.Date())
+  results_dir: !r file.path("../results", Sys.Date())
+editor_options: 
+  chunk_output_type: console
+always_allow_html: yes
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+source("_setup.R")
+source("helper_functions.R")
+library(tidyverse); library(tximport); library(bcbioRNASeq); library(pals)
+library(lemon); library(scales); library(ggrepel); library(colorspace)
+```
+
+```{r load_data, message=FALSE}
+# # Gene annotation data from script 00.
+# load(paste0(params$data_dir,"/gene_annotations.RData"))
+counts_combined <- read.table("../results/featureCounts/merged_gene_counts.txt",
+                              header = T)
+g2s <- counts_combined[,c(1,2)]
+names(g2s) <- c("gene_id", "gene_name")
+
+# Read in sample annotations
+samples <- read.csv("../samplesheet.csv") %>%
+# Filter to just the non-inducible mESC knockout samples.
+ filter(cell_type == "mESCs",
+        timepoint == "0")
+rownames(samples) <- samples$id
+
+# sample summary
+samples %>% group_by(cell_type, firre, contains_itg_dna, firre_expression_induced_by_dox) %>%
+  summarise(num_samples = n())
+
+# Read in the featureCounts.
+counts <- fCountReader("../results/featureCounts/gene_counts/",
+                       samples$id, 
+                       "_read1Aligned.sortedByCoord.out_gene.featureCounts.txt")
+
+
+# Ensure that the ordering of the columns in the counts matrix 
+# is the same as in the sample sheet.
+samples <- samples[colnames(counts$count),]
+stopifnot(all(rownames(samples) == colnames(counts$count)))
+
+
+# Ensure that the ordering of the rows (gene info) 
+# is the same between the counts and the gencode
+# names(gtf) <- gtf$geneID
+# gtf <- gtf[rownames(counts$count)]
+# stopifnot(all(names(gtf) == rownames(counts$count)))
+```
+
+
+
+
+```{r create_DESeqDataSet, message=FALSE}
+# Create DESeq2 experiment objects.
+
+dds <- DESeqDataSetFromMatrix(countData = counts$count, 
+                              colData = samples, 
+                              design = params$design)
+```
+
+#### DESeq dataset
+
+```{r prefilter}
+# Note that this criteria can be made more stringent
+keep <- rowSums(counts(dds)) >= 10
+dds <- dds[keep, ]
+print(dds)
+```
+
+```{r relevel, eval=FALSE}
+# Specify the reference level (preferred)
+dds$treatment <- relevel(dds$firre, ref = "WT")
+```
+
+```{r deseq, results='hide', message=FALSE}
+dds <- DESeq(dds)
+# suppressMessages(saveData(dds, dir = params$data_dir))
+```
+
+```{r variance_stabilization}
+# Alternatively, can use `rlog()` here, but it is slower
+interestingGroups(dds) <- c("firre")
+# For qc PCA plot
+rld <- varianceStabilizingTransformation(dds, blind = TRUE)
+# suppressMessages(saveData(rld, dir = params$data_dir))
+```
+
+#### Contrasts
+
+```{r contrasts}
+stopifnot(is.list(params$contrasts))
+contrasts <- params$contrasts
+names <- vapply(X = contrasts,
+    FUN = function(x) { paste(x[[1]], x[[2]], "vs", x[[3]], sep = "_") },
+    FUN.VALUE = "character"
+)
+names(contrasts) <- names
+print(contrasts)
+```
+
+```{r res_unshrunken}
+res_list_unshrunken <- mapply(
+    FUN = results,
+    contrast = contrasts,
+    MoreArgs = list(
+        object = dds,
+        alpha = params$alpha
+    ),
+    SIMPLIFY = FALSE,
+    USE.NAMES = FALSE
+)
+names(res_list_unshrunken) <- names
+# suppressMessages(saveData(res_list_unshrunken, dir = params$data_dir))
+```
+
+
+```{r res_shrunken, message=FALSE}
+res_list_shrunken <- mapply(
+    FUN = lfcShrink,
+    res = res_list_unshrunken,
+    contrast = contrasts,
+    MoreArgs = list(
+        dds = dds,
+        type = "normal"
+    ),
+    SIMPLIFY = FALSE,
+    USE.NAMES = TRUE
+)
+# suppressMessages(saveData(res_list_shrunken, dir = params$data_dir))
+```
+
+# Plots
+
+## PCA
+
+So here, no genes actually reach statistical significance, so I'm using 
+a adjusted p-val cutoff of 0.5. This is unreasonable, but it is just 
+to get an idea. The reason is because
+
+```{r plot_deg_pca, message=FALSE}
+plotDEGPCA(res_list_shrunken[[1]], 
+           interestingGroups = c("firre"), 
+           counts = rld,
+           alpha = params$alpha) + 
+  ggtitle("Firre iTg Timecourse") + 
+  scale_color_manual(values = pals::watlington(3))
+```
+
+## Heatmap
+
+```{r}
+## Add an alpha value to a colour
+add.alpha <- function(col, alpha=0.4){
+  if(missing(col))
+    stop("Please provide a vector of colours.")
+  apply(sapply(col, col2rgb)/255, 2, 
+                     function(x) 
+                       col2rgb(rgb(x[1], x[2], x[3], alpha=alpha), alpha = T))
+}
+```
+
+
+```{r plot_deg_heatmap}
+plotDEGHeatmap(res_list_shrunken[[1]], counts = rld, 
+               title = "Firre zero timepoint", 
+               clusteringMethod = "ward.D2", 
+               scale = "row", 
+               alpha = params$alpha,
+               lfcThreshold = params$lfc_threshold,
+               # color = desaturate(c(pals::ocean.gray(50), pals::ocean.amp(50)),
+               #                    amount = 0.3),
+               color = desaturate(lighten(c(pals::ocean.gray(50),
+                                            pals::ocean.amp(50)),
+                                  amount = 0.05), amount = 0.3),
+               legendColor = pals::polychrome)
+```
+
+## Gene scatter plots {.tabset .tabset-fade .tabset-pills}
+
+### Mean average (MA)
+```{r}
+
+names(g2s) <- c("geneID", "geneName")
+dat <- plotMA(res_list_shrunken[[1]], lfcThreshold = params$lfc_threshold, 
+                         ntop = 30, gene2symbol = g2s, return = "data.frame") %>%
+  select(geneName, baseMean, log2FoldChange, padj, isDE) %>%
+  mutate(isDE = as.numeric(as.character(isDE)))
+dat$label <- FALSE
+dat[which((dat$log2FoldChange > 0.8 & dat$isDE != 0) |
+            (dat$log2FoldChange < -0.65 & dat$isDE != 0)), "label"] <- TRUE
+label_subset <- dat %>% filter(label == TRUE)
+ 
+x_min <- floor(log10(min(dat[["baseMean"]])))
+x_max <- ceiling(log10(max(dat["baseMean"])))
+x_breaks <- 10L ^ seq(from = x_min, 
+  to = x_max, by = 1L)
+
+library(pals)
+
+
+
+g <- ggplot(dat, aes(x = baseMean, y = log2FoldChange, label = geneName)) +
+  geom_point(data = dat %>% filter(isDE == 0), size = 1L, color = "gray50",
+             alpha = 0.2) +
+
+    geom_hline(yintercept = 0L, size = 0.5, color = "gray50") + 
+    
+    geom_point(data = dat %>% filter(isDE != 0), size = 2L, 
+               aes(color = log2FoldChange)) +
+  scale_color_gradientn(colors = rev(brewer.rdbu(100)), 
+                       limits = c(-3,3),
+                       na.value = rgb(0,0,0,0),
+                       oob = squish) +
+    # scale_color_gradientn(colors = ocean.balance(100), limits = c(-5,5)) +
+    scale_x_continuous(breaks =  10L ^ seq(from = x_min, to = x_max, by = 1L), 
+                       limits = c(1L, NA), trans = "log10") +
+      geom_text_repel(data = label_subset, nudge_x = 0.1, nudge_y = 0.1,
+                    family = "Helvetica", color = "gray15") +
+    # TODO: should generate the y limits dynamically
+    scale_y_continuous(breaks = pretty_breaks(), limits = c(-2.3, 1.4)) +
+    annotation_logticks(sides = "b") +
+    guides(color = FALSE) +
+    theme(legend.position = "none") + 
+  ggtitle(gsub("_"," ",names(res_list_shrunken)[[1]]))
+
+g
+
+ggsave(file = "mESC_firre_ko_vs_wt_MAplot.pdf", useDingbats=FALSE)
+######################
+
+
+
+
+```
+
+# Results tables
+
+```{r}
+sig_genes <- results(dds, params$contrasts[[1]], alpha = 0.1, lfcThreshold = 0) %>% 
+  as.data.frame() %>% 
+  rownames_to_column(var = "geneID") %>% 
+  filter(padj < params$alpha,
+         abs(log2FoldChange) >= params$lfc_threshold)
+
+sig_genes <- merge(sig_genes, g2s)
+sig_genes <- sig_genes %>% select(geneID, geneName, everything())
+write.csv(sig_genes, file = "results/mesc_firre_wt_ko_zero_timepoint_deg.csv", 
+            row.names = FALSE)
+```
+
+

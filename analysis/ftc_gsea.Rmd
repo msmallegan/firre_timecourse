@@ -1,0 +1,193 @@
+---
+title: "ftc_gsea"
+author: "Michael Smallegan"
+date: "9/1/2019"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+options(stringsAsFactors = FALSE)
+library(tidyverse)
+library(fgsea)
+```
+
+```{r}
+# # Let's read in all the gene lists. That'll be the first step in any analysis.
+# res <- list.files("results/", full.names = TRUE, recursive = TRUE)
+# res <- res[grep("_shrunken", res)]
+# res <- res[grep("_all", res)]
+# 
+# 
+# dat <- read.csv(gzfile(res[[1]]))
+# dat$contrast <- res[[1]]
+# dat <- dat[ ,c("contrast", "baseMean", "log2FoldChange", "lfcSE", "stat", "pvalue", "padj",
+#                "geneID", "gene_id", "gene_name")]
+# 
+# 
+# for(i in 2:length(res)) {
+#   tdat <- read.csv(gzfile(res[[i]]))
+#   tdat$contrast <- res[[i]]
+#   tdat <- tdat[ ,c("contrast", "baseMean", "log2FoldChange", "lfcSE", "stat", "pvalue", "padj",
+#                "geneID", "gene_id", "gene_name")]
+#   dat <- rbind(dat, tdat)
+# }
+# 
+# dat$contrast <- unlist(lapply(dat$contrast, function(x) {
+#   gsub("_all", "", gsub("condition_", "", unlist(strsplit(unlist(strsplit(x, "//"))[[2]], ".csv"))[[1]]))
+# }))
+# 
+# write.csv(dat, "combined_shrunken_lfc_results.csv", row.names = FALSE)
+
+dat <- read.csv("combined_shrunken_lfc_results.csv") %>%
+  # let's remove the dzx4 only kos
+  filter(contrast != "andergassen_shrunkenlfc//liver_dxz4_ko_vs_liver_wt",
+         contrast != "andergassen_shrunkenlfc/spleen_dxz4_ko_vs_spleen_wt")
+dat <- dat[which(!grepl("wt_dox", dat$contrast)), ]
+dat <- dat[which(!grepl("ko_dox", dat$contrast)), ]
+dat <- dat[which(!grepl("wt_firre", dat$contrast)), ]
+dat <- dat[which(!grepl("ko_firre", dat$contrast)), ]
+```
+
+```{r}
+ftc_wt_firre <- read.csv("results/firre_responders_firre_wt_mesc.csv") %>%
+  filter(flagged_in_dox != TRUE)
+ftc_ko_firre <- read.csv("results/firre_responders_firre_ko_mesc.csv") %>%
+  filter(flagged_in_dox != TRUE)
+# Let's create two gene lists. One for the ko_firre significant genes and one for 
+# the wt_firre significant genes from the timecourse. 
+ftc_gene_sets <- list("ftc_ko_firre" = unique(ftc_ko_firre$gene_id),
+                      "ftc_wt_firre" = unique(ftc_wt_firre$gene_id))
+# let's do the first dataset
+# Going to have to go trhough it one by one. 
+
+
+
+ct <- unique(dat$contrast)[[1]]
+lfc <- dat %>% filter(contrast == ct) %>% 
+  arrange(-log2FoldChange)
+lfc_rank <- as.numeric(lfc$log2FoldChange)
+names(lfc_rank) <- lfc$gene_id
+
+fgseaRes <- fgsea(pathways = ftc_gene_sets, 
+                  stats = lfc_rank,
+                  minSize=3,
+                  maxSize=500,
+                  nperm=10000) %>%
+  as.data.frame()
+fgseaRes$contrast <- ct
+
+
+for(i in 2:length(unique(dat$contrast))) {
+  print(i)
+  ct <- unique(dat$contrast)[[i]]
+  lfc <- dat %>% filter(contrast == ct) %>% 
+    arrange(-log2FoldChange)
+  lfc_rank <- as.numeric(lfc$log2FoldChange)
+  names(lfc_rank) <- lfc$gene_id
+
+  tfgseaRes <- fgsea(pathways = ftc_gene_sets, 
+                  stats = lfc_rank,
+                  minSize=3,
+                  maxSize=500,
+                  nperm=10000) %>%
+    as.data.frame()
+   tfgseaRes$contrast <- ct
+   fgseaRes <- rbind(fgseaRes, tfgseaRes)
+}
+
+
+
+
+# 
+
+```
+
+```{r}
+# let's make a plot
+fgseaRes$dataset <- unlist(lapply(fgseaRes$contrast, function(x) {
+  unlist(strsplit(x, "_"))[[1]]
+}))
+fgseaRes$tissue <- unlist(lapply(fgseaRes$contrast, function(x) {
+  unlist(strsplit(unlist(strsplit(x, "/"))[[2]], "_vs_"))[[1]]
+}))
+
+fgseaRes <- fgseaRes[which(!grepl( "dxz4", fgseaRes$tissue)),]
+
+fgseaRes$exp <- -log10(fgseaRes$padj)
+
+source("_setup.R")
+
+exp_sum <- fgseaRes %>% group_by(dataset, tissue) %>%
+  summarize(exp_sum = sum(exp))
+
+fgseaRes <- merge(fgseaRes, exp_sum)
+fgseaRes <- fgseaRes %>% 
+  # filter(dataset == "lewandowski", pathway == "ftc_wt_firre") %>%
+  arrange(exp_sum) %>%
+  mutate(tissue = factor(tissue, levels = unique(tissue)))
+g <- ggplot(fgseaRes, aes(x = tissue, y = exp))
+g + geom_bar(stat = "identity") + coord_flip() + 
+  geom_hline(yintercept = -log10(0.05), lty = 2) + 
+  scale_y_continuous(expand = c(0, 0)) + facet_wrap(dataset ~ pathway, scales = "free_y") + 
+  xlab("") + ylab("-log10(pval)") + ggtitle("GSEA for firre timecourse significant genes")
+ggsave("gsea_ftc_genes.pdf", height = 5.5, width = 8)
+  
+```
+
+
+```{r}
+# okay, the top most significant gsea is the lewandowski heart, so let's plot taht one.
+ct <- "lewandowski_shrunkenlfc/heart_ko_vs_heart_wt"
+lfc <- dat %>% filter(contrast == ct) %>% 
+  arrange(-log2FoldChange)
+lfc_rank <- as.numeric(lfc$log2FoldChange)
+names(lfc_rank) <- lfc$gene_id
+
+fgseaRes <- fgsea(pathways = ftc_gene_sets, 
+                  stats = lfc_rank,
+                  minSize=3,
+                  maxSize=500,
+                  nperm=10000)
+pdf("gsea_heart_lewandowski_firre_wt_geneset.pdf", height = 3, width = 7)
+plotEnrichment(ftc_gene_sets[["ftc_wt_firre"]],
+               lfc_rank) + labs(title="Lewandowski Heart GSEA w/ Firre WT iTg gene set")
+dev.off()
+
+ct <- "lewandowski_shrunkenlfc/forebrain_ko_vs_forebrain_wt"
+lfc <- dat %>% filter(contrast == ct) %>% 
+  arrange(-log2FoldChange)
+lfc_rank <- as.numeric(lfc$log2FoldChange)
+names(lfc_rank) <- lfc$gene_id
+
+fgseaRes <- fgsea(pathways = ftc_gene_sets, 
+                  stats = lfc_rank,
+                  minSize=3,
+                  maxSize=500,
+                  nperm=10000)
+pdf("gsea_forebrain_lewandowski_firre_ko_geneset.pdf", height = 3, width = 7)
+plotEnrichment(ftc_gene_sets[["ftc_ko_firre"]],
+               lfc_rank) + labs(title="Lewandowski Forebrain GSEA w/ Firre KO iTg gene set")
+dev.off()
+
+
+
+hmm <- lfc[which(lfc$gene_id %in% ftc_gene_sets[["ftc_wt_firre"]]),]
+
+# plotGseaTable(ftc_gene_sets, lfc_rank, fgseaRes, 
+#               gseaParam = 0.5)
+```
+
+```{r}
+# okay, now to demonstrate the gsea, I'll show a scatter plot of the 
+# fold-changes in the firre-wt timecourse vs. the lewandowski_heart ko
+# First let's get our hands on that firre_wt timecourse data. 
+dat <- read.csv("combined_shrunken_lfc_results.csv") %>%
+  # let's remove the dzx4 only kos
+  filter(contrast != "andergassen_shrunkenlfc//liver_dxz4_ko_vs_liver_wt",
+         contrast != "andergassen_shrunkenlfc/spleen_dxz4_ko_vs_spleen_wt")
+```
+
+
+
