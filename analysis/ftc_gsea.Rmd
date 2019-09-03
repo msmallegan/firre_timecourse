@@ -183,10 +183,115 @@ hmm <- lfc[which(lfc$gene_id %in% ftc_gene_sets[["ftc_wt_firre"]]),]
 # okay, now to demonstrate the gsea, I'll show a scatter plot of the 
 # fold-changes in the firre-wt timecourse vs. the lewandowski_heart ko
 # First let's get our hands on that firre_wt timecourse data. 
-dat <- read.csv("combined_shrunken_lfc_results.csv") %>%
+
+ftc_wt_firre <- read.csv("results/firre_responders_firre_wt_mesc.csv") %>%
+  filter(flagged_in_dox != TRUE)
+ftc_ko_firre <- read.csv("results/firre_responders_firre_ko_mesc.csv") %>%
+  filter(flagged_in_dox != TRUE)
+# Let's create two gene lists. One for the ko_firre significant genes and one for 
+# the wt_firre significant genes from the timecourse. 
+ftc_gene_sets <- list("ftc_ko_firre" = unique(ftc_ko_firre$gene_id),
+                      "ftc_wt_firre" = unique(ftc_wt_firre$gene_id))
+
+
+# # now let's read in all the shrunken fold-changes for the timecourse.
+# res <- list.files("results/2019-09-02", full.names = TRUE, recursive = TRUE)
+# res <- res[grep("_all", res)]
+# 
+# dat <- read.csv(gzfile(res[[1]]))
+# dat$contrast <- res[[1]]
+# dat <- dat[ ,c("contrast", "baseMean", "log2FoldChange", "lfcSE", "stat", "pvalue", "padj",
+#                "geneID", "gene_id", "gene_name")]
+# 
+# 
+# for(i in 2:length(res)) {
+#   tdat <- read.csv(gzfile(res[[i]]))
+#   tdat$contrast <- res[[i]]
+#   tdat <- tdat[ ,c("contrast", "baseMean", "log2FoldChange", "lfcSE", "stat", "pvalue", "padj",
+#                "geneID", "gene_id", "gene_name")]
+#   dat <- rbind(dat, tdat)
+# }
+# dat$contrast <- unlist(lapply(dat$contrast, function(x) {
+#   gsub("_all", "", gsub("condition_", "", unlist(strsplit(x, ".csv"))[[1]]))
+# }))
+# dat$contrast <- unlist(lapply(dat$contrast, function(x) {
+#   paste(unlist(strsplit(x, "/", fixed = T))[3:4], collapse = "/")
+# }))
+# write.csv(dat, "timecourse_shrunken_lfc_results.csv", row.names = FALSE)
+
+tc_dat <- read.csv("timecourse_shrunken_lfc_results.csv")
+dat <- read.csv("combined_shrunken_lfc_results.csv")
   # let's remove the dzx4 only kos
-  filter(contrast != "andergassen_shrunkenlfc//liver_dxz4_ko_vs_liver_wt",
-         contrast != "andergassen_shrunkenlfc/spleen_dxz4_ko_vs_spleen_wt")
+  
+heart <- dat %>% 
+  filter(contrast == "lewandowski_shrunkenlfc/heart_ko_vs_heart_wt")
+
+
+ftc_heart <- heart[which(heart$gene_id %in% ftc_gene_sets[["ftc_wt_firre"]]),]
+
+ftc_heart <- ftc_heart %>% select(gene_id, log2FoldChange)
+names(ftc_heart)[2] <- "lewandowski_heart"
+
+
+# now let's make a data frame with gene id as the first column and then 
+# all of the timepoints spread across the columns.
+unique(tc_dat$contrast)
+wt_firre <- tc_dat[grep("wt_firre", tc_dat$contrast), ]
+wt_firre$timepoint <- unlist(lapply(wt_firre$contrast, function(x) {
+  unlist(strsplit(x, "_"))[[4]]
+}))
+wt_firre$timepoint <- unlist(lapply(wt_firre$timepoint, function(x) {
+  paste0("t",x)
+}))
+wt_firre <- wt_firre[which(wt_firre$gene_id %in% ftc_gene_sets[["ftc_wt_firre"]]),]
+wt_firre <- wt_firre %>% select(gene_id, timepoint, log2FoldChange)
+
+
+# now let's merge them. 
+mm <- merge(wt_firre, ftc_heart)
+
+
+g <- ggplot(mm %>% filter(gene_id != "ENSMUSG00000085396"), aes(y = t180, x = lewandowski_heart))
+g + geom_point() + geom_smooth() + geom_vline(xintercept = 0) + geom_hline(yintercept = 0)
+
+
+
+ct <- "lewandowski_shrunkenlfc/heart_ko_vs_heart_wt"
+lfc <- dat %>% filter(contrast == ct) %>% 
+  arrange(-log2FoldChange)
+lfc_rank <- as.numeric(lfc$log2FoldChange)
+names(lfc_rank) <- lfc$gene_id
+
+fgseaRes <- fgsea(pathways = ftc_gene_sets, 
+                  stats = lfc_rank,
+                  minSize=3,
+                  maxSize=500,
+                  nperm=10000)
+
+plotEnrichment(ftc_gene_sets[["ftc_wt_firre"]],
+               lfc_rank) + labs(title="Lewandowski Heart GSEA w/ Firre WT iTg gene set")
+
+lead_edge <- fgseaRes[[which(fgseaRes$pathway == "ftc_wt_firre"), "leadingEdge"]]
+
+mm$lead_edge <- FALSE
+mm[which(mm$gene_id %in% lead_edge), "lead_edge"] <- TRUE
+mm$timepoint <- factor(mm$timepoint, levels =  unlist(lapply(seq(30, 330, by = 30), function(x) {
+  paste0("t",x)
+})))
+g <- ggplot(mm %>% filter(gene_id != "ENSMUSG00000085396"), aes(y = log2FoldChange, x = lewandowski_heart, color = lead_edge)) 
+g + geom_vline(xintercept = 0, lty = 2) + 
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_point(alpha = 0.78) + 
+  scale_color_manual(values = c("#3f3939", "#a21328")) + 
+  facet_wrap(~timepoint) + 
+  theme(axis.text.x = element_text(angle = 0L, hjust = 0.6, vjust = 0)) + 
+  scale_x_continuous(limits = c(-4.25, 4.25), breaks = c(-4,-2,0,2,4)) + 
+  scale_y_continuous(limits = c(-4.25, 4.25), breaks = c(-4,-2,0,2,4))
+ggsave("lewandowski_heart_vs_timecourse_shrunken_lfc_scatter.pdf", width = 7, height = 6,
+       useDingbats=FALSE)
+
+
+
 ```
 
 
