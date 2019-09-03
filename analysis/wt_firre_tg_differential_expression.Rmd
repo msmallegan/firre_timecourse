@@ -1,0 +1,419 @@
+---
+title: "Differential Expression: Firre WT mESC inducible"
+author: "`r getOption('author')`"
+date: "`r Sys.Date()`"
+params:
+  design: !r formula("~ timepoint")
+  contrasts: !r list(
+       c(factor = "timepoint",
+        numerator = "30",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "60",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "90",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "120",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "150",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "180",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "210",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "240",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "270",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "300",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "330",
+        denominator = "0"))
+  alpha: 0.01
+  lfc_threshold: 0.5
+  data_dir: !r file.path("data", Sys.Date())
+  results_dir: !r file.path("results", Sys.Date())
+editor_options: 
+  chunk_output_type: console
+always_allow_html: yes
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+source("_setup.R")
+source("helper_functions.R")
+library(tidyverse); library(tximport); library(bcbioRNASeq); library(pals)
+library(lemon); library(scales); library(ggrepel); library(colorspace)
+```
+
+```{r}
+# Genes flagged in dox response analysis.
+flagged <- read.csv("results/dox_responders_firre_wt_mesc.csv")
+flagged <- unique(flagged$gene_name)
+```
+
+
+```{r load_data, message=FALSE}
+# # Gene annotation data from script 00.
+# load(paste0(params$data_dir,"/gene_annotations.RData"))
+counts_combined <- read.table("../results/featureCounts/merged_gene_counts.txt",
+                              header = T)
+g2s <- counts_combined[,c(1,2)]
+names(g2s) <- c("gene_id", "gene_name")
+
+genes <- rtracklayer::import("Mus_musculus.GRCm38.81_genes.gtf")
+
+# Read in sample annotations
+samples <- read.csv("../samplesheet.csv") %>%
+# Filter to just the non-inducible mESC knockout samples.
+ filter(cell_type == "mESCs", 
+        firre == "WT",
+        contains_itg_dna == TRUE,
+        firre_expression_induced_by_dox == TRUE) %>%
+   mutate(timepoint = factor(timepoint, 
+         levels = as.character(seq(from = 0, to = 330, by = 30))))
+rownames(samples) <- samples$id
+
+# Read in the featureCounts.
+counts <- fCountReader("../results/featureCounts/gene_counts/",
+                       samples$id, 
+                       "_read1Aligned.sortedByCoord.out_gene.featureCounts.txt")
+
+
+# Ensure that the ordering of the columns in the counts matrix 
+# is the same as in the sample sheet.
+samples <- samples[colnames(counts$count),]
+stopifnot(all(rownames(samples) == colnames(counts$count)))
+
+
+# Ensure that the ordering of the rows (gene info) 
+# is the same between the counts and the gencode
+names(genes) <- genes$gene_id
+genes <- genes[rownames(counts$count)]
+stopifnot(all(names(genes) == rownames(counts$count)))
+```
+
+We don't have the option to test the interaction term here 
+(Firre:Transgene) since we don't have every condition. In particular,
+we don't have the uninducible transgene in the Firre WT background.
+
+```{r create_DESeqDataSet, message=FALSE}
+# Create DESeq2 experiment objects.
+
+dds <- DESeqDataSetFromMatrix(countData = counts$count, 
+                              colData = samples, 
+                              design = params$design,
+                              rowData = genes)
+```
+
+#### DESeq dataset
+
+```{r prefilter}
+# Note that this criteria can be made more stringent
+keep <- rowSums(counts(dds)) >= 10
+dds <- dds[keep, ]
+print(dds)
+```
+
+
+```{r deseq, results='hide', message=FALSE}
+dds <- DESeq(dds, test="LRT", reduced = ~1)
+# dds <- DESeq(dds)
+# suppressMessages(saveData(dds, dir = params$data_dir))
+```
+
+```{r}
+stopifnot(is.list(params$contrasts))
+contrasts <- params$contrasts
+names <- vapply(
+    X = contrasts,
+    FUN = function(x) {
+        paste(x[[1]], x[[2]], "vs", x[[3]], sep = "_")
+        
+    },
+    FUN.VALUE = "character"
+)
+names(contrasts) <- names
+```
+
+```{r res_unshrunken}
+res_list_unshrunken <- mapply(
+    FUN = results,
+    contrast = contrasts,
+    MoreArgs = list(
+        object = dds,
+        alpha = params$alpha
+    ),
+    SIMPLIFY = FALSE,
+    USE.NAMES = FALSE
+)
+names(res_list_unshrunken) <- names
+# saveData(res_list_unshrunken, dir = params$data_dir)
+```
+
+```{r res_shrunken}
+library(BiocParallel)
+register(MulticoreParam(16))
+res_list_shrunken <- mapply(
+    FUN = lfcShrink,
+    res = res_list_unshrunken,
+    contrast = contrasts,
+    MoreArgs = list(
+        dds = dds,
+        type = "normal",
+        parallel = TRUE
+    ),
+    SIMPLIFY = FALSE,
+    USE.NAMES = TRUE
+)
+```
+
+```{r results_tables, results="asis"}
+# Here we're creating subset tables of the DEGs, and adding the normalized
+# counts used by DESeq2 for the differential expression analysis.
+res_tbl_list <- mapply(
+    FUN = resultsTables,
+    results = res_list_unshrunken,
+    MoreArgs = list(
+        counts = dds,
+        lfcThreshold = params$lfc,
+        summary = TRUE,
+        headerLevel = 2,
+        write = TRUE,
+        dir = paste0(params$results_dir,"/wt_firre_shrunken", collapse = "")
+    ),
+    SIMPLIFY = FALSE,
+    USE.NAMES = TRUE
+)
+```
+
+```{r}
+# Let's put each of these significant genes in a table with which timepoint
+# they were significant in.
+deg <- data.frame("gene_id" = character(),
+                  "gene_name" = character(),
+                  "baseMean" = numeric(),
+                  "log2FoldChange" = numeric(),
+                  "lfcSE" = numeric(),
+                  "stat" = numeric(),
+                  "pvalue" = numeric(),
+                  "padj" = numeric(),
+                  "contrast" = character())
+
+for(i in 1:length(res_list_unshrunken)) {
+  temp_deg <- res_list_unshrunken[[i]][which(res_list_unshrunken[[i]]$padj < params$alpha & 
+                   abs(res_list_unshrunken[[i]]$log2FoldChange) > params$lfc_threshold),] %>% 
+  as.data.frame() %>% 
+  rownames_to_column(var = "gene_id") %>%
+  merge(., g2s) %>%
+  select("gene_id", "gene_name", everything())
+  if(nrow(temp_deg) > 0) {
+  temp_deg$contrast <- names(res_list_unshrunken)[[i]]
+  deg <- bind_rows(deg, temp_deg)
+  }
+}
+
+
+deg_matrix <- deg %>% select(gene_name, log2FoldChange, contrast) %>%
+  spread(key = contrast, value = log2FoldChange)
+
+
+
+
+deg$significant <- "sig"
+
+deg_profiles <- data.frame("gene_id" = character(),
+                  "gene_name" = character(),
+                  "baseMean" = numeric(),
+                  "log2FoldChange" = numeric(),
+                  "lfcSE" = numeric(),
+                  "stat" = numeric(),
+                  "pvalue" = numeric(),
+                  "padj" = numeric(),
+                  "contrast" = character())
+
+
+sig_genes <- unique(deg$gene_id)
+
+for(i in 1:length(res_list_unshrunken)) {
+  temp_deg <- res_list_unshrunken[[i]][rownames(res_list_unshrunken[[i]]) %in% sig_genes,] %>% 
+  as.data.frame() %>% 
+  rownames_to_column(var = "gene_id") %>%
+  merge(., g2s) %>%
+  select("gene_id", "gene_name", everything())
+  if(nrow(temp_deg) > 0) {
+  temp_deg$contrast <- names(res_list_unshrunken)[[i]]
+  deg_profiles <- bind_rows(deg_profiles, temp_deg)
+  }
+}
+
+deg_profiles <- merge(deg_profiles, deg %>% select(gene_id, contrast, significant),
+                      all.x = TRUE)
+deg_profiles[which(is.na(deg_profiles$significant)), "significant"] <- "ns"
+
+
+# Let's mark the ones that are flagged in the dox analysis.
+deg_profiles$flagged_in_dox <- FALSE
+deg_profiles[which(deg_profiles$gene_name %in% flagged), "flagged_in_dox"] <- TRUE
+```
+
+
+```{r}
+# some cleaning up
+deg_profiles$timepoint <- sapply(deg_profiles$contrast, function(x) {
+  unlist(strsplit(x, "_"))[[2]]
+})
+deg_profiles$timepoint <- as.numeric(deg_profiles$timepoint)
+
+# let's do a little clustering
+deg_matrix <- deg_profiles %>% select(gene_name, log2FoldChange, contrast) %>%
+  spread(key = contrast, value = log2FoldChange) %>% 
+  column_to_rownames(var = "gene_name")
+# put the columns in the proper order
+deg_matrix <- deg_matrix[,paste0("timepoint_",seq(from = 30, to = 330, by = 30),"_vs_0")]
+
+c <- hclust(dist(deg_matrix))
+plot(c)
+
+# Let's put the rows in order of the clustering
+deg_profiles$gene_name <- factor(deg_profiles$gene_name, levels = c$labels[c$order])
+
+# let's calculate the earliest signifant timepoint for each gene. 
+earliest <- deg_profiles %>% group_by(gene_name, significant) %>%
+  summarize(earliest_timepoint = min(timepoint)) %>%
+  filter(significant == "sig") %>% select(-significant)
+
+deg_profiles <- merge(deg_profiles, earliest)
+
+# Let's see what happens if we plot it by the number of timepoints that the genes 
+# are significant in.
+sig_timepoints <- deg %>% 
+  group_by(gene_name) %>%
+  summarize(num_timepoints_sig = n())
+
+deg_profiles <- merge(deg_profiles, sig_timepoints)
+
+# divide into early middle and late responses.
+deg_profiles[which(deg_profiles$earliest_timepoint == 30),"response"] <- "Early"
+deg_profiles[which(deg_profiles$earliest_timepoint == 60),"response"] <- "Early"
+deg_profiles[which(deg_profiles$earliest_timepoint == 90),"response"] <- "Early"
+deg_profiles[which(deg_profiles$earliest_timepoint == 120),"response"] <- "Early"
+
+deg_profiles[which(deg_profiles$earliest_timepoint == 150),"response"] <- "Middle"
+deg_profiles[which(deg_profiles$earliest_timepoint == 180),"response"] <- "Middle"
+deg_profiles[which(deg_profiles$earliest_timepoint == 210),"response"] <- "Middle"
+deg_profiles[which(deg_profiles$earliest_timepoint == 240),"response"] <- "Middle"
+
+deg_profiles[which(deg_profiles$earliest_timepoint == 270),"response"] <- "Late"
+deg_profiles[which(deg_profiles$earliest_timepoint == 300),"response"] <- "Late"
+deg_profiles[which(deg_profiles$earliest_timepoint == 330),"response"] <- "Late"
+
+# order them
+deg_profiles$response <- factor(deg_profiles$response, levels = c("Early", "Middle", "Late"))
+
+library(pals)
+
+# let's make a heatmap
+g <- ggplot(deg_profiles, aes(x = timepoint, y = gene_name)) + 
+  geom_tile(aes(fill = log2FoldChange)) + 
+  scale_fill_gradientn(colors = kovesi.diverging_gkr_60_10_c40(100), 
+                       limits = c(-2.5,2.5),
+                       oob = squish) +
+  # scale_fill_gradient2(limits = c(-2, 2)) + 
+  facet_grid(response~., scales = "free", space = "free") + 
+  theme_paperwhite() + 
+  theme(panel.border = element_blank()) + 
+  theme(axis.title.y=element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.text.x = element_text(angle = -45, hjust = 1, vjust = -.5),
+        axis.text.y = element_text(hjust = 1)) + 
+  scale_x_continuous(limits = c(0,360), 
+                     breaks = seq(from = 30, to = 330, by = 30),
+                     expand = c(0, 0)) + 
+  xlab("Time (m)")
+g
+
+
+
+deg_profiles$sig_alpha <- 0.6
+deg_profiles[which(deg_profiles$significant == "sig"), "sig_alpha"] <- 0.8
+
+direction <- rowSums(deg_matrix) %>% as.data.frame() %>%
+  rownames_to_column(var = "gene_name") 
+names(direction)[2] <- "rowsum"
+direction[which(direction$rowsum < 0),"direction"] <- "down"
+direction[which(direction$rowsum > 0),"direction"] <- "up"
+
+deg_profiles <- merge(deg_profiles, direction %>% select(-rowsum))
+
+
+# let's cluster just the significant timepoints
+deg_matrix <- deg %>% select(gene_name, log2FoldChange, contrast) %>%
+  spread(key = contrast, value = log2FoldChange, fill = 0) %>% 
+  column_to_rownames(var = "gene_name")
+# put the columns in the proper order
+deg_matrix <- deg_matrix[,paste0("timepoint_",seq(from = 30, to = 330, by = 30),"_vs_0")]
+
+c <- hclust(dist(deg_matrix))
+plot(c)
+
+# Let's put the rows in order of the clustering
+deg_profiles$gene_name <- factor(deg_profiles$gene_name, levels = c$labels[c$order])
+
+
+
+
+
+# sorting?
+sorted <- deg_profiles %>% arrange(-num_timepoints_sig,
+                                   -earliest_timepoint
+                                   )
+
+deg_profiles$gene_name <- factor(deg_profiles$gene_name,
+                                 levels = unique(sorted$gene_name))
+
+deg_profiles$direction <- factor(deg_profiles$direction,
+                                 levels = c("up", "down"))
+
+g <- ggplot(deg_profiles %>% filter(flagged_in_dox == FALSE), aes(x = timepoint, y = gene_name, alpha = sig_alpha)) + 
+  geom_tile(aes(fill = log2FoldChange)) + 
+  scale_alpha(range = c(0.4,1), guide = FALSE) +
+  scale_fill_gradientn(colors = rev(brewer.rdbu(100)), 
+                       limits = c(-3,3),
+                       na.value = rgb(0,0,0,0),
+                       oob = squish) +
+  # scale_fill_gradient2(limits = c(-2, 2)) + 
+  facet_grid(response+ direction~., scales = "free", space = "free") + 
+  theme_paperwhite() + 
+  theme(panel.border = element_blank()) + 
+  theme(axis.title.y=element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.text.x = element_text(angle = -45, hjust = 1, vjust = -.5),
+        axis.text.y = element_text(hjust = 1),
+        text=element_text(size=16,  family="Helvetica", face = "plain")) + 
+  scale_x_continuous(limits = c(0,360), 
+                     breaks = seq(from = 30, to = 330, by = 30),
+                     expand = c(0, 0)) + 
+  xlab("Time (m)")
+g
+
+ggsave(filename = "mesc_wt_firre_responsive_heatmap.pdf", height = 21, width = 7.5)
+
+write.csv(deg_profiles, "results/firre_responders_firre_wt_mesc.csv", row.names = F)
+```
+
+
+
+

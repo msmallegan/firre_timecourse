@@ -1,0 +1,114 @@
+---
+title: "Venn diagrams"
+author: "Michael Smallegan"
+date: "8/10/2019"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+# read in data
+wt_ko <- read.csv("results/mesc_firre_wt_ko_zero_timepoint_deg.csv")
+wt_dox <- read.csv("results/dox_responders_firre_wt_mesc.csv")
+ko_dox <- read.csv("results/dox_responders_firre_ko_mesc.csv")
+wt_firre <- read.csv("results/firre_responders_firre_wt_mesc.csv")
+ko_firre <- read.csv("results/firre_responders_firre_ko_mesc.csv")
+
+wt_ko$dataset <- "wt_ko"
+wt_dox$dataset <- "wt_dox"
+ko_dox$dataset <- "ko_dox"
+wt_firre$dataset <- "wt_firre"
+ko_firre$dataset <- "ko_firre"
+
+wt_dox_df <- wt_dox %>% filter(significant == "sig") %>%
+  select(gene_id, gene_name, response, direction, dataset) %>%
+  unite(dataset, dataset, response, sep = ":") %>%
+  distinct()
+ko_dox_df <- ko_dox %>% filter(significant == "sig") %>%
+  select(gene_id, gene_name, response, direction, dataset) %>%
+  unite(dataset, dataset, response, sep = ":") %>%
+  distinct()
+wt_firre_df <- wt_firre %>% filter(significant == "sig") %>%
+  select(gene_id, gene_name, response, direction, dataset) %>%
+  unite(dataset, dataset, response, sep = ":") %>%
+  distinct()
+ko_firre_df <- ko_firre %>% filter(significant == "sig") %>%
+  select(gene_id, gene_name, response, direction, dataset) %>%
+  unite(dataset, dataset, response, sep = ":") %>%
+  distinct()
+wt_ko$direction <- "down"
+wt_ko[which(wt_ko$log2FoldChange > 0), "direction"] <- "up"
+
+wt_ko_df <- wt_ko %>% select(geneID, geneName, dataset, direction)
+
+names(wt_ko_df)[1:2] <- c("gene_id", "gene_name")
+
+deg <- bind_rows(wt_dox_df, ko_dox_df, wt_firre_df, ko_firre_df, wt_ko_df)
+
+```
+
+
+```{r}
+# Simple 
+deg <- deg %>% separate(dataset, into = c("experiment", "response"),
+                        sep = ":", remove = FALSE)
+deg_simple <- deg %>% select(gene_name, experiment, direction) %>% distinct()
+
+deg_summary <- deg_simple %>% group_by(gene_name) %>%
+  summarize(num_datasets = length(unique(experiment)))
+
+deg_simple <- merge(deg_simple, deg_summary)
+
+
+
+deg_simple$experiment <- factor(deg_simple$experiment, 
+                                levels = c("ko_dox", "wt_dox",
+                                           "ko_firre", "wt_firre",
+                                           "wt_ko"))
+
+
+deg_simple$condition <- "zero_tp"
+deg_simple[grep("firre", deg_simple$experiment), "condition"] <- "firre_tg"
+deg_simple[grep("dox", deg_simple$experiment), "condition"] <- "dox"
+
+# A BIT OF clustering
+deg_simple$numdir <- -1
+deg_simple[which(deg_simple$direction == "up"), "numdir"] <- 1
+
+deg_matrix <- deg_simple %>% select(gene_name, experiment, numdir) %>% 
+  spread(key = experiment, value = numdir, fill = 0) %>%
+  column_to_rownames(var = "gene_name") %>%
+  as.matrix()
+
+c <- hclust(dist(deg_matrix))
+plot(c)
+
+
+deg_simple$gene_name <- factor(deg_simple$gene_name, levels =  c$labels[c$order])
+
+deg_simple$dox_flag <- FALSE
+dox_list <- deg_simple %>% filter(condition == "dox") %>% select(gene_name) %>% distinct()
+deg_simple[which(deg_simple$gene_name %in% dox_list$gene_name), "dox_flag"] <- TRUE
+
+deg_simple <- deg_simple %>% arrange(direction, experiment)
+deg_simple$gene_name <- factor(deg_simple$gene_name, levels = unique(deg_simple$gene_name))
+
+
+g <- ggplot(deg_simple %>% filter(num_datasets > 1), aes(x = experiment, y = gene_name, color = direction))
+g + geom_point(size = 2) + 
+  facet_grid(num_datasets + dox_flag ~condition, scales = "free", space = "free") + 
+  theme(panel.border = element_blank()) + 
+  theme(axis.title.y=element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.text.x = element_text(angle = -45, hjust = 1, vjust = -.5),
+        axis.text.y = element_text(hjust = 1),
+        text=element_text(size=16,  family="Helvetica", face = "plain")) + 
+  scale_color_manual(values = rev(brewer.rdbu(100)[c(20,80)]))
+
+ggsave(filename = "deg_across_datasets.pdf", height = 17, width = 4.5, useDingbats = FALSE)
+
+write.csv(deg_simple, "deg_gene_lists_across_datasets.csv", row.names = FALSE)
+```
+
+

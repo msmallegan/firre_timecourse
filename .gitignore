@@ -8,3 +8,10 @@ log/*
 results/*
 work/*
 *.Rproj
+*.csv
+*.gtf
+*data*
+*.pdf
+*.RData
+*.rda
+*results*
