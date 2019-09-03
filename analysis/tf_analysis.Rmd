@@ -1,0 +1,133 @@
+---
+title: "tf analysis"
+author: "Michael Smallegan"
+date: "9/3/2019"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+options(stringsAsFactors = FALSE)
+library(tidyverse)
+
+library(RcisTarget)
+```
+
+```{r}
+# map ensembl to refseq_r80
+library("biomaRt")
+ensembl <- useMart("ENSEMBL_MART_ENSEMBL", 
+                   dataset="mmusculus_gene_ensembl", 
+                   host="jul2015.archive.ensembl.org")
+annot <- getBM(c("refseq_mrna", "ensembl_gene_id"), mart= ensembl)
+```
+
+
+```{r}
+# okay, actually the first step will be to do the annotation mapping between 
+# refeq and ensembl.
+load("gene2symbol.RData")
+names(g2s)
+names(annot)[2] <- "geneID"
+
+ga <- merge(g2s, annot)
+```
+
+
+
+```{r}
+# let's consider making some gene lists now. Which lists do we want to check on?
+# Well for one it would be nice to do the significant genes in each timepoint 
+# and make the waterfall chart.
+# However, if I don't have time for that or if this takes a long time to run than 
+# I will for sure want to get the rank aggregated list. 
+# now let's make some gene lists. 
+tc <- read.csv("timecourse_shrunken_lfc_results.csv")
+kodat <- read.csv("combined_shrunken_lfc_results.csv")
+kodat <- kodat[which(!grepl("dxz4", kodat$contrast)),]
+# let's also get the rank aggregation lists.
+
+ra_all <- read.csv("rank_aggreg_all_data.csv")  %>% arrange(Score)
+ra_90 <- read.csv("rank_aggreg_tc90min_only_data.csv") %>% arrange(Score)
+
+ra_all_top20 <- ra_all[1:20,c("geneID", "Score")]
+ra_90_top20 <- ra_90[1:20,c("geneID", "Score")]
+
+# convert to refseq
+# cross fingers
+ra_all_top20 <- merge(ra_all_top20, ga)
+ra_90_top20 <- merge(ra_90_top20, ga)
+
+gl <- list("ra_all_top20" = ra_all_top20[which(ra_all_top20$refseq_mrna != ""),"refseq_mrna"],
+           "ra_90_top20" = ra_90_top20[which(ra_90_top20$refseq_mrna != ""),"refseq_mrna"])
+
+
+doxko <- read.csv("results/dox_responders_firre_ko_mesc.csv")%>%
+  filter(significant == "sig")
+doxwt <- read.csv("results/dox_responders_firre_wt_mesc.csv")%>%
+  filter(significant == "sig")
+firreko <- read.csv("results/firre_responders_firre_ko_mesc.csv")%>%
+  filter(significant == "sig")
+firrewt <- read.csv("results/firre_responders_firre_wt_mesc.csv") %>%
+  filter(significant == "sig")
+
+# now let's go through each timepoint and make a list. 
+tps <- seq(30,330, by = 30)
+for(i in 1:length(tps)) {
+  tdf <- doxko[which(doxko$timepoint == tps[[i]]), c("gene_name", "gene_id")]
+  names(tdf)[2] <- "geneID"
+  tdf <- merge(tdf, ga)
+  tdf <- tdf %>% as_tibble()
+  gl <- c(gl, tdf[which(tdf$refseq_mrna != ""),"refseq_mrna"])
+  names(gl)[length(gl)] <- paste0("doxko_",tps[[i]])
+}
+
+for(i in 1:length(tps)) {
+  tdf <- doxwt[which(doxwt$timepoint == tps[[i]]), c("gene_name", "gene_id")]
+  names(tdf)[2] <- "geneID"
+  tdf <- merge(tdf, ga)
+  tdf <- tdf %>% as_tibble()
+  gl <- c(gl, tdf[which(tdf$refseq_mrna != ""),"refseq_mrna"])
+  names(gl)[length(gl)] <- paste0("doxwt_",tps[[i]])
+}
+
+
+for(i in 1:length(tps)) {
+  tdf <- firrewt[which(firrewt$timepoint == tps[[i]]), c("gene_name", "gene_id")]
+  names(tdf)[2] <- "geneID"
+  tdf <- merge(tdf, ga)
+  tdf <- tdf %>% as_tibble()
+  gl <- c(gl, tdf[which(tdf$refseq_mrna != ""),"refseq_mrna"])
+  names(gl)[length(gl)] <- paste0("firrewt_",tps[[i]])
+}
+
+
+for(i in 1:length(tps)) {
+  tdf <- firreko[which(firreko$timepoint == tps[[i]]), c("gene_name", "gene_id")]
+  names(tdf)[2] <- "geneID"
+  tdf <- merge(tdf, ga)
+  tdf <- tdf %>% as_tibble()
+  gl <- c(gl, tdf[which(tdf$refseq_mrna != ""),"refseq_mrna"])
+  names(gl)[length(gl)] <- paste0("firreko_",tps[[i]])
+}
+
+
+
+# https://resources.aertslab.org/cistarget/
+
+```
+
+
+```{r}
+
+# data(motifAnnotations_hgnc)
+motifRankings <- importRankings("mm10__refseq-r80__10kb_up_and_down_tss.mc9nr.feather")
+
+
+# Motif enrichment analysis:
+motifEnrichmentTable_wGenes <- cisTarget(gl, motifRankings,
+                               motifAnnot=motifAnnotations_mgi)
+```
+
+
