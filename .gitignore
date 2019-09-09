@@ -16,3 +16,5 @@ work/*
 *.rda
 *results*
 *.html
+*.tbl
+*.feather
