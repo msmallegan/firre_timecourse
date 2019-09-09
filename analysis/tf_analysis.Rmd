@@ -9,19 +9,10 @@ editor_options:
 
 ```{r}
 options(stringsAsFactors = FALSE)
-library(tidyverse)
-
-library(RcisTarget)
+library(tidyverse); library(RcisTarget)
 ```
 
-```{r}
-# map ensembl to refseq_r80
-library("biomaRt")
-ensembl <- useMart("ENSEMBL_MART_ENSEMBL", 
-                   dataset="mmusculus_gene_ensembl", 
-                   host="jul2015.archive.ensembl.org")
-annot <- getBM(c("refseq_mrna", "ensembl_gene_id"), mart= ensembl)
-```
+
 
 
 ```{r}
@@ -51,64 +42,56 @@ kodat <- kodat[which(!grepl("dxz4", kodat$contrast)),]
 ra_all <- read.csv("rank_aggreg_all_data.csv")  %>% arrange(Score)
 ra_90 <- read.csv("rank_aggreg_tc90min_only_data.csv") %>% arrange(Score)
 
-ra_all_top20 <- ra_all[1:20,c("geneID", "Score")]
-ra_90_top20 <- ra_90[1:20,c("geneID", "Score")]
-
-# convert to refseq
-# cross fingers
-ra_all_top20 <- merge(ra_all_top20, ga)
-ra_90_top20 <- merge(ra_90_top20, ga)
-
-gl <- list("ra_all_top20" = ra_all_top20[which(ra_all_top20$refseq_mrna != ""),"refseq_mrna"],
-           "ra_90_top20" = ra_90_top20[which(ra_90_top20$refseq_mrna != ""),"refseq_mrna"])
+ra_all_top100 <- ra_all[1:100,c("geneName", "Score")]
+ra_90_top100 <- ra_90[1:100,c("geneName", "Score")]
 
 
-doxko <- read.csv("results/dox_responders_firre_ko_mesc.csv")%>%
-  filter(significant == "sig")
-doxwt <- read.csv("results/dox_responders_firre_wt_mesc.csv")%>%
-  filter(significant == "sig")
-firreko <- read.csv("results/firre_responders_firre_ko_mesc.csv")%>%
-  filter(significant == "sig")
-firrewt <- read.csv("results/firre_responders_firre_wt_mesc.csv") %>%
-  filter(significant == "sig")
+gl <- list("ra_all_top100" = ra_all_top100[which(ra_all_top100$geneName != ""),"geneName"],
+           "ra_90_top100" = ra_90_top100[which(ra_90_top100$geneName != ""),"geneName"])
+
+tc$timepoint <- unlist(lapply(tc$contrast, function(x) {
+  as.numeric(unlist(strsplit(x, "_", fixed = TRUE))[[4]])
+}))
+
+
+doxko <- tc[grep("ko_dox", tc$contrast), ] %>%
+  filter(padj < 0.1, abs(log2FoldChange) > 0.2)
+doxwt <- tc[grep("wt_dox", tc$contrast), ] %>%
+  filter(padj < 0.1, abs(log2FoldChange) > 0.2)
+firreko <-  tc[grep("ko_firre", tc$contrast), ] %>%
+  filter(padj < 0.1, abs(log2FoldChange) > 0.2)
+firrewt <-  tc[grep("wt_firre", tc$contrast), ] %>%
+  filter(padj < 0.1, abs(log2FoldChange) > 0.2)
 
 # now let's go through each timepoint and make a list. 
 tps <- seq(30,330, by = 30)
 for(i in 1:length(tps)) {
   tdf <- doxko[which(doxko$timepoint == tps[[i]]), c("gene_name", "gene_id")]
-  names(tdf)[2] <- "geneID"
-  tdf <- merge(tdf, ga)
   tdf <- tdf %>% as_tibble()
-  gl <- c(gl, tdf[which(tdf$refseq_mrna != ""),"refseq_mrna"])
+  gl <- c(gl, tdf[which(tdf$gene_name != ""),"gene_name"])
   names(gl)[length(gl)] <- paste0("doxko_",tps[[i]])
 }
 
 for(i in 1:length(tps)) {
   tdf <- doxwt[which(doxwt$timepoint == tps[[i]]), c("gene_name", "gene_id")]
-  names(tdf)[2] <- "geneID"
-  tdf <- merge(tdf, ga)
   tdf <- tdf %>% as_tibble()
-  gl <- c(gl, tdf[which(tdf$refseq_mrna != ""),"refseq_mrna"])
+  gl <- c(gl, tdf[which(tdf$gene_name != ""),"gene_name"])
   names(gl)[length(gl)] <- paste0("doxwt_",tps[[i]])
 }
 
 
 for(i in 1:length(tps)) {
   tdf <- firrewt[which(firrewt$timepoint == tps[[i]]), c("gene_name", "gene_id")]
-  names(tdf)[2] <- "geneID"
-  tdf <- merge(tdf, ga)
   tdf <- tdf %>% as_tibble()
-  gl <- c(gl, tdf[which(tdf$refseq_mrna != ""),"refseq_mrna"])
+  gl <- c(gl, tdf[which(tdf$gene_name != ""),"gene_name"])
   names(gl)[length(gl)] <- paste0("firrewt_",tps[[i]])
 }
 
 
 for(i in 1:length(tps)) {
   tdf <- firreko[which(firreko$timepoint == tps[[i]]), c("gene_name", "gene_id")]
-  names(tdf)[2] <- "geneID"
-  tdf <- merge(tdf, ga)
   tdf <- tdf %>% as_tibble()
-  gl <- c(gl, tdf[which(tdf$refseq_mrna != ""),"refseq_mrna"])
+  gl <- c(gl, tdf[which(tdf$gene_name != ""),"gene_name"])
   names(gl)[length(gl)] <- paste0("firreko_",tps[[i]])
 }
 
@@ -124,10 +107,25 @@ for(i in 1:length(tps)) {
 # data(motifAnnotations_hgnc)
 motifRankings <- importRankings("mm10__refseq-r80__10kb_up_and_down_tss.mc9nr.feather")
 
-
 # Motif enrichment analysis:
 motifEnrichmentTable_wGenes <- cisTarget(gl, motifRankings,
                                motifAnnot=motifAnnotations_mgi)
 ```
+
+
+Tetracyclines such as doxycycline are known to inhibit the translation of mtDNA genes, but not nuclear genes. This leads to a disruption of the protein balance between nuclear mitochondrial genes and mtDNA mitochondrial proteins. This then results in changes in the nuclear transcription profile.
+
+```{r}
+# http://mitominer.mrc-mbu.cam.ac.uk/release-4.0/results.do?trail=%257Cquery
+# https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4565776/
+# https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4631686/
+```
+
+```{r}
+#hmm , okay. Let's start with the doxko
+doxko30 <- motifEnrichmentTable_wGenes[which(motifEnrichmentTable_wGenes$geneSet == 	
+"doxko_30"),]
+```
+
 
 
