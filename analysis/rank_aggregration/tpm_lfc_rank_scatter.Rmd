@@ -1,0 +1,89 @@
+---
+title: "lfc_tpm_rank_scatter"
+author: "Michael Smallegan"
+date: "9/10/2019"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+options(stringsAsFactors = FALSE)
+library(tidyverse)
+
+```
+
+```{r}
+tpm_rankings <- read.csv("results/tpm_rankings_alltissue_tc90.csv")
+lfc_rankings <- read.csv("results/rank_aggreg_tc90min_only_data.csv")
+```
+
+```{r}
+names(lfc_rankings)[2] <- "lfc_rank"
+names(tpm_rankings)[2] <- "tpm_rank"
+
+ranks <- merge(lfc_rankings, tpm_rankings) 
+# %>%
+#   filter(lfc_rank != 1, tpm_rank != 1)
+
+ranks <- ranks %>% arrange(tpm_rank)
+ranks$tpm_num_rank <- 1:nrow(ranks)
+ranks <- ranks %>% arrange(lfc_rank)
+ranks$lfc_num_rank <- 1:nrow(ranks)
+
+nrow(ranks)
+
+g <- ggplot(ranks, aes(x = tpm_rank, y = lfc_rank))
+g + geom_point() + geom_smooth()
+
+
+# Previous top 20. I guess there's a bit of stochasiticiy?
+prev <- c("Firre", "4933407K13Rik", "Gm4735", "Eno1b", "Gm8730", "Gm9625", "Gm14165", "Npm3−ps1", "Gm14038", "Gm9855", "Gm6166", "Gm21742", "Gm6685", "Gm15961", "Gm7153", "Gm9770", "Gm27194", "Apol11b", "Rplp0−ps1", "Gm4784")
+top20 <- ranks %>% arrange(lfc_rank) %>%
+  slice(1:20)
+
+# okay, well for an idea where TPM fits in. 
+# let's do the average tpm for these genes across the lewwandoski and andergassen data
+tpm_lewandowski <- read.csv("results/lewandowski_tpm.csv")
+tpm_andergassen <- read.csv("results/andergassen_tpm.csv")
+
+lew_avg <- data.frame("gene_id" = tpm_lewandowski$gene_id,
+                      "mean_tpm_lew" = rowMeans(tpm_lewandowski %>% select(-1) %>% as.matrix()))
+and_avg <- data.frame("gene_id" = tpm_andergassen$gene_id,
+                      "mean_tpm_and" = rowMeans(tpm_andergassen %>% select(-1) %>% as.matrix()))
+
+mean_tpm_all90 <- read.csv("mean_tpm_all90.csv")
+
+all_tpms_ranked <- data.frame("tpm" = unique(c(lew_avg$mean_tpm_lew, and_avg$mean_tpm_and))) %>%
+  arrange(-tpm) %>%
+  mutate(rank = 1:nrow(all_tpms_ranked),
+         percentile = (nrow(all_tpms_ranked)-rank+1) / nrow(all_tpms_ranked))
+
+
+tpm_mean <- merge(lew_avg, and_avg)
+names(tpm_mean)[1] <- "geneID"
+load("../gene2symbol.RData")
+tpm_mean <- merge(tpm_mean, g2s)
+
+top20 <- merge(top20, tpm_mean)
+names(mean_tpm_all90)[1] <- "geneID"
+names(top20)
+top20 <- merge(top20, mean_tpm_all90)
+
+for(i in 1:nrow(top20)) {
+  print(i)
+  top20$percentile[i] <- all_tpms_ranked[which(abs(all_tpms_ranked$tpm-top20$mean_tpm[i])==min(abs(all_tpms_ranked$tpm-top20$mean_tpm[i]))),"percentile"]
+}
+
+
+top20$percentile <- round(top20$percentile *100,1)
+top20$mean_tpm <- round(top20$mean_tpm, 1)
+
+
+top20 <- top20 %>% arrange(lfc_rank)
+
+write.csv(top20, "results/top20_lfc-rank_with_tpm.csv", row.names = FALSE)
+prev == top20$geneName
+
+```
+

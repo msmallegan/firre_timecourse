@@ -1,0 +1,78 @@
+---
+title: "tpm_rank_aggregation"
+author: "Michael Smallegan"
+date: "9/10/2019"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+options(stringsAsFactors = FALSE)
+library(tidyverse)
+```
+
+```{r}
+lfc_rank <- read.csv("results/rank_aggreg_tc90min_only_data.csv")
+
+load("../tpm.rda")
+tc_tpm <- tpm %>% as.data.frame() %>%
+  rownames_to_column(var = "gene_id")
+tc_samples <- read.csv("../timecourse_samplesheet.csv")
+tc_tpm90 <- tc_tpm[ ,c(1,which(colnames(tc_tpm) %in% tc_samples[which(tc_samples$dox_timepoint == 60 &
+                                                                    tc_samples$cell_type == "mESCs" &
+                                                                    tc_samples$firre_inducible == "inducible"), "id"]))]
+
+# now let's load the tpms from daniel and jordans tissue data
+tpm_andergassen <- read.csv("results/andergassen_tpm.csv")
+tpm_lewandowski <- read.csv("results/lewandowski_tpm.csv")
+```
+
+```{r}
+# okay, now let's do the rank aggregation analysis.
+# instead of merging, I'm just going to make sure all the genes are in the same order
+# and then rowbind
+stopifnot(all(tc_tpm90$gene_id == tpm_andergassen$gene_id))
+stopifnot(all(tc_tpm90$gene_id == tpm_lewandowski$gene_id))
+
+tpm_all90 <- merge(tc_tpm90, tpm_andergassen)
+tpm_all90 <- merge(tpm_all90, tpm_lewandowski)
+
+mean_tpm <- data.frame("gene_id" = tpm_all90$gene_id,
+                       "mean_tpm" = rowMeans(tpm_all90 %>% select(-1) %>% as.matrix()))
+# write.csv(mean_tpm, "mean_tpm_all90.csv", row.names = FALSE)
+```
+
+```{r}
+library(RobustRankAggreg)
+
+
+glistko <- list()
+tpm_long <- tpm_all90 %>% gather(key = "id", value = "tpm", 2:ncol(tpm_all90)) %>%
+  filter(tpm > 0.00001)
+
+tpm_long <- tpm_long %>% group_by(id) %>%
+  arrange(-tpm)
+
+ids <- unique(tpm_long$id)
+for(i in 1:length(ids)) {
+  glistko <- c(glistko, tpm_long[which(tpm_long$id == ids[[i]]), "gene_id"])
+  names(glistko)[length(glistko)] <- ids[[i]]
+}
+rko = rankMatrix(glistko, full = TRUE)
+ag_listko <- aggregateRanks(rmat = rko, method = "RRA")
+
+
+load("../gene2symbol.RData")
+names(g2s)
+names(ag_listko)[1] <- "geneID"
+ag_listko <- merge(ag_listko, g2s)
+ag_listko <- ag_listko %>% arrange(Score)
+
+
+write.csv(ag_listko, "tpm_rankings_alltissue_tc90.csv", row.names = FALSE)
+```
+
+
+
+
