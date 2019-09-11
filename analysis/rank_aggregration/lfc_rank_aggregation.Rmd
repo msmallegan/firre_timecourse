@@ -8,88 +8,68 @@ editor_options:
 ---
 
 ```{r}
-library(RankAggreg)
-data(geneLists)
-topList <- RankAggreg(geneLists, 5, N=700, seed=100, convIn=3)
-plot(topList)
-library(RobustRankAggreg)
+options(stringsAsFactors = FALSE)
+library(RobustRankAggreg); library(tidyverse)
 ```
 
 ```{r}
-# let's start with the non-weighted version. and perhaps subsample so that we can 
-# see how long it will take to run.
-# Make sample input data
-glist <- list(sample(letters, 4), sample(letters, 10), sample(letters, 12))
-# Aggregate the inputs
-aggregateRanks(glist = glist, N = length(letters))
-aggregateRanks(glist = glist, N = length(letters), method = "stuart")
-# Since we know the cutoffs for the lists in advance (4, 10, 12) we can use
-# the more accurate algorithm with parameter topCutoff
-# Use the rank matrix instead of the gene lists as the input
-r = rankMatrix(glist)
-aggregateRanks(rmat = r)
-# Example, when the input lists represent full rankings but the domains do not match
-glist <- list(sample(letters[4:24]), sample(letters[2:22]), sample(letters[1:20]))
-r = rankMatrix(glist, full = TRUE)
-head(r)
-aggregateRanks(rmat = r, method = "RRA")
-# Dataset representing significantly changed genes after knockouts
-# of cell cycle specific trancription factors
-data(cellCycleKO)
-r = rankMatrix(cellCycleKO$gl, N = cellCycleKO$N)
-ar = aggregateRanks(rmat = r)
-head(ar)
 # let's create a glist out of the data we have here. 
 # I think it would be logical to use the absolute shrunken logfc as the metric.
-tc <- read.csv("timecourse_shrunken_lfc_results.csv")
-tc <- tc[which(!grepl("wt_dox", tc$contrast)),]
-tc <- tc[which(!grepl("ko_dox", tc$contrast)),]
 # damn, okay we need to take out the dox only samples
-kodat <- read.csv("combined_shrunken_lfc_results.csv")
+kodat <- read.csv("../combined_shrunken_lfc_results.csv")
 kodat <- kodat[which(!grepl("dxz4", kodat$contrast)),]
-dat <- bind_rows(tc, kodat)
+dat <- kodat
 dat$abslfc <- abs(dat$log2FoldChange)
 dat <- dat %>% group_by(contrast) %>%
   arrange(-abslfc)
+
+# okay, we need to merge this 
+tpm_andergassen <- read.csv("results/andergassen_tpm.csv")
+tpm_lewandowski <- read.csv("results/lewandowski_tpm.csv")
+
+stopifnot(all(tpm_andergassen$gene_id == tpm_lewandowski$gene_id))
+tpm_all <- merge(tpm_andergassen, tpm_lewandowski)
+
+mean_tpm <- data.frame("gene_id" = tpm_all$gene_id,
+                       "mean_tpm" = rowMeans(tpm_all %>% select(-1) %>% as.matrix()))
+
+
+dat <- merge(dat, mean_tpm)
+
+
+# now let's filter out those genes with tpm < 1
+dat <- dat %>% filter(mean_tpm > 1)
+
 # hmm, let's just do this with a for loop.
+# let's just make sure this is sorted properly
+dat <- dat %>% arrange(-abslfc)
+
 cts <- unique(dat$contrast)
 glist <- list()
+dat$gene_id
 for(i in 1:length(cts)) {
-  glist <- c(glist, dat[which(dat$contrast == cts[[i]]), "gene_id"])
+  glist <- c(glist, list(dat[which(dat$contrast == cts[[i]]), "gene_id"]))
   names(glist)[length(glist)] <- cts[[i]]
 }
 # let's see how long it takes with just two lists of all genes
 r = rankMatrix(glist, full = TRUE)
 ag_list <- aggregateRanks(rmat = r, method = "RRA")
-load("gene2symbol.RData")
+load("../gene2symbol.RData")
 names(ag_list)
 names(g2s)
+
 names(ag_list)[1] <- "geneID"
 ag_list <- merge(ag_list, g2s)
 ag_list <- ag_list %>% arrange(Score)
 # now without the timecourse data.
 # actually let's just add in teh 90 minute time points. 
 # that way they're represented, but not overwhelming the data. 
-tc90 <- tc[grep("90", tc$contrast),]
-kodat <- bind_rows(kodat, tc90)
-cts <- unique(kodat$contrast)
-glistko <- list()
-kodat$abslfc <- abs(kodat$log2FoldChange)
-kodat <- kodat %>% group_by(contrast) %>%
-  arrange(-abslfc)
-for(i in 1:length(cts)) {
-  glistko <- c(glistko, kodat[which(kodat$contrast == cts[[i]]), "gene_id"])
-  names(glistko)[length(glistko)] <- cts[[i]]
-}
-rko = rankMatrix(glistko, full = TRUE)
-ag_listko <- aggregateRanks(rmat = rko, method = "RRA")
-names(ag_listko)[1] <- "geneID"
-ag_listko <- merge(ag_listko, g2s)
-ag_listko <- ag_listko %>% arrange(Score)
+
 # let's save this data
-# write.csv(ag_list, "rank_aggreg_all_data.csv", row.names = F)
-# write.csv(ag_listko, "rank_aggreg_tc90min_only_data.csv", row.names = F)
-source("_setup.R")
+# write.csv(ag_list, "results/rank_aggreg_tissue_data.csv", row.names = F)
+
+
+source("../_setup.R")
 # now let's plot it. 
 # how about let's take the top 20?
 topag <- ag_list[1:20,]
@@ -98,13 +78,8 @@ topag$geneName <- factor(topag$geneName, levels = topag$geneName)
 g <- ggplot(topag, aes(x = geneName, y = -log10(Score)))
 g + geom_bar(stat =  "identity") + 
   coord_flip() + ggtitle("Rank aggregation: Lewand + Anderg + TC")
-ggsave("rankag_lewandowski_andergassen_timecourse_all.pdf")
-topag90 <- ag_listko[1:20,]
-topag90 <- topag90 %>% arrange(-Score)
-topag90$geneName <- factor(topag90$geneName, levels = topag90$geneName)
-g <- ggplot(topag90, aes(x = geneName, y = -log10(Score)))
-g + geom_bar(stat =  "identity") + 
-  coord_flip() + ggtitle("Rank aggregation: Lewand + Anderg + 90 min")
-ggsave("rankag_lewandowski_andergassen_timecourse_90min.pdf")
+ggsave("rankag_tissues.pdf")
+
+
 # https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3278763/
 ```
