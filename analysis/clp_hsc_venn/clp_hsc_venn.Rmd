@@ -1,0 +1,93 @@
+---
+title: "clp_hsc_venn"
+author: "Michael Smallegan"
+date: "9/10/2019"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+```{r}
+# results/2019-09-10 /lewandowski_clp_lfc//condition_ko_vs_wt_all.csv.gz
+# results/2019-09-10 /lewandowski_clp_lfc//condition_ko_i_tg_vs_ko_all.csv.gz
+# [1] "results/2019-09-10 /lewandowski_hsc_lfc//condition_ko_i_tg_vs_ko_all.csv.gz"
+# [2] "results/2019-09-10 /lewandowski_hsc_lfc//condition_ko_vs_wt_all.csv.gz"  
+
+clpko <- read.csv(gzfile("/scratch/Shares/rinn/Michael/camp_firre/analysis/results/2019-09-10 /lewandowski_clp_lfc//condition_ko_vs_wt_all.csv.gz"))
+clptg <- read.csv(gzfile("/scratch/Shares/rinn/Michael/camp_firre/analysis/results/2019-09-10 /lewandowski_clp_lfc//condition_ko_i_tg_vs_ko_all.csv.gz"))
+hsctg <- read.csv(gzfile("/scratch/Shares/rinn/Michael/camp_firre/analysis/results/2019-09-10 /lewandowski_hsc_lfc//condition_ko_i_tg_vs_ko_all.csv.gz"))
+hscko <- read.csv(gzfile("/scratch/Shares/rinn/Michael/camp_firre/analysis/results/2019-09-10 /lewandowski_hsc_lfc//condition_ko_vs_wt_all.csv.gz"))
+
+tc <- read.csv("../timecourse_shrunken_lfc_results.csv")
+```
+
+```{r}
+library(tidyverse)
+sigclpko <- clpko %>% filter(padj < 0.1)
+sigclptg <- clptg %>% filter(padj < 0.1)
+sighscko <- hscko %>% filter(padj < 0.1)
+sighsctg <- hsctg %>% filter(padj < 0.1)
+
+tc <- tc %>% filter(padj < 0.1)
+
+sigclp <- unique(c(as.character(sigclpko$gene_id), as.character(sigclptg$gene_id)))
+sighsc <- unique(c(as.character(sighscko$gene_id), as.character(sighsctg$gene_id)))
+sigtc <- unique(as.character(tc$gene_id))
+
+
+length(which(sigclp %in% sighsc))
+length(which(sighsc %in% sigtc))
+length(which(sigclp %in% sigtc))
+
+
+clphsc <- sigclp[which(sigclp %in% sighsc)]
+hsctc <- sighsc[which(sighsc %in% sigtc)]
+clptc <- sigclp[which(sigclp %in% sigtc)]
+
+ov1 <- clptc[which(clptc %in% hsctc)]
+ov2 <- ov1[which(ov1 %in% clphsc)]
+ov2
+
+all_overlap <- data.frame("geneID" = ov2)
+load("../gene2symbol.RData")
+
+all_overlap <- merge(all_overlap, g2s)
+```
+
+```{r}
+# now I'd like to incorporate the max fold-change and which comparison it's in.
+clpko$contrast <- "clp_ko_vs_wt"
+clptg$contrast <- "clp_koitg_vs_ko"
+hscko$contrast <- "hsc_ko_vs_wt"
+hsctg$contrast <- "hsc_koitg_vs_ko"
+
+tc <- read.csv("../combined_deg_results.csv")
+tc <- tc[c(grep("wt_firre", tc$contrast), grep("ko_firre", tc$contrast)),]
+# then let's filter down to just the timecourse results
+
+
+tc <- bind_rows(tc, clpko[ ,names(tc)])
+tc <- bind_rows(tc, clptg[ ,names(tc)])
+tc <- bind_rows(tc, hscko[ ,names(tc)])
+tc <- bind_rows(tc, hsctg[ ,names(tc)])
+
+unique(tc$contrast)
+
+max_fc <- tc %>% group_by(gene_id) %>%
+  summarize(max_lfc = log2FoldChange[which.max(abs(log2FoldChange))],
+            max_lfc_contrast = contrast[which.max(abs(log2FoldChange))])
+max_fc <- max_fc[max_fc$gene_id %in% all_overlap$geneID,]
+names(all_overlap) <- c("gene_id", "gene_name")
+
+all_overlap <- merge(all_overlap, max_fc)
+
+# now let's include the foldchanges for each contrast. 
+lfc_mat <- tc %>% filter(gene_id %in% all_overlap$gene_id) %>%
+  select(gene_id, contrast, log2FoldChange) %>%
+  spread(contrast, log2FoldChange)
+
+all_overlap <- merge(all_overlap, lfc_mat)
+write.csv(all_overlap, "hsc_clp_tc_overlapping_genes.csv", row.names = FALSE)
+
+```
+
+
