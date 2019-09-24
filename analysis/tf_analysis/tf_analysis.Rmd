@@ -13,16 +13,9 @@ library(tidyverse); library(RcisTarget)
 ```
 
 
-
-
 ```{r}
-# okay, actually the first step will be to do the annotation mapping between 
-# refeq and ensembl.
-load("gene2symbol.RData")
-names(g2s)
-names(annot)[2] <- "geneID"
-
-ga <- merge(g2s, annot)
+# okay, Rcis target just needs the gene names. 
+load("../gene2symbol.RData")
 ```
 
 
@@ -34,12 +27,12 @@ ga <- merge(g2s, annot)
 # However, if I don't have time for that or if this takes a long time to run than 
 # I will for sure want to get the rank aggregated list. 
 # now let's make some gene lists. 
-tc <- read.csv("timecourse_shrunken_lfc_results.csv")
-kodat <- read.csv("combined_shrunken_lfc_results.csv")
+tc <- read.csv("../timecourse_shrunken_lfc_results.csv")
+kodat <- read.csv("../combined_shrunken_lfc_results.csv")
 kodat <- kodat[which(!grepl("dxz4", kodat$contrast)),]
 # let's also get the rank aggregation lists.
 
-ra_all <- read.csv("rank_aggreg_all_data.csv")  %>% arrange(Score)
+ra_all <- read.csv("../rank_aggreg_all_data.csv")  %>% arrange(Score)
 ra_90 <- read.csv("rank_aggreg_tc90min_only_data.csv") %>% arrange(Score)
 
 ra_all_top100 <- ra_all[1:100,c("geneName", "Score")]

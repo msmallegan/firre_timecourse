@@ -1,0 +1,148 @@
+---
+title: "tf_dox_cascade"
+author: "Michael Smallegan"
+date: "9/24/2019"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# Purpose
+
+The goal here is to understand the cascade of transcription factor activation that follows from the addition of doxycycline. There could be direct results of dox hitting TFs, there could be signalling changes that result in changes to the transcriptome, and there could be changes that are a response of having a lot more RNA turned on with a quickly transcribing promoter at the site of the transgene. 
+
+## Tasks
+- get the dox timecourse shrunken lfcs. 
+- take just the significant gene lists.
+- run rcis target 
+- connect the results for each timepoint to the targets in the next timepoint.
+- What percentage of changes in the next timepoint can be potentially explained by the change in the level of a TF in the previous timepoint?
+
+
+
+```{r setup, include=FALSE}
+options(stringsAsFactors = FALSE)
+library(RcisTarget)
+```
+
+```{r}
+# read in the dox timepoint data.
+tc <- read.csv("../timecourse_shrunken_lfc_results.csv") %>%
+  filter(grepl("dox", contrast))
+tcsig <- tc %>% filter(padj < 0.1 & abs(log2FoldChange) > 0.1)
+
+gl <- list()
+
+contrasts <- unique(tc$contrast)
+for(i in 1:length(contrasts)) {
+  tdf <- tcsig[which(tcsig$contrast == contrasts[[i]]), c("gene_name", "gene_id")]
+  tdf <- tdf %>% as_tibble()
+  gl <- c(gl, tdf[which(tdf$gene_name != ""),"gene_name"])
+  names(gl)[length(gl)] <- contrasts[[i]]
+}
+
+```
+
+
+```{r}
+# now let's run the motif enrichment
+motifRankings <- importRankings("../mm10__refseq-r80__10kb_up_and_down_tss.mc9nr.feather")
+
+# Motif enrichment analysis:
+motif_enrichment <- cisTarget(gl, motifRankings, motifAnnot = motifAnnotations_mgi)
+```
+
+```{r}
+# let's see if any of the high conf TFs are even in our data
+tfs <- motif_enrichment$TF_highConf
+tfs <- tfs[which(tfs != "")]
+tfs <- sapply(tfs, function(x) {
+  unlist(strsplit(x, " \\("))[[1]]
+})
+
+tfs <- sapply(tfs, function(x) {
+  strsplit(x, "; ")
+})
+
+tfs <- unlist(tfs)
+tfs <- unique(tfs)
+
+difex <- unique(unlist(gl))
+
+length(which(tfs %in% difex))
+# okay great, so this will be worthwile. 
+# next wee need a list of all the TFs and which associated timepoint they're enriched in.
+# We'll start with just the high confidence TFs.
+```
+
+```{r}
+tfsig <- motif_enrichment %>% select(geneSet, TF_highConf) %>%
+  filter(TF_highConf != "")
+tfsig$TF_highConf <- sapply(tfsig$TF_highConf, function(x) {
+  unlist(strsplit(x, " \\("))[[1]]
+})
+
+tfsig <- tfsig %>% mutate(TF_highConf = strsplit(TF_highConf, "; ")) %>%
+  unnest(TF_highConf)
+tfsig <- tfsig %>% distinct()
+
+
+# let's now add in the lower confidence
+tflc <- motif_enrichment %>% select(geneSet, TF_lowConf) %>%
+  filter(TF_lowConf  != "")
+tflc <- tflc %>% mutate(TF_lowConf = strsplit(TF_lowConf, "; ")) %>%
+  unnest(TF_lowConf)
+tflc <- tflc %>% mutate(TF_lowConf = strsplit(TF_lowConf, ".", fixed = T)) %>%
+  unnest(TF_lowConf)
+tflc$TF_lowConf <- sapply(tflc$TF_lowConf, function(x) {
+  unlist(strsplit(x, " \\("))[[1]]
+})
+
+tflc <- tflc  %>% distinct()
+
+names(tfsig)[2] <- "tf"
+names(tflc)[2] <- "tf"
+
+tf_enriched <- bind_rows(tfsig, tflc) %>% distinct()
+
+
+
+# okay, this is going to be offset by one timepopint
+tps <- seq(from = 30, to = 330, by =30)
+tfsigcount <- list()
+for(i in 1:(length(tps)-1)){
+  print(i)
+  # let's do ko_dox first
+  # we want the motifs enriched at t+30
+  tf <- tf_enriched %>% filter(geneSet == paste0("ko_dox_shrunken/timepoint_", tps[i+1],"_vs_0"))
+  gs <- tcsig %>% filter(contrast == paste0("ko_dox_shrunken/timepoint_", tps[i],"_vs_0"))
+  # 
+  tfsigcount <- c(tfsigcount, list(gs$gene_name[which(gs$gene_name %in% tf$tf)]))
+  names(tfsigcount)[length(tfsigcount)] <- paste0("ko_dox_shrunken/timepoint_", tps[i],"_vs_0")
+  
+    tf <- tf_enriched %>% filter(geneSet == paste0("wt_dox_shrunken/timepoint_", tps[i+1],"_vs_0"))
+  gs <- tcsig %>% filter(contrast == paste0("wt_dox_shrunken/timepoint_", tps[i],"_vs_0"))
+  # 
+  tfsigcount <- c(tfsigcount, list(gs$gene_name[which(gs$gene_name %in% tf$tf)]))
+  names(tfsigcount)[length(tfsigcount)] <- paste0("wt_dox_shrunken/timepoint_", tps[i],"_vs_0")
+}
+
+
+tfsigcount
+
+# hmm, damn. Let's see what the overlap is like between the ko and the wt.
+wttfs <- tfsigcount[grep("wt", names(tfsigcount))] %>% unlist() %>% unique()
+kotfs <- tfsigcount[grep("ko", names(tfsigcount))] %>% unlist() %>% unique()
+
+length(which(wttfs %in% kotfs))
+wttfs[which(wttfs %in% kotfs)]
+
+tfdf <- tibble("contrast" = names(tfsigcount), "tf" = tfsigcount) %>%
+  unnest(tf)
+```
+
+```{r}
+# okay, for a proof of concept, let's just take the ko_dox 30 min changer
+# Zfp93 and see which targets of it changed at the 60 minute timepoint
+```
+
