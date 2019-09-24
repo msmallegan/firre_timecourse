@@ -105,44 +105,194 @@ names(tflc)[2] <- "tf"
 
 tf_enriched <- bind_rows(tfsig, tflc) %>% distinct()
 
+tps <- seq(from = 30, to = 330, by =30)
+offsets <- c(0,30,60)
+comparison_list <- list()
+for(i in 1:length(tps)) {
+  for(j in 1:length(offsets)) {
+    comparison_list <- c(comparison_list, list(c(tps[[i]], tps[[i]]+offsets[[j]])))
+  }
+}
+# let's remove those timepoints that don't exist
+
+valid_timepoints <- sapply(comparison_list, function(x) {
+  all(unlist(x) <= 330)
+})
+comparison_list <- comparison_list[valid_timepoints]
+ 
 
 
 # okay, this is going to be offset by one timepopint
-tps <- seq(from = 30, to = 330, by =30)
-tfsigcount <- list()
-for(i in 1:(length(tps)-1)){
-  print(i)
+
+tfgs_list <- list()
+for(i in 1:length(comparison_list)) {
   # let's do ko_dox first
   # we want the motifs enriched at t+30
-  tf <- tf_enriched %>% filter(geneSet == paste0("ko_dox_shrunken/timepoint_", tps[i+1],"_vs_0"))
-  gs <- tcsig %>% filter(contrast == paste0("ko_dox_shrunken/timepoint_", tps[i],"_vs_0"))
+  tf <- tf_enriched %>% filter(geneSet == paste0("ko_dox_shrunken/timepoint_", comparison_list[[i]][[2]],"_vs_0"))
+  gs <- tcsig %>% filter(contrast == paste0("ko_dox_shrunken/timepoint_", comparison_list[[i]][[1]],"_vs_0"))
   # 
-  tfsigcount <- c(tfsigcount, list(gs$gene_name[which(gs$gene_name %in% tf$tf)]))
-  names(tfsigcount)[length(tfsigcount)] <- paste0("ko_dox_shrunken/timepoint_", tps[i],"_vs_0")
+  tfgs_list <- c(tfgs_list, list(tf$tf[which(tf$tf %in% gs$gene_name)]))
+  names(tfgs_list)[length(tfgs_list)] <- paste0("ko_dox|tf", comparison_list[[i]][[2]],"|deg", comparison_list[[i]][[1]])
   
-    tf <- tf_enriched %>% filter(geneSet == paste0("wt_dox_shrunken/timepoint_", tps[i+1],"_vs_0"))
-  gs <- tcsig %>% filter(contrast == paste0("wt_dox_shrunken/timepoint_", tps[i],"_vs_0"))
+    tf <- tf_enriched %>% filter(geneSet == paste0("wt_dox_shrunken/timepoint_", comparison_list[[i]][[2]],"_vs_0"))
+  gs <- tcsig %>% filter(contrast == paste0("wt_dox_shrunken/timepoint_", comparison_list[[i]][[1]],"_vs_0"))
   # 
-  tfsigcount <- c(tfsigcount, list(gs$gene_name[which(gs$gene_name %in% tf$tf)]))
-  names(tfsigcount)[length(tfsigcount)] <- paste0("wt_dox_shrunken/timepoint_", tps[i],"_vs_0")
+  tfgs_list <- c(tfgs_list, list(gs$gene_name[which(gs$gene_name %in% tf$tf)]))
+  names(tfgs_list)[length(tfgs_list)] <- paste0("wt_dox|tf", comparison_list[[i]][[2]],"|deg", comparison_list[[i]][[1]])
 }
 
 
-tfsigcount
+# let's turn this into a data frame
+tfdf <- tibble("contrast" = names(tfgs_list), "tf" = tfgs_list) %>%
+  unnest(tf) %>% 
+  separate(contrast, into = c("condition", "tf_tp", "deg_tp"), sep = "\\|")
 
-# hmm, damn. Let's see what the overlap is like between the ko and the wt.
-wttfs <- tfsigcount[grep("wt", names(tfsigcount))] %>% unlist() %>% unique()
-kotfs <- tfsigcount[grep("ko", names(tfsigcount))] %>% unlist() %>% unique()
+tfdf$tf_tp <- as.numeric(gsub("tf", "", tfdf$tf_tp))
+tfdf$deg_tp <- as.numeric(gsub("deg", "", tfdf$deg_tp))
 
+tfdf$offset <- tfdf$tf_tp - tfdf$deg_tp
+
+
+nrow(tfdf)
+nrow(tfdf %>% distinct())
+# okay, let's group by offset and then see what the overlap is for each.
+offset_summary <- tfdf %>% group_by(condition, offset) %>%
+  summarize(count = n())
+
+# zero offset
+wttfs <- tfdf[which(tfdf$condition == "wt_dox" & tfdf$offset == 0), "tf"]
+wttfs <- unique(wttfs$tf)
+kotfs <- tfdf[which(tfdf$condition == "ko_dox" & tfdf$offset == 0), "tf"]
+kotfs <- unique(kotfs$tf)
 length(which(wttfs %in% kotfs))
-wttfs[which(wttfs %in% kotfs)]
+zero_off <- wttfs[which(wttfs %in% kotfs)]
 
-tfdf <- tibble("contrast" = names(tfsigcount), "tf" = tfsigcount) %>%
-  unnest(tf)
+# 9 tfs overlap
+
+wttfs <- tfdf[which(tfdf$condition == "wt_dox" & tfdf$offset == 30), "tf"]
+wttfs <- unique(wttfs$tf)
+kotfs <- tfdf[which(tfdf$condition == "ko_dox" & tfdf$offset == 30), "tf"]
+kotfs <- unique(kotfs$tf)
+length(which(wttfs %in% kotfs))
+thirty_off <- wttfs[which(wttfs %in% kotfs)]
+
+# 7 tfs overlap
+
+wttfs <- tfdf[which(tfdf$condition == "wt_dox" & tfdf$offset == 60), "tf"]
+wttfs <- unique(wttfs$tf)
+kotfs <- tfdf[which(tfdf$condition == "ko_dox" & tfdf$offset == 60), "tf"]
+kotfs <- unique(kotfs$tf)
+length(which(wttfs %in% kotfs))
+sixty_off <- wttfs[which(wttfs %in% kotfs)]
+
+# 8 tfs overlap. 
+
+
+
+
+```
+
+Okay, well since it's just (0 offset = 9 overlaps, 30 min offset = 7 overlaps, and 60 min offset is 8 overlaps), for now I'm going to move forward with the 30 minutes for simplicity.
+But a good way to address this, might be which offsets are most explanatory of the changes in the data?
+
+I would also like to check whether these correspond to different motifs or the same.
+
+
+```{r}
+# let's make a map of motifs to tfs
+# mt2tf <- 
+hc_mt2tf <- motif_enrichment %>% select(motif, TF_highConf) %>%
+  filter(TF_highConf != "")
+hc_mt2tf$TF_highConf <- sapply(hc_mt2tf$TF_highConf, function(x) {
+  unlist(strsplit(x, " \\("))[[1]]
+})
+hc_mt2tf <- hc_mt2tf %>% mutate(TF_highConf = strsplit(TF_highConf, "; ")) %>%
+  unnest(TF_highConf)
+hc_mt2tf <- hc_mt2tf %>% distinct()
+names(hc_mt2tf)[2] <- "tf"
+
+
+lc_mt2tf <- motif_enrichment %>% select(motif, TF_lowConf) %>%
+  filter(TF_lowConf  != "")
+lc_mt2tf <- lc_mt2tf %>% mutate(TF_lowConf = strsplit(TF_lowConf, "; ")) %>%
+  unnest(TF_lowConf)
+lc_mt2tf <- lc_mt2tf %>% mutate(TF_lowConf = strsplit(TF_lowConf, ".", fixed = T)) %>%
+  unnest(TF_lowConf)
+lc_mt2tf$TF_lowConf <- sapply(lc_mt2tf$TF_lowConf, function(x) {
+  unlist(strsplit(x, " \\("))[[1]]
+})
+
+lc_mt2tf <- lc_mt2tf  %>% distinct()
+names(lc_mt2tf)[2] <- "tf"
+
+mt2tf <- bind_rows(hc_mt2tf, lc_mt2tf)
+mt2tf <- mt2tf %>% distinct()
+
+tfs_of_interest <- unique(c(zero_off, thirty_off, sixty_off))
+motifs_of_i <- mt2tf[which(mt2tf$tf %in% tfs_of_interest),]
+sum_motifs <- motifs_of_i %>% group_by(motif) %>% summarize(count = length(unique(tf)))
+
+table(sum_motifs$count)
+```
+
+Hmm, there are a few motifs that have six of those TFs listed. I wonder if it's that motif that is predominantly driving these results. 
+
+```{r}
+# let's now look at the overlap of target genes. 
+hc_tf2tg <- motif_enrichment %>% select(TF_highConf, enrichedGenes) %>%
+  filter(TF_highConf != "")
+hc_tf2tg$TF_highConf <- sapply(hc_tf2tg$TF_highConf, function(x) {
+  unlist(strsplit(x, " \\("))[[1]]
+})
+hc_tf2tg <- hc_tf2tg %>% mutate(TF_highConf = strsplit(TF_highConf, "; ")) %>%
+  unnest(TF_highConf)
+hc_tf2tg <- hc_tf2tg %>% distinct()
+names(hc_tf2tg)[2] <- "tf"
+
+
+lc_tf2tg <- motif_enrichment %>% select(TF_lowConf, enrichedGenes) %>%
+  filter(TF_lowConf  != "")
+lc_tf2tg <- lc_tf2tg %>% mutate(TF_lowConf = strsplit(TF_lowConf, "; ")) %>%
+  unnest(TF_lowConf)
+lc_tf2tg <- lc_tf2tg %>% mutate(TF_lowConf = strsplit(TF_lowConf, ".", fixed = T)) %>%
+  unnest(TF_lowConf)
+lc_tf2tg$TF_lowConf <- sapply(lc_tf2tg$TF_lowConf, function(x) {
+  unlist(strsplit(x, " \\("))[[1]]
+})
+
+lc_tf2tg <- lc_tf2tg  %>% distinct()
+names(lc_tf2tg)[2] <- "tf"
+
+
+tf2tg <- bind_rows(hc_tf2tg, lc_tf2tg)
+
+tf2tg <- tf2tg %>% mutate(enrichedGenes = strsplit(enrichedGenes, ";")) %>%
+  unnest(enrichedGenes)
+
+
+tf2tg <- tf2tg %>% distinct()
+# save(tf2tg, file = "tf2tg.Rds")
 ```
 
 ```{r}
-# okay, for a proof of concept, let's just take the ko_dox 30 min changer
-# Zfp93 and see which targets of it changed at the 60 minute timepoint
+# now let's go entry by entry and see which genes are changing as a result of the tf changing.
+tfdf[1,]
+for(i in 1:nrow(tfdf)) {
+  degs <- tcsig %>% filter(grepl(paste0(tfdf[i,"condition"], "_shrunken/timepoint_", tfdf[i,"deg_tp"], "_vs_0"), contrast))
+  tgs <- tf2tg[which(tf2tg$tf == tfdf[[i,"tf"]]),"enrichedGenes"]
+  tfdf[i,"target_genes_diffex"] <- list(list(tgs[which(tgs %in% degs$gene_name)]))
+}
+
+tfdf$target_count <- sapply(tfdf$target_genes_diffex, length)
+
+
+tfdfl <- tfdf %>% unnest(target_genes_diffex)
+
+toi <- tfdfl %>% filter(tf %in% tfs_of_interest)
+toi <- toi %>% filter(target_genes_diffex %in% tfs_of_interest)
+
+
+#### Hmm, I think now I just need to plot these genes.
 ```
+
 
