@@ -1,0 +1,223 @@
+---
+title: "mESC Wildtype PCA"
+author: "`r getOption('author')`"
+date: "`r Sys.Date()`"
+params:
+  design: !r formula("~ timepoint")
+  contrasts: !r list(
+       c(factor = "timepoint",
+        numerator = "30",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "60",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "90",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "120",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "150",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "180",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "210",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "240",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "270",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "300",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "330",
+        denominator = "0"))
+  alpha: 0.01
+  lfc_threshold: 0.5
+  data_dir: !r file.path("data", Sys.Date())
+  results_dir: !r file.path("results", Sys.Date())
+editor_options: 
+  chunk_output_type: console
+always_allow_html: yes
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+source("_setup.R")
+source("helper_functions.R")
+library(tidyverse); library(tximport); library(bcbioRNASeq); library(pals)
+library(lemon); library(scales); library(ggrepel); library(colorspace)
+```
+
+```{r load_data, message=FALSE}
+# # Gene annotation data from script 00.
+# load(paste0(params$data_dir,"/gene_annotations.RData"))
+counts_combined <- read.table("../results/featureCounts/merged_gene_counts.txt",
+                              header = T)
+g2s <- counts_combined[,c(1,2)]
+names(g2s) <- c("gene_id", "gene_name")
+
+# Read in sample annotations
+samples <- read.csv("../samplesheet.csv") %>%
+# Filter to just the non-inducible mESC knockout samples.
+ filter(cell_type == "mESCs", 
+        firre == "WT") %>%
+   mutate(timepoint = factor(timepoint, 
+         levels = as.character(seq(from = 0, to = 330, by = 30))))
+
+# Right right, there were two batches of the induced WT background timecourse. 
+# I think I'm going to bet that the run without the A's in the name is the more recent run.
+# And use that one. 
+samples <- samples[!grepl("A", samples$sample_name),]
+
+# Now unfortuneately just for curiosity, I want to see the other one.
+# samples <- samples[grepl("A", samples$sample_name) | !samples$contains_itg_dna,]
+
+rownames(samples) <- samples$id
+
+samples$inducible <- "not_inducible"
+samples[which(samples$firre_expression_induced_by_dox == TRUE), "inducible"] <- "inducible"
+samples$inducible <- factor(samples$inducible)
+
+# Read in the featureCounts.
+counts <- fCountReader("../results/featureCounts/gene_counts/",
+                       samples$id, 
+                       "_read1Aligned.sortedByCoord.out_gene.featureCounts.txt")
+
+
+# Ensure that the ordering of the columns in the counts matrix 
+# is the same as in the sample sheet.
+samples <- samples[colnames(counts$count),]
+stopifnot(all(rownames(samples) == colnames(counts$count)))
+
+
+# Ensure that the ordering of the rows (gene info) 
+# is the same between the counts and the gencode
+# names(gtf) <- gtf$geneID
+# gtf <- gtf[rownames(counts$count)]
+# stopifnot(all(names(gtf) == rownames(counts$count)))
+```
+
+We don't have the option to test the interaction term here 
+(Firre:Transgene) since we don't have every condition. In particular,
+we don't have the uninducible transgene in the Firre WT background.
+
+```{r create_DESeqDataSet, message=FALSE}
+# Create DESeq2 experiment objects.
+dds <- DESeqDataSetFromMatrix(countData = counts$count, 
+                              colData = samples, 
+                              design = params$design)
+```
+
+#### DESeq dataset
+
+```{r prefilter}
+# Note that this criteria can be made more stringent
+keep <- rowSums(counts(dds)) >= 10
+dds <- dds[keep, ]
+print(dds)
+```
+
+
+```{r deseq, results='hide', message=FALSE}
+dds <- DESeq(dds, test="LRT", reduced = ~1)
+# dds <- DESeq(dds)
+# suppressMessages(saveData(dds, dir = params$data_dir))
+```
+
+
+
+```{r}
+stopifnot(is.list(params$contrasts))
+contrasts <- params$contrasts
+names <- vapply(
+    X = contrasts,
+    FUN = function(x) {
+        paste(x[[1]], x[[2]], "vs", x[[3]], sep = "_")
+        
+    },
+    FUN.VALUE = "character"
+)
+names(contrasts) <- names
+```
+
+```{r variance_stabilization}
+# Alternatively, can use `rlog()` here, but it is slower
+rld <- varianceStabilizingTransformation(dds)
+interestingGroups(rld) <- c("inducible")
+# saveData(rld, dir = params$data_dir)
+```
+
+```{r res_unshrunken}
+res_list_unshrunken <- mapply(
+    FUN = results,
+    contrast = contrasts,
+    MoreArgs = list(
+        object = dds,
+        alpha = params$alpha
+    ),
+    SIMPLIFY = FALSE,
+    USE.NAMES = FALSE
+)
+names(res_list_unshrunken) <- names
+# saveData(res_list_unshrunken, dir = params$data_dir)
+```
+
+```{r res_shrunken}
+# For `type` arguments other than "normal", `coef` argument is required.
+# Otherwise can use `contrast`, which is more intuitive and readable.
+# If using `coef` number, must match order in `resultsNames(dds)`.
+# The new apeglm method is great but currently only works with coef.
+# help("lfcShrink", "DESeq2")
+# help("coef", "DESeq2")
+# help("resultsNames", "DESeq2")
+# This step can be a little slow and sped up with the `parallel` argument.
+library(BiocParallel)
+register(MulticoreParam(16))
+res_list_shrunken <- mapply(
+    FUN = lfcShrink,
+    res = res_list_unshrunken,
+    contrast = contrasts,
+    MoreArgs = list(
+        dds = dds,
+        type = "normal",
+        parallel = TRUE
+    ),
+    SIMPLIFY = FALSE,
+    USE.NAMES = TRUE
+)
+# saveData(res_list_shrunken, dir = params$data_dir)
+```
+
+```{r plot_deg_pca}
+# help("pheatmap", "pheatmap")
+
+pca_vals <- plotDEGPCA(res_list_shrunken[[1]], counts = rld,
+           lfcThreshold = 0,
+           interestingGroups = c("timepoint", "inducible"),
+           return = "data.frame") 
+
+g <- ggplot(pca_vals, aes(x = pc1, y = pc2, alpha = as.numeric(timepoint), color = inducible))
+g + geom_point(aes(shape = inducible), size = 4) + 
+  scale_alpha(range = c(0.4,1)) + 
+  scale_color_manual(values = c(pals::brewer.reds(20)[[17]], 
+                                pals::brewer.greys(20)[[18]])) + 
+  ggtitle("mESC Firre WT PCA (batch 1)") +
+  theme_paperwhite(base_family = "Helvetica", base_size = 16) + 
+  xlab(paste0("pc1: ", round(attributes(pca_vals)$percentVar[[1]]*100), "% variance")) +
+  ylab(paste0("pc2: ", round(attributes(pca_vals)$percentVar[[2]]*100), "% variance"))
+ 
+
+
+ggsave(file = "firre_wt_mesc_batch1_pca.pdf", width = 8, height = 6, useDingbats=FALSE)
+
+```
