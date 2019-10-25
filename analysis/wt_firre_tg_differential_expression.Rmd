@@ -185,7 +185,7 @@ res_list_shrunken <- mapply(
 # counts used by DESeq2 for the differential expression analysis.
 res_tbl_list <- mapply(
     FUN = resultsTables,
-    results = res_list_unshrunken,
+    results = res_list_shrunken,
     MoreArgs = list(
         counts = dds,
         lfcThreshold = params$lfc,
@@ -197,6 +197,34 @@ res_tbl_list <- mapply(
     SIMPLIFY = FALSE,
     USE.NAMES = TRUE
 )
+```
+
+
+```{r}
+fl <- list.files("results/2019-10-16/wt_firre_shrunken", full.names = T)
+fl <- fl[grep("all", fl)]
+dat <- read.csv(gzfile(fl[[1]]))
+dat$contrast <- fl[[1]]
+for(i in 2:length(fl)) {
+  tdat <- read.csv(gzfile(fl[[i]]))
+  tdat$contrast <- fl[[i]]
+  dat <- bind_rows(dat, tdat)
+}
+
+write.csv(dat %>% select(contrast,baseMean,log2FoldChange,lfcSE,stat,pvalue,padj,geneID,gene_id,gene_name), "wt_firre_shrunken.csv", row.names = FALSE)
+unique(dat$contrast)
+unique(hmm$contrast)
+hmm <- read.csv("timecourse_shrunken_lfc_results.csv")
+# okay, let's remove the samples that are not shrunken.
+hmm <- hmm[!grepl("wt_firre", hmm$contrast),]
+
+# now let's add it back in.
+hdat <- dat %>% select(contrast,baseMean,log2FoldChange,lfcSE,stat,pvalue,padj,geneID,gene_id,gene_name)
+
+hmm <- bind_rows(hmm, hdat)
+warnings()
+write.csv(hmm, "timecourse_shrunken_lfc_results.csv", row.names = F)
+
 ```
 
 ```{r}

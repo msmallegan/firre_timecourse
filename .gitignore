@@ -18,3 +18,5 @@ work/*
 *.html
 *.tbl
 *.feather
+*.log
+*.png
