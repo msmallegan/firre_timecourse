@@ -15,7 +15,7 @@ echo "You've requested $SLURM_CPUS_ON_NODE core."
 
 module load singularity/3.1.1
 
-nextflow run nf-core/rnaseq -r 1.4.2 \
+nextflow run nf-core/rnaseq -r 1.4.1 \
 -resume \
 --reads 'fastq/*{_read1,_read2}.fastq.gz' \
 --fasta ../genomes/references/Mus_musculus/Gencode/M23/sequence/GRCm38.p6.genome.fa \

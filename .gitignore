@@ -20,3 +20,5 @@ work/*
 *.feather
 *.log
 *.png
+*.err
+*.out
