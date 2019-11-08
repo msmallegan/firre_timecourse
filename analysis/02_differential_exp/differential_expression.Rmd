@@ -1,0 +1,809 @@
+---
+title: "Firre timecourse differential expression"
+author: "`r getOption('author')`"
+date: "`r Sys.Date()`"
+params:
+  alpha: 0.01
+  lfc_threshold: 0.5
+  data_dir: !r file.path("data")
+  results_dir: !r file.path("results")
+editor_options: 
+  chunk_output_type: console
+always_allow_html: yes
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+options(stringsAsFactors = FALSE)
+source("_setup.R")
+source("helper_functions.R")
+library(tidyverse); library(tximport); library(bcbioRNASeq); library(pals)
+library(lemon); library(scales); library(ggrepel); library(colorspace)
+
+library("BiocParallel")
+register(MulticoreParam(12))
+```
+
+
+## Categories of genes
+
+- Genes changing in time
+- Firre transgene responders
+- Dox responders
+- Firre KO responsive genes
+- Genes changing as a results of the insertion of the transgene
+- Genes responding differently due to KO priming
+
+## Tests for each category
+
+1 Genes changing in time
+    - ~ FirreKO + Firre_Inducible + firreKO*firreInducbible +Timepoint
+    - LRT, reduced: ~ FirreKO + TGInserted + Firre_Inducible + firreKO*firreInducbible
+    - Results for each individual timepoint: results(ddsTC, name=“timepoint30vstimepoint0", test="Wald")
+2 Firre transgene responders
+    - ~ Timepoint + FirreKO + TGInserted + Firre_Inducible + firreKO:firreInducbible + Timepoint:Firre_inducible
+    - LRT, reduced: ~ Timepoint + FirreKO + TGInserted + Firre_Inducible + firreKO*firreInducbible
+    - Results for each individual timepoint: results(ddsTC, name=“firreInducecd.timepoint30", test="Wald")
+3 Dox responders
+    - Time responders - firre transgene responders
+    - What if I want the one’s reproducibly changing though?
+    - Clustering?
+4 Firre KO responsive genes
+    - ~ Timepoint + TGInserted + Firre_Inducible + Timepoint:Firre_inducible + firreKO:firreInducbible + FirreKO
+    - Wald test, contrast: FirreKO, KO, WT
+5 Genes changing as a results of the insertion of the transgene
+    - ~ Timepoint + TGInserted + Firre_Inducible + Timepoint:Firre_inducible + firreKO:firreInducbible + FirreKO
+    - Wald test, contrast: TGInserted, yes, no
+6 Genes responding differently due to KO priming
+    - Hmm, I need to think about this one more...
+    - ~ Timepoint + TGInserted + Firre_Inducible + firreKO:firreInducbible + FirreKO + Timepoint:FirreKO
+    - LRT, reduced: ~ Timepoint + TGInserted + Firre_Inducible + firreKO:firreInducbible + FirreKO + Timepoint:FirreKO
+
+
+
+
+```{r load_data, message=FALSE}
+# # Gene annotation data from script 00.
+# load(paste0(params$data_dir,"/gene_annotations.RData"))
+counts_combined <- read.table("../../results/featureCounts/merged_gene_counts.txt", header = T)
+g2s <- counts_combined[,c(1,2)]
+names(g2s) <- c("gene_id", "gene_name")
+
+# # Reduce Gencode annotation file to just gene information.
+# genes <- rtracklayer::import("../../../genomes/references/Mus_musculus/Gencode/M23/annotation/gencode.vM23.annotation.gtf")
+# genes <- genes[which(genes$type == "gene")]
+# rtracklayer::export(genes, "gencode.vM23.annotation.genes.gtf")
+genes <- rtracklayer::import("gencode.vM23.annotation.genes.gtf")
+
+# Read in sample info.
+# For the Firre WTiTg condition, there are two sets.
+# This will be very interesting for a check on variability later. 
+# But for now, let's just use the later samples. 
+samples <- read.csv("../../samplesheet.csv") %>%
+ filter(cell_type == "mESCs",
+        !grepl("A", sample_name)) %>%
+  mutate(timepoint = factor(timepoint, 
+         levels = as.character(seq(from = 0, to = 330, by = 30))))
+
+# Change from a boolean to a string
+samples[which(samples$firre_induced), "firre_induced"] <- "firre_induced"
+samples[which(samples$firre_induced == FALSE), "firre_induced"] <- "firre_uninduced"
+samples$firre_induced <- factor(samples$firre_induced, levels = c("firre_uninduced", "firre_induced"))
+
+# Factorfy the other design variable
+samples$firre_ko <- factor(samples$firre_ko, levels = c("WT", "KO"))
+
+
+
+rownames(samples) <- samples$id
+
+
+# Read in the featureCounts
+names(counts_combined) <- sapply(names(counts_combined), function(x) {unlist(strsplit(x, "_"))[[1]]})
+rownames(counts_combined) <- counts_combined$Geneid
+counts <- as.matrix(counts_combined[,3:ncol(counts_combined)])
+
+# Ensure that the ordering of the columns in the counts matrix 
+# is the same as in the sample sheet.
+# let's subset to just the samples which we would like to use
+counts <- counts[,samples$id]
+stopifnot(all(rownames(samples) == colnames(counts)))
+
+# Filter out genes with less than 15 counts.
+keep <- rowSums(counts) >= 15
+counts <- counts[keep, ]
+
+
+# Ensure that the ordering of the rows (gene info) 
+# is the same between the counts and the gencode
+names(genes) <- genes$gene_id
+genes <- genes[rownames(counts)]
+stopifnot(all(names(genes) == rownames(counts)))
+```
+
+### 1. Genes changing in time
+
+Let's start with a test for any genes that are changing in time. This will include genes that are Dox responders and those that are responsive to Firre induction. However, it will not catch genes that are different between KO and WT and don't change with respect to time. 
+
+```{r time_genes}
+# DEseq results presents the estimated fold change for the 
+# last variable in the design formula. 
+dds <- DESeqDataSetFromMatrix(countData = counts, 
+                              colData = samples, 
+                              design = formula("~ firre_ko + firre_induced + firre_ko*firre_induced + timepoint"),
+                              rowData = genes)
+
+dds <- DESeq(dds, 
+             test="LRT", 
+             reduced = ~ firre_ko + firre_induced + firre_ko*firre_induced,
+             parallel=TRUE,
+             BPPARAM=MulticoreParam(12))
+
+res <- results(dds, contrast = c("timepoint", "330", "0")) %>% 
+  as.data.frame() %>%
+  rownames_to_column(var = "gene_id") %>%
+  merge(g2s)
+
+write.csv(res, "results/differential_expression/all_genes_changing_in_time.csv")
+res <- res %>% filter(padj < 0.05)
+delta_time_genes <- res$gene_id
+gl <- list("delta_time_genes" = delta_time_genes)
+```
+
+So this is the superset of all genes that are changing in time. 
+
+There are `r nrow(dds)` genes expressed in the data and `nrow(res)` changing in time. 
+
+### 2. Firre transgene responders
+
+First let's start with the genes that respond the same in WT and KO in response to Firre. 
+
+```{r}
+# Create DESeq2 experiment objects.
+dds <- DESeqDataSetFromMatrix(countData = counts, 
+                              colData = samples, 
+                              design = formula("~ timepoint + firre_induced + firre_induced*timepoint"),
+                              rowData = genes)
+
+dds <- DESeq(dds, 
+             test="LRT", 
+             reduced = ~ timepoint + firre_induced,
+             parallel=TRUE,
+             BPPARAM=MulticoreParam(12))
+
+
+resultsNames(dds)
+res <- results(dds, name = "timepoint330.firre_inducedfirre_induced") %>% 
+  as.data.frame() %>%
+  rownames_to_column(var = "gene_id") %>%
+  merge(g2s)
+
+write.csv(res, "results/differential_expression/firre_responders_same_in_both.csv")
+
+res <- res %>%
+  filter(padj < 0.05)
+
+firre_responder_both_same <- res$gene_id
+gl <- c(gl, "firre_responder_both_same" = list(firre_responder_both_same))
+```
+
+```{r}
+# Let's look at some expamples: 
+ex_counts <- counts[res$gene_id,] %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "gene_id") %>%
+  gather(key = "id", value = "count", 2:ncol(.)) %>%
+  merge(g2s) %>%
+  merge(samples)
+
+ex_counts <- merge(ex_counts, res %>% select(-gene_name))
+ex_counts <- ex_counts %>% arrange(padj)
+
+g <- ggplot(ex_counts, aes(x = timepoint, y = count, color = firre_induced, group = firre_induced))
+g + geom_point() + stat_summary(fun.y=mean, geom="line") +
+  scale_y_log10() + facet_wrap(~ gene_name, scales = "free_y")
+```
+
+
+Now let's look at all genes that respond to the Firre transgene in time.
+
+
+```{r firretg_genes, message=FALSE}
+# Create DESeq2 experiment objects.
+dds <- DESeqDataSetFromMatrix(countData = counts, 
+                              colData = samples, 
+                              design = formula("~ timepoint + firre_ko + firre_induced + firre_ko*firre_induced + firre_induced*timepoint"),
+                              rowData = genes)
+
+dds <- DESeq(dds, 
+             test="LRT", 
+             reduced = ~ timepoint + firre_ko + firre_induced + firre_ko*firre_induced,
+             parallel=TRUE,
+             BPPARAM=MulticoreParam(12))
+
+
+resultsNames(dds)
+res <- results(dds, name = "timepoint330.firre_inducedfirre_induced") %>% 
+  as.data.frame() %>%
+  rownames_to_column(var = "gene_id") %>%
+  merge(g2s)
+
+write.csv(res, "results/differential_expression/firre_responders.csv")
+
+res <- res %>%
+  filter(padj < 0.05)
+firre_responder_genes <- res$gene_id
+gl <- c(gl, "firre_responder_genes" = list(firre_responder_genes))
+```
+
+```{r}
+# Let's look at some expamples: 
+ex_counts <- counts[res$gene_id,] %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "gene_id") %>%
+  gather(key = "id", value = "count", 2:ncol(.)) %>%
+  merge(g2s) %>%
+  merge(samples)
+
+ex_counts <- merge(ex_counts, res %>% select(-gene_name))
+ex_counts <- ex_counts %>% arrange(padj)
+
+g <- ggplot(ex_counts, aes(x = timepoint, y = count, color = firre_induced, group = firre_induced))
+g + geom_point() + stat_summary(fun.y=mean, geom="line") +
+  scale_y_log10() + facet_wrap(~ gene_name, scales = "free_y")
+```
+
+
+
+
+
+```{r}
+# Some additional plotting functions to separate
+# WT and KO samples in teh plots
+
+# ordered_genes <- unique(ex_counts$gene_id)
+# 
+# ex_gene <- ex_counts %>% filter(gene_id %in% ordered_genes[1:10])
+# ordered_gene_names <- unique(ex_counts$gene_name)
+# ex_gene$gene_name <- factor(ex_gene$gene_name, levels = ordered_gene_names)
+# g <- ggplot(ex_gene, aes(x = timepoint, y = count, color = firre_induced, group = firre_induced))
+# g + geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10() + facet_wrap(gene_name~firre_ko, scales = "free_y", ncol = 4)
+
+```
+
+
+### 4. Firre KO responsive genes
+
+```{r dox_responders}
+dds <- DESeqDataSetFromMatrix(countData = counts, 
+                              colData = samples, 
+                              design = formula("~ timepoint + firre_induced + firre_ko + firre_induced*timepoint + firre_ko*firre_induced"),
+                              rowData = genes)
+
+dds <- DESeq(dds, test = "Wald",
+             parallel=TRUE,
+             BPPARAM=MulticoreParam(12))
+
+resultsNames(dds)
+res <- results(dds, name = "firre_ko_KO_vs_WT") %>% 
+  as.data.frame() %>%
+  rownames_to_column(var = "gene_id") %>%
+  merge(g2s)
+
+
+write.csv(res, "results/differential_expression/genes_changing_in_ko.csv")
+res <- res %>%
+  filter(padj < 0.05)
+
+
+delta_KO_genes <- res$gene_id
+gl <- c(gl, "delta_KO_genes" = list(delta_KO_genes))
+```
+
+
+There are `nrow(res)` changing between Firre WT and KO. I think there are so many because we have so many samples to test this. 
+
+### 5. Genes changing as a results of the insertion of the transgene
+
+```{r tg_responders}
+# Let's subset to just the WT since that is where the line that has no transgene insertion is.
+swt <- samples %>% filter(firre_ko == "WT")
+cwt <- counts[,swt$id]
+dds <- DESeqDataSetFromMatrix(countData = cwt, 
+                              colData = swt, 
+                              design = formula("~ timepoint + contains_itg + timepoint*contains_itg"),
+                              rowData = genes)
+
+dds <- DESeq(dds, test = "Wald",
+             parallel=TRUE,
+             BPPARAM=MulticoreParam(12))
+
+resultsNames(dds)
+res <- results(dds, name = "contains_itgTRUE") %>% 
+  as.data.frame() %>%
+  rownames_to_column(var = "gene_id") %>%
+  merge(g2s)
+
+
+write.csv(res, "results/differential_expression/transgene_insertion_responders.csv")
+res <- res %>%
+  filter(padj < 0.05)
+
+
+tg_insertion_genes <- res$gene_id
+gl <- c(gl, "tg_insertion_genes" = list(tg_insertion_genes))
+```
+
+
+
+### 6. Genes responding differently due to KO priming
+
+```{r ko_priming_responders}
+dds <- DESeqDataSetFromMatrix(countData = counts, 
+                              colData = samples, 
+                              design = formula("~ timepoint + firre_induced + firre_ko + firre_ko*timepoint"),
+                              rowData = genes)
+
+dds <- DESeq(dds, 
+             test="LRT", 
+             reduced = ~ timepoint + firre_induced + firre_ko,
+             parallel=TRUE,
+             BPPARAM=MulticoreParam(12))
+
+resultsNames(dds)
+res <- results(dds, name = "timepoint300.firre_koKO") %>% 
+  as.data.frame() %>%
+  rownames_to_column(var = "gene_id") %>%
+  merge(g2s)
+
+
+write.csv(res, "results/differential_expression/ko_priming_responders.csv")
+
+res <- res %>%
+  filter(padj < 0.05)
+
+
+ko_priming_genes <- res$gene_id
+gl <- c(gl, "ko_priming_genes" = list(ko_priming_genes))
+```
+
+
+
+
+```{r}
+# Let's see how many genes that change in time are not in the ko genes
+length(which(delta_time_genes %in% delta_KO_genes))
+length(which(firre_responder_genes %in% delta_KO_genes))
+
+same_same <- firre_responder_genes[which(!(firre_responder_genes %in% delta_KO_genes))]
+
+samedf <- resdf[which(resdf$gene_id %in% same_same),]
+```
+
+```{r}
+# fiss <- plotCounts(dds, which(dds@rowRanges$gene_id == "Ppp1r18"), 
+#                    intgroup = c("timepoint","firre_ko", "firre_induced"), returnData = TRUE)
+# fiss$timepoint <- as.numeric(as.character(fiss$timepoint))
+# ggplot(fiss,
+#   aes(x = timepoint, y = count, color = firre_ko, group = firre_ko)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
+# 
+# fiss <- plotCounts(dds, which(dds@rowRanges$gene_name == "Basp1"), 
+#                    intgroup = c("timepoint","firre_ko", "firre_induced", "contains_itg"), returnData = TRUE)
+# fiss$timepoint <- as.numeric(as.character(fiss$timepoint))
+# ggplot(fiss,
+#   aes(x = timepoint, y = count, color = contains_itg, group = contains_itg)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
+# 
+#   # Umps
+# fiss <- plotCounts(dds, which(dds@rowRanges$gene_name == "Cyp1a1"), 
+#                    intgroup = c("timepoint","firre_ko", "firre_induced"), returnData = TRUE)
+# fiss$timepoint <- as.numeric(as.character(fiss$timepoint))
+# ggplot(fiss,
+#   aes(x = timepoint, y = count, color = firre_ko, group = firre_ko)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
+# 
+# 	
+# # Dpf2	
+# fiss <- plotCounts(dds, which(dds@rowRanges$gene_name == "Gm15564"), 
+#                    intgroup = c("timepoint","firre_ko", "firre_induced"), returnData = TRUE)
+# fiss$timepoint <- as.numeric(as.character(fiss$timepoint))
+# ggplot(fiss,
+#   aes(x = timepoint, y = count, color = firre_ko, group = firre_ko)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
+# 
+# # Mir7655
+# fiss <- plotCounts(dds, which(dds@rowRanges$gene_name == "Gfap"), 
+#                    intgroup = c("timepoint","firre_ko", "firre_induced"), returnData = TRUE)
+# fiss$timepoint <- as.numeric(as.character(fiss$timepoint))
+# ggplot(fiss,
+#   aes(x = timepoint, y = count, color = firre_induced, group = firre_induced)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
+# 
+# fiss <- plotCounts(dds, which(dds@rowRanges$gene_name == "Firre"), 
+#                    intgroup = c("timepoint","firre_ko", "firre_induced"), returnData = TRUE)
+# fiss$timepoint <- as.numeric(as.character(fiss$timepoint))
+# ggplot(fiss,
+#   aes(x = timepoint, y = count, color = firre_induced, group = firre_induced)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
+# 
+# 
+# fiss <- plotCounts(dds, which(dds@rowRanges$gene_name == "Apod"), 
+#                    intgroup = c("timepoint","firre_ko", "firre_induced"), returnData = TRUE)
+# fiss$timepoint <- as.numeric(as.character(fiss$timepoint))
+# ggplot(fiss,
+#   aes(x = timepoint, y = count, color = firre_induced, group = firre_induced)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
+# 
+# 
+# fiss <- plotCounts(dds, which(dds@rowRanges$gene_name == "Kdr"), 
+#                    intgroup = c("timepoint","firre_ko", "firre_induced"), returnData = TRUE)
+# fiss$timepoint <- as.numeric(as.character(fiss$timepoint))
+# ggplot(fiss,
+#   aes(x = timepoint, y = count, color = firre_induced, group = firre_induced)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
+# 
+# 
+# 
+# fiss <- plotCounts(dds, which(dds@rowRanges$gene_name == "Adgrg1"), 
+#                    intgroup = c("timepoint","firre_ko", "firre_induced"), returnData = TRUE)
+# fiss$timepoint <- as.numeric(as.character(fiss$timepoint))
+# ggplot(fiss,
+#   aes(x = timepoint, y = count, color = firre_induced, group = firre_induced)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
+# 
+# 
+# fiss <- plotCounts(dds, which(dds@rowRanges$gene_name == "Ppp1r2"), 
+#                    intgroup = c("timepoint","firre_ko", "firre_induced"), returnData = TRUE)
+# fiss$timepoint <- as.numeric(as.character(fiss$timepoint))
+# ggplot(fiss,
+#   aes(x = timepoint, y = count, color = firre_induced, group = firre_induced)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
+# 
+# fiss <- plotCounts(dds, which(dds@rowRanges$gene_name == "Clock"), 
+#                    intgroup = c("timepoint","firre_ko", "firre_induced"), returnData = TRUE)
+# fiss$timepoint <- as.numeric(as.character(fiss$timepoint))
+# ggplot(fiss,
+#   aes(x = timepoint, y = count, color = firre_induced, group = firre_induced)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
+# 
+# fiss <- plotCounts(dds, which(dds@rowRanges$gene_name == "Nceh1"), 
+#                    intgroup = c("timepoint","firre_ko", "firre_induced"), returnData = TRUE)
+# fiss$timepoint <- as.numeric(as.character(fiss$timepoint))
+# ggplot(fiss,
+#   aes(x = timepoint, y = count, color = firre_induced, group = firre_induced)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
+```
+
+```{r}
+# betas <- coef(dds)
+# colnames(betas)
+# 
+# 
+# library(pheatmap)
+# topGenes <- head(order(resTC$padj),20)
+# mat <- betas[topGenes, -c(1,2)]
+# rownames(mat) <- g2s[match(rownames(mat), g2s$gene_id), "gene_name"]
+# thr <- 1
+# mat[mat < -thr] <- -thr
+# mat[mat > thr] <- thr
+# pheatmap(mat, breaks=seq(from=-thr, to=thr, length=101),
+#          cluster_col=FALSE)
+```
+
+
+
+
+Okay, now let's say we want to get the genes that are like Firre which has a large difference between the KO and WT condtion,
+which means we want to model the interaction between firre_ko status and firre_induction and time?
+
+For now, let's just see what the gene profiles look like if we swap Firre induction with firre_ko
+
+Changing in time differentially in the KO and WT samples. did
+
+```{r}
+# dds <- DESeqDataSetFromMatrix(countData = counts$count, 
+#                               colData = samples, 
+#                               design = formula("~ timepoint + firre_ko + firre_induced + firre_ko*timepoint"),
+#                               rowData = genes)
+# 
+# keep <- rowSums(counts(dds)) >= 15
+# dds <- dds[keep, ]
+# 
+# dds <- DESeq(dds, test="LRT", reduced = ~ timepoint + firre_ko + firre_induced)
+# 
+# resTC <- results(dds)
+# resultsNames(dds)
+# 
+# resdf <- resTC %>% as.data.frame() %>%
+#   rownames_to_column(var = "gene_id") %>%
+#   filter(padj < 0.05)
+# 
+# resdf <- merge(resdf, g2s)
+```
+
+
+```{r}
+# fiss <- plotCounts(dds, which(dds@rowRanges$gene_name == "Banp"), 
+#                    intgroup = c("timepoint","firre_ko", "firre_induced"), returnData = TRUE)
+# fiss$timepoint <- as.numeric(as.character(fiss$timepoint))
+# ggplot(fiss,
+#   aes(x = timepoint, y = count, color = firre_ko, group = firre_ko)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
+# 
+# # Dido1
+# # Cebpg
+# # Nemp1
+# fiss <- plotCounts(dds, which(dds@rowRanges$gene_name == "Slc9a8"), 
+#                    intgroup = c("timepoint","firre_ko", "firre_induced"), returnData = TRUE)
+# fiss$timepoint <- as.numeric(as.character(fiss$timepoint))
+# ggplot(fiss,
+#   aes(x = timepoint, y = count, color = firre_ko, group = firre_ko)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
+# 	
+# # Dppa5c	
+# fiss <- plotCounts(dds, which(dds@rowRanges$gene_name == "Zfp296"), 
+#                    intgroup = c("timepoint","firre_ko", "firre_induced"), returnData = TRUE)
+# fiss$timepoint <- as.numeric(as.character(fiss$timepoint))
+# ggplot(fiss,
+#   aes(x = timepoint, y = count, color = firre_ko, group = firre_ko)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
+
+```
+
+
+
+```{r}
+# betas <- coef(dds)
+# colnames(betas)
+# 
+# 
+# library(pheatmap)
+# topGenes <- head(order(resTC$padj),20)
+# mat <- betas[topGenes, -c(1,2)]
+# rownames(mat) <- g2s[match(rownames(mat), g2s$gene_id), "gene_name"]
+# thr <- 1 
+# mat[mat < -thr] <- -thr
+# mat[mat > thr] <- thr
+# pheatmap(mat, breaks=seq(from=-thr, to=thr, length=101),
+#          cluster_col=FALSE)
+```
+
+
+Hmm, so these are genes that are changing differentially in response to Dox in the WT and KO background. 
+Somehow Firre KO has changed the primed state of the cell, so that the responders are different? 
+
+Okay, I still haven't captured Firre in this list though. 
+
+```{r}
+# fiss <- plotCounts(dds, which(dds@rowRanges$gene_name == "Firre"), 
+#                    intgroup = c("timepoint","firre_ko", "firre_induced"), returnData = TRUE)
+# fiss$timepoint <- as.numeric(as.character(fiss$timepoint))
+# ggplot(fiss,
+#   aes(x = timepoint, y = count, color = firre_ko, group = firre_induced)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
+```
+
+For Firre, there's a large difference between WT and KO condition. Can I have a three way interaction?
+
+```{r}
+# dds <- DESeqDataSetFromMatrix(countData = counts$count, 
+#                               colData = samples, 
+#                               design = formula("~ timepoint + firre_ko + firre_induced + firre_ko*firre_induced*timepoint"),
+#                               rowData = genes)
+# 
+# keep <- rowSums(counts(dds)) >= 15
+# dds <- dds[keep, ]
+# 
+# dds <- DESeq(dds, test="LRT", reduced = ~ timepoint + firre_ko + firre_induced)
+# 
+# resTC <- results(dds)
+# resultsNames(dds)
+# 
+# resdf <- resTC %>% as.data.frame() %>%
+#   rownames_to_column(var = "gene_id") %>%
+#   filter(padj < 0.05)
+# 
+# resdf <- merge(resdf, g2s)
+```
+
+
+
+```{r}
+# fiss <- plotCounts(dds, which(dds@rowRanges$gene_name == "Wdfy1"), 
+#                    intgroup = c("timepoint","firre_ko", "firre_induced"), returnData = TRUE)
+# fiss$timepoint <- as.numeric(as.character(fiss$timepoint))
+# ggplot(fiss,
+#   aes(x = timepoint, y = count, color = firre_induced,group = firre_ko)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
+```
+
+Hmm, this doesn't really look like it's changing in time... But is is changing at the baseline between the Firre WT with and without the
+transgene incorporated.
+
+So that's another category. Genes that changed in response to have the transgene inserted and remain changed. It's higher in the WT with no transgene. Hmm. 
+
+```{r}
+# fiss <- plotCounts(dds, which(dds@rowRanges$gene_name == "Gm9732"), 
+#                    intgroup = c("timepoint","firre_ko", "firre_induced"), returnData = TRUE)
+# fiss$timepoint <- as.numeric(as.character(fiss$timepoint))
+# ggplot(fiss,
+#   aes(x = timepoint, y = count, color = firre_induced,group = firre_ko)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
+```
+
+So there it seems it's just not in one sample.
+
+```{r}
+# fiss <- plotCounts(dds, which(dds@rowRanges$gene_name == "Shf"), 
+#                    intgroup = c("timepoint","firre_ko", "firre_induced"), returnData = TRUE)
+# fiss$timepoint <- as.numeric(as.character(fiss$timepoint))
+# ggplot(fiss,
+#   aes(x = timepoint, y = count, color = firre_induced,group = firre_induced)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
+```
+
+
+```{r}
+# betas <- coef(dds)
+# colnames(betas)
+# 
+# 
+# topGenes <- head(order(resTC$padj),20)
+# mat <- betas[topGenes, -c(1,2)]
+# rownames(mat) <- g2s[match(rownames(mat), g2s$gene_id), "gene_name"]
+# thr <- 2
+# mat[mat < -thr] <- -thr
+# mat[mat > thr] <- thr
+# pheatmap(mat, breaks=seq(from=-thr, to=thr, length=101),
+#          cluster_col=FALSE)
+```
+
+```{r}
+# fiss <- plotCounts(dds, which(dds@rowRanges$gene_name == "Nceh1"), 
+#                    intgroup = c("timepoint","firre_ko", "firre_induced"), returnData = TRUE)
+# fiss$timepoint <- as.numeric(as.character(fiss$timepoint))
+# ggplot(fiss,
+#   aes(x = timepoint, y = count, color = firre_induced,group = firre_induced)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
+# 
+# fiss <- plotCounts(dds, which(dds@rowRanges$gene_name == "Adgrg1"), 
+#                    intgroup = c("timepoint","firre_ko", "firre_induced"), returnData = TRUE)
+# fiss$timepoint <- as.numeric(as.character(fiss$timepoint))
+# ggplot(fiss,
+#   aes(x = timepoint, y = count, color = firre_ko,group = firre_induced)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
+```
+
+
+Hmm, let's look at all the genes that are changing in time. 
+
+
+
+```{r}
+# dds <- DESeqDataSetFromMatrix(countData = counts$count, 
+#                               colData = samples, 
+#                               design = formula("~ timepoint + firre_ko + firre_induced + firre_ko*firre_induced"),
+#                               rowData = genes)
+# 
+# keep <- rowSums(counts(dds)) >= 15
+# dds <- dds[keep, ]
+# 
+# dds <- DESeq(dds, test="LRT", reduced = ~ firre_ko + firre_induced + firre_ko*firre_induced)
+# 
+# resTC <- results(dds)
+# resultsNames(dds)
+# 
+# resdf <- resTC %>% as.data.frame() %>%
+#   rownames_to_column(var = "gene_id") %>%
+#   filter(padj < 0.05)
+# 
+# resdf <- merge(resdf, g2s)
+```
+
+
+
+
+
+```{r}
+# fiss <- plotCounts(dds, which(dds@rowRanges$gene_name == "Ppp1r10"), 
+#                    intgroup = c("timepoint","firre_ko", "firre_induced"), returnData = TRUE)
+# fiss$timepoint <- as.numeric(as.character(fiss$timepoint))
+# ggplot(fiss,
+#   aes(x = timepoint, y = count, color = firre_induced,group = firre_induced)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
+# 
+# fiss <- plotCounts(dds, which(dds@rowRanges$gene_name == "Dido1"), 
+#                    intgroup = c("timepoint","firre_ko", "firre_induced"), returnData = TRUE)
+# fiss$timepoint <- as.numeric(as.character(fiss$timepoint))
+# ggplot(fiss,
+#   aes(x = timepoint, y = count, color = firre_ko,group = firre_induced)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
+# 
+# fiss <- plotCounts(dds, which(dds@rowRanges$gene_name == "Prdm14"), 
+#                    intgroup = c("timepoint","firre_ko", "firre_induced"), returnData = TRUE)
+# fiss$timepoint <- as.numeric(as.character(fiss$timepoint))
+# ggplot(fiss,
+#   aes(x = timepoint, y = count, color = firre_ko,group = firre_induced)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
+# 
+# 
+# # Lncenc1
+# 
+# fiss <- plotCounts(dds, which(dds@rowRanges$gene_name == "Lncenc1"), 
+#                    intgroup = c("timepoint","firre_ko", "firre_induced"), returnData = TRUE)
+# fiss$timepoint <- as.numeric(as.character(fiss$timepoint))
+# ggplot(fiss,
+#   aes(x = timepoint, y = count, color = firre_ko,group = firre_induced)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
+# 
+# fiss <- plotCounts(dds, which(dds@rowRanges$gene_name == "Myc"), 
+#                    intgroup = c("timepoint","firre_ko", "firre_induced"), returnData = TRUE)
+# fiss$timepoint <- as.numeric(as.character(fiss$timepoint))
+# ggplot(fiss,
+#   aes(x = timepoint, y = count, color = firre_ko,group = firre_induced)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
+# 
+# # Dpf2
+# 
+# fiss <- plotCounts(dds, which(dds@rowRanges$gene_name == "Dpf2"), 
+#                    intgroup = c("timepoint","firre_ko", "firre_induced"), returnData = TRUE)
+# fiss$timepoint <- as.numeric(as.character(fiss$timepoint))
+# ggplot(fiss,
+#   aes(x = timepoint, y = count, color = firre_ko,group = firre_induced)) + 
+#   geom_point() + stat_summary(fun.y=mean, geom="line") +
+#   scale_y_log10()
+```
+
+Hmm, firre is in this list, but it's p-val is not toward the bottom.
+
+
+```{r}
+# betas <- coef(dds)
+# colnames(betas)
+# 
+# 
+# topGenes <- head(order(resTC$padj),20)
+# mat <- betas[topGenes, -c(1,2)]
+# rownames(mat) <- g2s[match(rownames(mat), g2s$gene_id), "gene_name"]
+# thr <- 1
+# mat[mat < -thr] <- -thr
+# mat[mat > thr] <- thr
+# pheatmap(mat, breaks=seq(from=-thr, to=thr, length=101),
+#          cluster_col=FALSE)
+```
+
+
+
+
+
