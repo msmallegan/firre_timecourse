@@ -1,0 +1,324 @@
+---
+title: "firre_responder_MA_plots"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r setup, message=FALSE, warning=FALSE}
+options(stringsAsFactors = FALSE)
+source("_setup.R")
+source("helper_functions.R")
+library(tidyverse); library(tximport); library(bcbioRNASeq); library(pals)
+library(lemon); library(scales); library(ggrepel); library(colorspace)
+library(gganimate)
+library("BiocParallel")
+register(MulticoreParam(12))
+```
+
+```{r load_data, message=FALSE}
+# # Gene annotation data from script 00.
+# load(paste0(params$data_dir,"/gene_annotations.RData"))
+counts_combined <- read.table("../../results/featureCounts/merged_gene_counts.txt", header = T)
+g2s <- counts_combined[,c(1,2)]
+names(g2s) <- c("gene_id", "gene_name")
+
+# # Reduce Gencode annotation file to just gene information.
+# genes <- rtracklayer::import("../../../genomes/references/Mus_musculus/Gencode/M23/annotation/gencode.vM23.annotation.gtf")
+# genes <- genes[which(genes$type == "gene")]
+# rtracklayer::export(genes, "gencode.vM23.annotation.genes.gtf")
+genes <- rtracklayer::import("gencode.vM23.annotation.genes.gtf")
+
+# Read in sample info.
+# For the Firre WTiTg condition, there are two sets.
+# This will be very interesting for a check on variability later. 
+# But for now, let's just use the later samples. 
+samples <- read.csv("../../samplesheet.csv") %>%
+ filter(cell_type == "mESCs",
+        !grepl("A", sample_name)) %>%
+  mutate(timepoint = factor(timepoint, 
+         levels = as.character(seq(from = 0, to = 330, by = 30))))
+
+# Change from a boolean to a string
+samples[which(samples$firre_induced), "firre_induced"] <- "firre_induced"
+samples[which(samples$firre_induced == FALSE), "firre_induced"] <- "firre_uninduced"
+samples$firre_induced <- factor(samples$firre_induced, levels = c("firre_uninduced", "firre_induced"))
+
+# Factorfy the other design variable
+samples$firre_ko <- factor(samples$firre_ko, levels = c("WT", "KO"))
+
+rownames(samples) <- samples$id
+
+
+# Read in the featureCounts
+names(counts_combined) <- sapply(names(counts_combined), function(x) {unlist(strsplit(x, "_"))[[1]]})
+rownames(counts_combined) <- counts_combined$Geneid
+counts <- as.matrix(counts_combined[,3:ncol(counts_combined)])
+
+# Ensure that the ordering of the columns in the counts matrix 
+# is the same as in the sample sheet.
+# let's subset to just the samples which we would like to use
+counts <- counts[,samples$id]
+stopifnot(all(rownames(samples) == colnames(counts)))
+
+# Filter out genes with less than 15 counts.
+keep <- rowSums(counts) >= 15
+counts <- counts[keep, ]
+
+
+# Ensure that the ordering of the rows (gene info) 
+# is the same between the counts and the gencode
+names(genes) <- genes$gene_id
+genes <- genes[rownames(counts)]
+stopifnot(all(names(genes) == rownames(counts)))
+```
+
+
+```{r}
+# Create DESeq2 experiment objects.
+dds <- DESeqDataSetFromMatrix(countData = counts, 
+                              colData = samples, 
+                              design = formula("~ timepoint + firre_induced + firre_induced*timepoint"),
+                              rowData = genes)
+
+dds <- DESeq(dds, 
+             test="LRT", 
+             reduced = ~ timepoint + firre_induced,
+             parallel=TRUE,
+             BPPARAM=MulticoreParam(12))
+
+
+# resultsNames(dds)
+
+tps <- seq(from = 30, to = 330, by = 30)
+
+# res <- results(dds, name = paste0("timepoint",tps[1],".firre_inducedfirre_induced"), test = "Wald") %>% 
+#   as.data.frame() %>%
+#   rownames_to_column(var = "gene_id") 
+
+contrast_names <- sapply(tps, function(x) {
+  paste0("timepoint",x,".firre_inducedfirre_induced")
+})
+
+res_list_unshrunken <- mapply(
+    FUN = results,
+    name = contrast_names,
+    MoreArgs = list(
+        object = dds,
+        alpha = 0.05,
+        test = "Wald"
+    ),
+    SIMPLIFY = FALSE,
+    USE.NAMES = FALSE
+)
+names(res_list_unshrunken) <- contrast_names
+
+
+
+res_list_shrunken <- mapply(
+    FUN = lfcShrink,
+    res = res_list_unshrunken,
+    coef = contrast_names,
+    MoreArgs = list(
+        dds = dds,
+        type = "ashr",
+        parallel=TRUE,
+        BPPARAM=MulticoreParam(12)
+    ),
+    SIMPLIFY = FALSE,
+    USE.NAMES = TRUE
+)
+
+# save(res_list_shrunken, file = "firre_responder_res_list_shrunken.Rdata")
+```
+
+```{r}
+maplotdf <- data.frame("baseMean" = numeric(0),
+                         "log2FoldChange" = numeric(0),
+                         "lfcSE" = numeric(0),
+                         "stat" = numeric(0),
+                         "pvalue" = numeric(0),
+                         "padj" = numeric(0),
+                         "rankScore" = numeric(0),
+                         "rank" = integer(0),
+                         "isDE" = character(0),
+                         "geneName" = character(0))
+
+names(g2s) <- c("geneID", "geneName")
+# bcbioRNASeq::plotMA(res_list_unshrunken[[1]], lfcThreshold = 0.5,
+#                          ntop = 30, gene2symbol = g2s)
+
+tp_plots <- names(res_list_unshrunken)
+for(i in 1:length(tp_plots)) {
+  tp <- names(res_list_unshrunken)[[i]]
+  temp_plot_df <- bcbioRNASeq::plotMA(res_list_unshrunken[[i]],
+                         ntop = 30, gene2symbol = g2s, return = "data.frame")
+  temp_plot_df$timepoint <- tp
+  temp_plot_df$isDE <- as.character(temp_plot_df$isDE)
+
+  maplotdf <- bind_rows(maplotdf, temp_plot_df)
+}
+
+maplotdf$timepoint <- sapply(maplotdf$timepoint, function(x) {
+  unlist(base::strsplit(unlist(base::strsplit(x, ".", fixed = T))[[1]],"int"))[[2]]
+})
+maplotdf$timepoint <- as.numeric(maplotdf$timepoint)
+
+# # hmm, here we need to read in the timecourse pvalues
+# fr_res <- read.csv("results/differential_expression/firre_responders_same_in_both.csv")
+# # now let's get the padjs merged in. It might be a problem that we're merging on gene name
+# fr_sig <- fr_res %>% filter(padj < 0.05)
+# # hmm, okay, let's just label the genes that have significance in the
+# # timecourse test.
+# maplotdf$sig_tc <- FALSE
+
+
+# 
+# 
+# g <- ggplot(maplotdf, aes(x = baseMean, y = log2FoldChange, label = geneName, color = isDE))
+# g + geom_point() + 
+#   scale_x_continuous(trans = "log10") +
+#   facet_wrap(~timepoint) + 
+#    ylim(-6,6)
+  
+
+tpzero <- maplotdf %>% group_by(geneName) %>% 
+  summarize(baseMean = mean(baseMean), 
+            isDE = isDE[which.max(abs(as.numeric(isDE)))]) %>%
+  mutate(log2FoldChange = 0, lfcSE = 0, stat = 1, pvalue = 1, padj = 1, rankScore = NA,
+         rank = NA, timepoint = 0) %>%
+  select("baseMean", "log2FoldChange", "lfcSE", "stat", "pvalue", "padj", "rankScore", "rank", "isDE", "geneName", "timepoint")
+   
+
+stopifnot(all(colnames(maplotdf) == colnames(tpzero)))
+maplotdf <- bind_rows(maplotdf, tpzero)
+maplotdf <- maplotdf %>% group_by(geneName) %>%
+  mutate(de = isDE[which.max(abs(as.numeric(isDE)))])
+maplotdf$de <- as.character(maplotdf$de)
+
+maplotdf$label <- FALSE
+maplotdf[which(abs(maplotdf$log2FoldChange) > 3), "label"] <- TRUE
+ 
+ 
+xFloor <- maplotdf[["baseMean"]] %>%
+  min() %>%
+  log10() %>%
+  floor()
+xCeiling <-maplotdf[["baseMean"]] %>%
+  max() %>%
+  log10() %>%
+  ceiling()
+xBreaks <- 10L ^ seq(from = xFloor, to = xCeiling, by = 1L)
+pointColor <- alpha("gray50",0.2)
+sigPointColor = c(
+  upregulated = alpha(ocean.balance(100)[25], 0.4),
+  downregulated = alpha(ocean.balance(100)[75], 0.4))
+genes <- NULL
+labelData <- NULL
+# ntop = 10
+# genes <- maplotdf[1L:ntop, "geneName", drop = TRUE]
+# labelData <- maplotdf[maplotdf[["geneName"]] %in% genes, , drop = FALSE]
+
+# maplotdf <- maplotdf %>% separate(timepoint, into = c("tp", "time", "vs", "zero"), 
+#                                               sep = "_", remove = FALSE) %>%
+#   mutate(time = as.numeric(time))
+
+
+max_exp <- maplotdf %>% group_by(geneName) %>% summarize(max_fc = log2FoldChange[which.max(abs(log2FoldChange))])
+maplotdf <- merge(maplotdf, max_exp)
+maplotdf <- maplotdf %>% arrange(time)
+maplotdf$time <- factor(maplotdf$timepoint, levels = seq(from = 0, to = 330, by = 30))
+head(maplotdf$time)
+
+x <- .456
+divpal <- function(x) {
+  cpal <- ocean.balance(100)
+  return(unlist(cpal[round(x*100)]))
+}
+hmm <- divpal(0.456)
+
+maplotdf <- maplotdf %>% arrange(geneName, time)
+maplotdf$tsize <- 0
+maplotdf[which(maplotdf$label),"tsize"] <- 5
+
+maplotdf$tcolor <- "white"
+maplotdf[which(maplotdf$label), "tcolor"] <- "gray16"
+
+maplotdf[which(maplotdf$geneName == "Firre"),"label"] <- TRUE
+maplotdf <- maplotdf %>% select(geneName, baseMean, 
+                                            log2FoldChange, time, de, max_fc, tcolor,tsize, label)
+
+maplotdf <- maplotdf %>% group_by(geneName) %>% mutate(label = any(label))
+
+label_subset <- maplotdf %>% filter(label == TRUE)
+
+g <- ggplot(maplotdf, aes(x = baseMean, y = log2FoldChange, label = geneName))
+g <- g +
+  geom_text_repel(data = label_subset, nudge_x = 0.1, nudge_y = 0.1, family = "Helvetica",
+            color = label_subset$tcolor, size = label_subset$tsize) + 
+   geom_hline(yintercept = 0L, size = 0.5,color = pointColor) + 
+  geom_point(data = maplotdf %>% filter(de == 0), size = 1L, color = pointColor) +
+  geom_point(data = maplotdf %>% filter(de != 0), size = 2L, aes(color = max_fc)) +
+  # scale_color_gradient2(high = ocean.balance(100)[100], low = ocean.balance(100)[1], mid = "white") + 
+  scale_color_gradientn(colors = ocean.balance(100), limits = c(-5,5)) +
+  # geom_point(data = maplotdf %>% filter(de != 0), size = 2.4, color = alpha("gray50",0.2)) +
+  
+  scale_x_continuous(breaks = xBreaks, limits = c(1L, NA), trans = "log10") +
+  scale_y_continuous(breaks = pretty_breaks()) +
+  annotation_logticks(sides = "b") +
+  guides(color = FALSE) +
+  # scale_color_distiller(palette = "RdPu") +
+  # scale_color_manual(values = c(
+  #   # nonsignificant
+  #   "0" = pointColor,
+  #   # upregulated
+  #   "1" = sigPointColor[[1L]],
+  #   # downregulated
+  #   "-1" = sigPointColor[[2L]]))   + 
+  ylim(-1.5, 5) + 
+  theme(legend.position = "none")
+# geom_label_repel(data = labelData, mapping = aes(x = baseMean, y = log2FoldChange, label = geneName)) 
+g
+
+g <- g + labs(title = "{closest_state} min",
+              x = "Abundance", y = "log2 fold change") + 
+  transition_states(time, transition_length = 10, state_length =1, wrap = FALSE) +
+  shadow_wake(wake_length = .1, wrap = FALSE,exclude_layer = 1) + 
+  enter_appear()
+
+# animate(g, device = 'svg', renderer = )
+firre_rescue_render_files <- animate(g,  
+                                     nframes = 150, 
+                                     end_pause = 20, 
+                                     start_pause = 20, 
+                                     rewind = FALSE,
+        renderer = file_renderer(dir = "figures/", 
+                                 prefix = "firre_responders_"))
+```
+
+```{bash}
+# Let's move to the directory that we put the animation images in.
+pwd
+cd figures/ma_gif
+
+module load singularity
+# First we're going to stitch together the images using ImageMagick
+# This command will append the figures side-by-side.
+<!-- for i in `seq -f '%04g' 1 110`; do \ -->
+<!--  singularity exec \ -->
+<!--  /scratch/Shares/public/singularity/ImageMagick-7.0.8-43.img convert \ -->
+<!--  firre_overexpression_$i.png firre_rescue_$i.png firre_control_$i.png +append \ -->
+<!--  firre_tc_ma_$i.gif; \ -->
+<!-- done -->
+
+# Now let's put it together into an animated gif.
+singularity exec \
+  /scratch/Shares/public/singularity/ImageMagick-7.0.8-43.img convert \
+  -loop 0 \
+  -delay 100 firre_responders_0001.png \
+  -delay 20 firre_responders_*.png \
+  -delay 100 firre_responders_0110.png \
+  firre_responders.gif
+```
+
