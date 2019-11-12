@@ -22,3 +22,5 @@ work/*
 *.png
 *.err
 *.out
+*figures*
+*cache*
