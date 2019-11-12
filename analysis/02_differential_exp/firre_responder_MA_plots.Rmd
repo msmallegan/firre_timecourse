@@ -116,19 +116,19 @@ names(res_list_unshrunken) <- contrast_names
 
 
 
-res_list_shrunken <- mapply(
-    FUN = lfcShrink,
-    res = res_list_unshrunken,
-    coef = contrast_names,
-    MoreArgs = list(
-        dds = dds,
-        type = "ashr",
-        parallel=TRUE,
-        BPPARAM=MulticoreParam(12)
-    ),
-    SIMPLIFY = FALSE,
-    USE.NAMES = TRUE
-)
+# res_list_shrunken <- mapply(
+#     FUN = lfcShrink,
+#     res = res_list_unshrunken,
+#     coef = contrast_names,
+#     MoreArgs = list(
+#         dds = dds,
+#         type = "ashr",
+#         parallel=TRUE,
+#         BPPARAM=MulticoreParam(12)
+#     ),
+#     SIMPLIFY = FALSE,
+#     USE.NAMES = TRUE
+# )
 
 # save(res_list_shrunken, file = "firre_responder_res_list_shrunken.Rdata")
 ```
@@ -166,12 +166,11 @@ maplotdf$timepoint <- sapply(maplotdf$timepoint, function(x) {
 maplotdf$timepoint <- as.numeric(maplotdf$timepoint)
 
 # # hmm, here we need to read in the timecourse pvalues
-# fr_res <- read.csv("results/differential_expression/firre_responders_same_in_both.csv")
+fr_res <- read.csv("results/differential_expression/firre_responders_same_in_both.csv")
 # # now let's get the padjs merged in. It might be a problem that we're merging on gene name
-# fr_sig <- fr_res %>% filter(padj < 0.05)
+fr_sig <- fr_res %>% filter(padj < 0.05)
 # # hmm, okay, let's just label the genes that have significance in the
 # # timecourse test.
-# maplotdf$sig_tc <- FALSE
 
 
 # 
@@ -187,18 +186,23 @@ tpzero <- maplotdf %>% group_by(geneName) %>%
   summarize(baseMean = mean(baseMean), 
             isDE = isDE[which.max(abs(as.numeric(isDE)))]) %>%
   mutate(log2FoldChange = 0, lfcSE = 0, stat = 1, pvalue = 1, padj = 1, rankScore = NA,
-         rank = NA, timepoint = 0) %>%
-  select("baseMean", "log2FoldChange", "lfcSE", "stat", "pvalue", "padj", "rankScore", "rank", "isDE", "geneName", "timepoint")
-   
+         rank = NA, timepoint = 0, sig_tc = FALSE) %>%
+  select("baseMean", "log2FoldChange", "lfcSE", "stat", "pvalue", "padj", "rankScore", "rank", "isDE", "geneName", "timepoint", "sig_tc")
+
+maplotdf$sig_tc <- FALSE
+maplotdf[which(maplotdf$geneName %in% fr_sig$gene_name), "sig_tc"] <- TRUE
+table(maplotdf$sig_tc)
 
 stopifnot(all(colnames(maplotdf) == colnames(tpzero)))
 maplotdf <- bind_rows(maplotdf, tpzero)
-maplotdf <- maplotdf %>% group_by(geneName) %>%
-  mutate(de = isDE[which.max(abs(as.numeric(isDE)))])
-maplotdf$de <- as.character(maplotdf$de)
 
-maplotdf$label <- FALSE
-maplotdf[which(abs(maplotdf$log2FoldChange) > 3), "label"] <- TRUE
+
+# This spreads the de status to all rows with the same gene name. 
+# maplotdf <- maplotdf %>% group_by(geneName) %>%
+#   mutate(de = isDE[which.max(abs(as.numeric(isDE)))])
+# maplotdf$de <- as.character(maplotdf$de)
+maplotdf$de <- "0"
+maplotdf[which(maplotdf$sig_tc == TRUE),"de"] <- "1"
  
  
 xFloor <- maplotdf[["baseMean"]] %>%
@@ -227,8 +231,9 @@ labelData <- NULL
 
 max_exp <- maplotdf %>% group_by(geneName) %>% summarize(max_fc = log2FoldChange[which.max(abs(log2FoldChange))])
 maplotdf <- merge(maplotdf, max_exp)
-maplotdf <- maplotdf %>% arrange(time)
 maplotdf$time <- factor(maplotdf$timepoint, levels = seq(from = 0, to = 330, by = 30))
+maplotdf <- maplotdf %>% arrange(time)
+
 head(maplotdf$time)
 
 x <- .456
@@ -239,26 +244,62 @@ divpal <- function(x) {
 hmm <- divpal(0.456)
 
 maplotdf <- maplotdf %>% arrange(geneName, time)
+
+# maplotdf[which(maplotdf$geneName == "Firre"),"label"] <- TRUE
+# maplotdf <- maplotdf %>% select(geneName, baseMean, 
+#                                             log2FoldChange, time, de, max_fc, tcolor,tsize, label)
+
+gt <- read.csv("gene_timing.csv")
+gt <- gt %>% arrange(-pubmed_counts)
+# Okay, which genes do I want to label? Obviously I want to label only those that are
+# sig_tc, but then only a subset.
+maplotdf$label <- FALSE
+# maplotdf[which(maplotdf$log2FoldChange > 3 & maplotdf$sig_tc == TRUE), "label"] <- TRUE
+for(i in 3:10) {
+  gl <- gt[which(gt$first_tp == tps[i]), "geneName"]
+  if(length(gl) > 3) {
+    gl <- gl[1:3]
+  }
+  maplotdf[which(maplotdf$geneName %in% gl & 
+                   maplotdf$timepoint %in% c(tps[i], tps[i+1]) & 
+                   maplotdf$isDE != 0),"label"] <- TRUE
+}
+
+
+# maplotdf[which(maplotdf$geneName %in% c("Nanog", "Prdm14") & maplotdf$isDE != 0),"label"] <- TRUE
+# maplotdf[which(maplotdf$geneName %in% c("Kdr", "Shf", "F2r", "Gfap", "Adgrg1", "Duox1") & maplotdf$isDE != 0),"label"] <- TRUE
+table(maplotdf$label)
+
+
+which(maplotdf$geneName %in% c("Ssbp2"))
 maplotdf$tsize <- 0
 maplotdf[which(maplotdf$label),"tsize"] <- 5
 
 maplotdf$tcolor <- "white"
 maplotdf[which(maplotdf$label), "tcolor"] <- "gray16"
 
-maplotdf[which(maplotdf$geneName == "Firre"),"label"] <- TRUE
-maplotdf <- maplotdf %>% select(geneName, baseMean, 
-                                            log2FoldChange, time, de, max_fc, tcolor,tsize, label)
+maplotdf$alpha <- 0
+maplotdf[which(maplotdf$label), "alpha"] <- 1
 
 maplotdf <- maplotdf %>% group_by(geneName) %>% mutate(label = any(label))
 
+
+
+
+
 label_subset <- maplotdf %>% filter(label == TRUE)
 
+hmm <- maplotdf %>% filter(sig_tc == TRUE, isDE != 0) %>%
+  group_by(geneName) %>%
+  summarize(mintp = min(timepoint))
+
+
 g <- ggplot(maplotdf, aes(x = baseMean, y = log2FoldChange, label = geneName))
-g <- g +
-  geom_text_repel(data = label_subset, nudge_x = 0.1, nudge_y = 0.1, family = "Helvetica",
-            color = label_subset$tcolor, size = label_subset$tsize) + 
-   geom_hline(yintercept = 0L, size = 0.5,color = pointColor) + 
+g <- g +  geom_text_repel(data = label_subset, nudge_x = 0.1, nudge_y = 0.1, family = "Helvetica",
+            color = label_subset$tcolor, size = label_subset$tsize) +
   geom_point(data = maplotdf %>% filter(de == 0), size = 1L, color = pointColor) +
+ 
+   geom_hline(yintercept = 0L, size = 0.5,color = pointColor) + 
   geom_point(data = maplotdf %>% filter(de != 0), size = 2L, aes(color = max_fc)) +
   # scale_color_gradient2(high = ocean.balance(100)[100], low = ocean.balance(100)[1], mid = "white") + 
   scale_color_gradientn(colors = ocean.balance(100), limits = c(-5,5)) +
@@ -276,10 +317,10 @@ g <- g +
   #   "1" = sigPointColor[[1L]],
   #   # downregulated
   #   "-1" = sigPointColor[[2L]]))   + 
-  ylim(-1.5, 5) + 
+  ylim(-6, 6) + 
   theme(legend.position = "none")
 # geom_label_repel(data = labelData, mapping = aes(x = baseMean, y = log2FoldChange, label = geneName)) 
-g
+g + facet_wrap(~time)
 
 g <- g + labs(title = "{closest_state} min",
               x = "Abundance", y = "log2 fold change") + 
@@ -293,7 +334,7 @@ firre_rescue_render_files <- animate(g,
                                      end_pause = 20, 
                                      start_pause = 20, 
                                      rewind = FALSE,
-        renderer = file_renderer(dir = "figures/", 
+        renderer = file_renderer(dir = "figures/ma_plot", 
                                  prefix = "firre_responders_"))
 ```
 

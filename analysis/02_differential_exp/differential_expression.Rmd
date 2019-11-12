@@ -96,8 +96,6 @@ samples$firre_induced <- factor(samples$firre_induced, levels = c("firre_uninduc
 # Factorfy the other design variable
 samples$firre_ko <- factor(samples$firre_ko, levels = c("WT", "KO"))
 
-
-
 rownames(samples) <- samples$id
 
 
@@ -370,7 +368,6 @@ res <- res %>%
 ko_priming_genes <- res$gene_id
 gl <- c(gl, "ko_priming_genes" = list(ko_priming_genes))
 ```
-
 
 
 
