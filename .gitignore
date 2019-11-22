@@ -24,3 +24,7 @@ work/*
 *.out
 *figures*
 *cache*
+*.cnt
+*.bam
+*.bai
+*.zip
