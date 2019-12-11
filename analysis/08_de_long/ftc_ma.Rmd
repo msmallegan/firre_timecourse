@@ -1,0 +1,174 @@
+---
+title: "ftc_ma"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(stringsAsFactors = FALSE)
+source("../util/_setup.R")
+source("../util/_util.R")
+library(tidyverse)
+  ```
+
+```{r}
+sresdf <- read.csv("results/shrunkenlfc_ftc.csv")
+# let's create some coloring for plotting
+sresdf$timepoint <- sapply(sresdf$contrast, function(x) {
+  unlist(strsplit(unlist(strsplit(x, "int"))[[2]],".firre"))[[1]]
+})
+sresdf$timepoint <- factor(sresdf$timepoint, levels = c(paste0(seq(30,330,30),"m"), "12h", "24h", "48h", "96h"))
+
+sresdf$DE <- 0
+sresdf[which(sresdf$padj < 0.05 & sresdf$log2FoldChange > 0.2), "DE"] <- 1
+sresdf[which(sresdf$padj < 0.05 & sresdf$log2FoldChange <= -0.2), "DE"] <- -1
+table(sresdf$DE)
+
+degs <- sresdf %>% group_by(gene_id) %>% summarize(isDE = max(abs(DE)))
+sresdf <- sresdf %>% merge(degs)
+
+sresdf$DE <- factor(sresdf$DE, levels = c("-1", "0", "1"))
+
+maxfc <- sresdf %>% group_by(gene_id) %>% summarise(maxfc = max(log2FoldChange))
+sresdf <- merge(sresdf, maxfc)
+
+sresdf$point_color <- cut(sresdf$log2FoldChange, breaks = seq(-4.2,4.2,length.out = 100), labels = FALSE)
+sresdf$point_color <- pals::ocean.curl(100)[sresdf$point_color]
+
+sresdf[which(sresdf$DE == "0"), "point_color"] <- "#7F7F7F"
+
+
+min(sresdf$log2FoldChange)
+max(sresdf$log2FoldChange)
+# g <- ggplot(sresdf, aes(x = timepoint, y = log2FoldChange, color = point_color, group = gene_id))
+# g + geom_line(position = pd, aes(group = gene_id), data = sresdf %>% filter(isDE != "0"),
+#             color = "#7F7F7F", alpha = 0.1) +
+#   geom_point(position = pd, alpha = 0.7) + 
+#   scale_color_identity()
+
+
+# Let's create a pseudo-time axis which will build in the baseMean so that it's a pseudo MA plot
+
+sresdf$x <- gsub("h", "", gsub("m", "", sresdf$timepoint))
+sresdf[which(sresdf$x == "12"), "x"] <- "400"
+sresdf[which(sresdf$x == "24"), "x"] <- "450"
+sresdf[which(sresdf$x == "48"), "x"] <- "500"
+sresdf[which(sresdf$x == "96"), "x"] <- "550"
+table(sresdf$x)
+sresdf$x <- as.numeric(sresdf$x)
+
+sresdf$log_base_mean <- log10(sresdf$baseMean)
+
+mbm <- sresdf %>% group_by(timepoint) %>%
+  summarize(max_log_base_mean = max(log_base_mean))
+sresdf <- merge(sresdf, mbm)
+
+sresdf$bm_norm <- sresdf$log_base_mean / sresdf$max_log_base_mean
+# hist(sresdf$bm_norm)
+
+sresdf$x_bm <- sresdf$x + sresdf$bm_norm * 15
+
+g2 <- ggplot(sresdf, aes(x = x_bm, y = log2FoldChange, color = point_color, group = gene_id, text = paste("gene_name:", gene_name)))
+g2 <- g2 + 
+  # stat_smooth(geom = "line", aes(group = gene_id), data = sresdf %>% filter(isDE != "0"),
+  #           color = "#7F7F7F", alpha = 0.3, se = F, method = "loess", span = 0.15, size = 0.2) +
+    geom_line(aes(group = gene_id), data = sresdf %>% filter(isDE != "0"),
+            color = "#7F7F7F", alpha = 0.3, size = 0.2) +
+  geom_hline(yintercept = 0, size = 2, color = "white") +
+  geom_point(alpha = 0.7, data = sresdf %>% filter(DE == "1" | DE == "-1"), size = 2) + 
+  geom_point(alpha = 0.1, data = sresdf %>% filter(DE == "0") %>% sample_n(5e3), color = "#f2f2f2") +
+  scale_x_continuous(breaks = c(seq(30,330,30),seq(400,550,50)),
+                     labels = c(paste0(seq(30,330,30), "m"), "12h", "24h", "48h", "96h")) +
+  xlab("Timepoint") +
+  ggtitle("Firre induction vs. control") +
+  scale_color_identity(guide = FALSE)
+# show(g2)
+```
+
+### Interactive pseudoMA plot
+
+```{r}
+library(plotly)
+
+p <- ggplotly(g2)
+p <- p %>% layout(showlegend = FALSE)
+p
+
+# chart_link = plotly_POST(p, filename="firre_timecourse_pseudoMA")
+# chart_link
+
+
+
+
+bp <- sresdf %>% group_by(timepoint, DE, .drop = FALSE) %>%
+  summarize(nDEG = n()) %>%
+  filter(DE != "0")
+bp$DE <- as.numeric(as.character(bp$DE))
+bp$nDE <- bp$DE*bp$nDEG
+
+bp$DE <- factor(bp$DE, levels = c("-1", "1"))
+
+bp$text <- as.character(bp$nDE)
+bp$text <- gsub("-", "", bp$text)
+bp[which(bp$text == "0"), "text"] <- ""
+
+
+# let's get the spacing right
+xspacing <- sresdf %>% select(timepoint, x) %>%
+  distinct()
+
+bp <- merge(bp, xspacing)
+
+g1 <- ggplot(bp, aes(x = x, y = nDE, fill = DE, label = text))
+g1 <- g1 + geom_bar(stat = "identity", alpha = 0.8) + geom_hline(yintercept = 0, color =  "#7F7F7F", size = 0.2) + 
+  geom_text(data = bp %>% filter(DE == 1), nudge_y = 10) + 
+  geom_text(data = bp %>% filter(DE == -1), nudge_y = -10) +
+  scale_fill_manual(values = c(pals::ocean.curl(100)[[20]], pals::ocean.curl(100)[[80]]), guide = FALSE) + 
+  scale_y_continuous(breaks = seq(-30,90,30), limits = c(-30,95)) +
+   scale_x_continuous(breaks = c(seq(30,330,30),seq(400,550,50)),
+                     labels = c(paste0(seq(30,330,30), "m"), "12h", "24h", "48h", "96h"))  +
+  xlab("") + 
+  ylab("#DEG") +
+    theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+  ggtitle("Firre induction vs. control")
+show(g1)
+
+
+# https://cran.r-project.org/web/packages/egg/vignettes/Ecosystem.html
+
+# 
+# library(gtable)
+# library(grid)
+# gpg1 <- ggplotGrob(g1)
+# gpg2 <- ggplotGrob(g2)
+# gb <- rbind(gpg1, gpg2, size = "first")
+# # gb$widths <- unit.pmax(g1$widths, g2$widths)
+# 
+# grid.newpage()
+# grid.draw(gb)
+# 
+# library(gridExtra)
+# grid.arrange(
+#   grobs = list(g1, g2),
+#   heights = c(1, 3)
+#   # layout_matrix = rbind(c(1, 2, NA),
+#   #                       c(3, 3, 4))
+# )
+
+
+# 
+# 12h -- 360
+# 24h -- 390
+# 48h -- 420
+## 96h -- 450
+  # scale_color_manual(values = c("#7F7F7F","#EC1C24", "#7F7F7F"))
+
+#"#414142", "#A83F4B"
+#"#7F7F7F","#EC1C24", "#7F7F7F"
+```
+
+
