@@ -1,0 +1,27 @@
+---
+title: "ftc_long Profile Plots"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+options(stringsAsFactors = FALSE)
+source("../util/_setup.R")
+source("../util/_util.R")
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Firre profile plot for full timecourse
+
+```{r load_data}
+
+tpm <- read.csv("./results/ftc_tpm.csv")
+
+samples <- read.csv("../../samplesheet.csv") 
+
+
+# We're not going to analyze the mESC samples. 
+samples <- samples %>% filter(cell_type == "mESCs")
+# Let's also get rid of the 2nd WTiTg run. 
+samples <- samples %>% filter(!grepl("^A",sample_name))
+```
+
