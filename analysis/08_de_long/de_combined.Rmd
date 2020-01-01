@@ -138,6 +138,7 @@ res <- results(dds, name = "timepoint96h.firre_inducedfirre_induced") %>%
   rownames_to_column(var = "gene_id") %>%
   merge(g2s)
 
+# These are genes that are changing in the same way in response to firre tg.
 write.csv(res, "results/firre_responders.csv")
 res <- res %>% filter(padj < 0.05)
 firre_responder_genes <- res$gene_id
@@ -207,7 +208,7 @@ sresdf$gene_name <- factor(sresdf$gene_name, levels = unique(sresdf$gene_name))
 
 
 
-# write.csv(sresdf, "results/shrunkenlfc_ftc.csv")
+write.csv(sresdf, "results/shrunkenlfc_ftc.csv")
 
 ```
 
@@ -366,4 +367,264 @@ grid.arrange(
 #"#7F7F7F","#EC1C24", "#7F7F7F"
 ```
 
+
+
+#### Genes changing in response to Firre, but differently in KO and WT cells.
+
+```{r firre_tg_genes}
+dds <- DESeqDataSetFromMatrix(countData = counts, 
+                              colData = samples, 
+                              design = formula("~ timepoint + firre_ko + firre_induced + firre_ko*firre_induced + firre_induced*timepoint"),
+                              rowData = genes)
+
+dds <- DESeq(dds, 
+             test="LRT", 
+             reduced = ~ timepoint + firre_ko + firre_induced + firre_ko*firre_induced,
+             parallel=TRUE,
+             BPPARAM=MulticoreParam(12))
+
+
+resultsNames(dds)
+res <- results(dds, name = "timepoint96h.firre_inducedfirre_induced") %>% 
+  as.data.frame() %>%
+  rownames_to_column(var = "gene_id") %>%
+  merge(g2s)
+
+# These are genes that are changing in the same way in response to firre tg.
+write.csv(res, "results/firre_responders_diffinwtko.csv")
+res <- res %>% filter(padj < 0.05)
+firre_responder_genes_diffinwtko <- res$gene_id
+gl <- c(gl, list("firre_responder_genes_diffinwtko" = firre_responder_genes_diffinwtko))
+```
+
+
+```{r}
+# let's get the shrunken log fold changes.
+sresdf <- lfcShrink(dds, type = "ashr", coef = "timepoint30m.firre_inducedfirre_induced") %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "gene_id") %>%
+  merge(g2s) %>%
+  mutate(contrast = "timepoint30m.firre_inducedfirre_induced")
+
+
+tps <- c(paste0(seq(60,330,30),"m"), "12h", "24h", "48h", "96h")
+for(i in 1:length(tps)) {
+  tsresdf <- lfcShrink(dds, type = "ashr", coef = paste0("timepoint",tps[[i]],".firre_inducedfirre_induced")) %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "gene_id") %>%
+  merge(g2s) %>%
+  mutate(contrast = paste0("timepoint",tps[[i]],".firre_inducedfirre_induced"))
+  sresdf <- bind_rows(sresdf, tsresdf)
+}
+
+sresdf <- sresdf %>% arrange(padj)
+sresdf$gene_name <- factor(sresdf$gene_name, levels = unique(sresdf$gene_name))
+
+
+
+write.csv(sresdf, "results/shrunkenlfc_ftc_diffinwtko.csv")
+
+```
+
+
+```{r}
+sresdf <- read.csv("results/shrunkenlfc_ftc_diffinwtko.csv")
+# let's create some coloring for plotting
+sresdf$timepoint <- sapply(sresdf$contrast, function(x) {
+  unlist(strsplit(unlist(strsplit(x, "int"))[[2]],".firre"))[[1]]
+})
+sresdf$timepoint <- factor(sresdf$timepoint, levels = c(paste0(seq(30,330,30),"m"), "12h", "24h", "48h", "96h"))
+
+sresdf$DE <- 0
+sresdf[which(sresdf$padj < 0.05 & sresdf$log2FoldChange > 0.2), "DE"] <- 1
+sresdf[which(sresdf$padj < 0.05 & sresdf$log2FoldChange <= -0.2), "DE"] <- -1
+table(sresdf$DE)
+
+degs <- sresdf %>% group_by(gene_id) %>% summarize(isDE = max(abs(DE)))
+sresdf <- sresdf %>% merge(degs)
+
+sresdf$DE <- factor(sresdf$DE, levels = c("-1", "0", "1"))
+
+maxfc <- sresdf %>% group_by(gene_id) %>% summarise(maxfc = max(log2FoldChange))
+sresdf <- merge(sresdf, maxfc)
+
+sresdf$point_color <- cut(sresdf$log2FoldChange, breaks = seq(-5,5,length.out = 100), labels = FALSE)
+sresdf$point_color <- pals::ocean.curl(100)[sresdf$point_color]
+
+sresdf[which(sresdf$DE == "0"), "point_color"] <- "#7F7F7F"
+
+
+min(sresdf$log2FoldChange)
+max(sresdf$log2FoldChange)
+# g <- ggplot(sresdf, aes(x = timepoint, y = log2FoldChange, color = point_color, group = gene_id))
+# g + geom_line(position = pd, aes(group = gene_id), data = sresdf %>% filter(isDE != "0"),
+#             color = "#7F7F7F", alpha = 0.1) +
+#   geom_point(position = pd, alpha = 0.7) + 
+#   scale_color_identity()
+
+
+# Let's create a pseudo-time axis which will build in the baseMean so that it's a pseudo MA plot
+
+sresdf$x <- gsub("h", "", gsub("m", "", sresdf$timepoint))
+sresdf[which(sresdf$x == "12"), "x"] <- "400"
+sresdf[which(sresdf$x == "24"), "x"] <- "450"
+sresdf[which(sresdf$x == "48"), "x"] <- "500"
+sresdf[which(sresdf$x == "96"), "x"] <- "550"
+table(sresdf$x)
+sresdf$x <- as.numeric(sresdf$x)
+
+sresdf$log_base_mean <- log10(sresdf$baseMean)
+
+mbm <- sresdf %>% group_by(timepoint) %>%
+  summarize(max_log_base_mean = max(log_base_mean))
+sresdf <- merge(sresdf, mbm)
+
+sresdf$bm_norm <- sresdf$log_base_mean / sresdf$max_log_base_mean
+hist(sresdf$bm_norm)
+
+sresdf$x_bm <- sresdf$x + sresdf$bm_norm * 15
+
+g2 <- ggplot(sresdf, aes(x = x_bm, y = log2FoldChange, color = point_color, group = gene_id, text = paste("gene_name:", gene_name)))
+g2 <- g2 + 
+  # stat_smooth(geom = "line", aes(group = gene_id), data = sresdf %>% filter(isDE != "0"),
+  #           color = "#7F7F7F", alpha = 0.3, se = F, method = "loess", span = 0.15, size = 0.2) +
+    geom_line(aes(group = gene_id), data = sresdf %>% filter(isDE != "0"),
+            color = "#7F7F7F", alpha = 0.3, size = 0.2) +
+  geom_hline(yintercept = 0, size = 2, color = "white") +
+  geom_point(alpha = 0.7, data = sresdf %>% filter(DE == "1" | DE == "-1"), size = 2) + 
+  geom_point(alpha = 0.1, data = sresdf %>% filter(DE == "0") %>% sample_n(5e3), color = "#f2f2f2") +
+  scale_x_continuous(breaks = c(seq(30,330,30),seq(400,550,50)),
+                     labels = c(paste0(seq(30,330,30), "m"), "12h", "24h", "48h", "96h")) +
+  xlab("Timepoint") +
+  # ggtitle("Firre induction vs. control") +
+  scale_color_identity(guide = FALSE)
+show(g2)
+
+library(plotly)
+
+p <- ggplotly(g2)
+p <- p %>% layout(showlegend = FALSE)
+p
+
+# chart_link = plotly_POST(p, filename="firre_timecourse_pseudoMA")
+# chart_link
+
+
+
+
+bp <- sresdf %>% group_by(timepoint, DE, .drop = FALSE) %>%
+  summarize(nDEG = n()) %>%
+  filter(DE != "0")
+bp$DE <- as.numeric(as.character(bp$DE))
+bp$nDE <- bp$DE*bp$nDEG
+
+bp$DE <- factor(bp$DE, levels = c("-1", "1"))
+
+bp$text <- as.character(bp$nDE)
+bp$text <- gsub("-", "", bp$text)
+bp[which(bp$text == "0"), "text"] <- ""
+
+
+# let's get the spacing right
+xspacing <- sresdf %>% select(timepoint, x) %>%
+  distinct()
+
+bp <- merge(bp, xspacing)
+
+g1 <- ggplot(bp, aes(x = x, y = nDE, fill = DE, label = text))
+g1 <- g1 + geom_bar(stat = "identity", alpha = 0.8) + geom_hline(yintercept = 0, color =  "#7F7F7F", size = 0.2) + 
+  geom_text(data = bp %>% filter(DE == 1), nudge_y = 10, family = "Helvetica Nueue") + 
+  geom_text(data = bp %>% filter(DE == -1), nudge_y = -10, family = "Helvetica Nueue") +
+  scale_fill_manual(values = c(pals::ocean.curl(100)[[20]], pals::ocean.curl(100)[[80]]), guide = FALSE) + 
+  scale_y_continuous(breaks = seq(-30,90,30), limits = c(-30,95)) +
+   scale_x_continuous(breaks = c(seq(30,330,30),seq(400,550,50)),
+                     labels = c(paste0(seq(30,330,30), "m"), "12h", "24h", "48h", "96h"))  +
+  xlab("") + 
+  ylab("#DEG") +
+    theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) + 
+  ggtitle("Firre induction vs. control")
+show(g1)
+
+
+# https://cran.r-project.org/web/packages/egg/vignettes/Ecosystem.html
+
+# 
+library(gtable)
+library(grid)
+gpg1 <- ggplotGrob(g1)
+gpg2 <- ggplotGrob(g2)
+gb <- rbind(gpg1, gpg2, size = "first")
+# gb$widths <- unit.pmax(g1$widths, g2$widths)
+
+grid.newpage()
+grid.draw(gb)
+
+library(gridExtra)
+grid.arrange(
+  grobs = list(g1, g2),
+  heights = c(1, 3)
+  # layout_matrix = rbind(c(1, 2, NA),
+  #                       c(3, 3, 4))
+)
+
+
+# 
+# 12h -- 360
+# 24h -- 390
+# 48h -- 420
+## 96h -- 450
+  # scale_color_manual(values = c("#7F7F7F","#EC1C24", "#7F7F7F"))
+
+#"#414142", "#A83F4B"
+#"#7F7F7F","#EC1C24", "#7F7F7F"
+```
+
+
+#### All genes changing in time. 
+
+```{r}
+dds <- DESeqDataSetFromMatrix(countData = counts, 
+                              colData = samples, 
+                              design = formula("~ firre_ko + firre_induced + firre_ko*firre_induced + timepoint"),
+                              rowData = genes)
+
+dds <- DESeq(dds, 
+             test="LRT", 
+             reduced = ~ firre_ko + firre_induced + firre_ko*firre_induced,
+             parallel=TRUE,
+             BPPARAM=MulticoreParam(12))
+
+resultsNames(dds)
+res <- results(dds, name = "timepoint_96h_vs_0m") %>% 
+  as.data.frame() %>%
+  rownames_to_column(var = "gene_id") %>%
+  merge(g2s)
+
+# These are genes that are changing in the same way in response to firre tg.
+write.csv(res, "results/all_genes_changing_in_time.csv")
+res <- res %>% filter(padj < 0.05)
+all_genes_changing_in_time <- res$gene_id
+gl <- c(gl, list("all_genes_changing_in_time" = all_genes_changing_in_time))
+
+# Let's make sure all the firre tg genes are in there
+which(!(gl$firre_responder_genes %in% gl$all_genes_changing_in_time))
+which(!(gl$firre_responder_genes_diffinwtko %in% gl$all_genes_changing_in_time))
+
+# Hmm, there are a few that are not in there. 
+# Let's see if there are any in the firre responder list that are not in 
+# diff in both.
+which(!(gl$firre_responder_genes %in% gl$firre_responder_genes_diffinwtko))
+
+# Hmm, interesting. 
+# Well let's make this into a data.frame so we can take it to the next step.
+gldf <- data.frame(gene_id = gl$firre_responder_genes, 
+                   gene_set = "firre_responder_genes")
+gldf <- gldf %>% bind_rows(data.frame(gene_id = gl$firre_responder_genes_diffinwtko, 
+                   gene_set = "firre_responder_genes_diffinwtko"))
+gldf <- gldf %>% bind_rows(data.frame(gene_id = gl$all_genes_changing_in_time, 
+                   gene_set = "all_genes_changing_in_time"))
+write.csv(gldf, "results/gene_sets.csv", row.names = FALSE)
+```
 
