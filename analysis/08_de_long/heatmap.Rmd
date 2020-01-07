@@ -8,6 +8,7 @@ editor_options:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 options(stringsAsFactors = FALSE)
+library(dichromat)
 library(tidyverse); library(pheatmap); library(pals)
 ```
 
@@ -89,10 +90,13 @@ firre_induced = c("firre_uninduced" = pals::watlington(2)[1],
                   "firre_induced" = pals::watlington(2)[2])
 )
 
+# Create a custom color ramp
+orgn <- colorRampPalette(c("#284d42","#59ac94", "#ffffff", "#ffb250", "#a36717"))
+
 # let's make a heatmap
 pheatmap(tpm_subset, cluster_cols = FALSE, show_rownames = FALSE, 
          show_colnames = FALSE, cutree_rows = 5, treeheight_row = 10,
-         color = pals::ocean.curl(100),
+         color = orgn(100),
          breaks = seq(-4,4,length.out = 101),
          annotation_col = annotation,
          annotation_colors = ann_colors)
@@ -135,7 +139,7 @@ tpm_mean <- tpm_mean %>% select(-gene_id) %>%
   as.data.frame()
 
 annot <- annot %>% 
-  arrange(firre_ko, firre_induced, timepoint)
+  arrange(firre_induced, firre_ko, timepoint)
 
 tpm_mean <- tpm_mean[,annot$condition]
 
@@ -146,19 +150,19 @@ tpm_subset <- tpm_norm[sample(1:nrow(tpm_norm),1000),]
 
 row.names(annot) <- annot$condition
 annot <- annot %>% select(-condition)
-annot <- annot %>% select(timepoint, firre_induced, firre_ko)
+annot <- annot %>% select(timepoint, firre_ko, firre_induced)
 # let's make a heatmap
 htmap <- pheatmap(tpm_norm, cluster_cols = FALSE, show_rownames = FALSE, 
          show_colnames = FALSE, treeheight_row = 10,
-         color = pals::ocean.curl(100),
-         cutree_rows = 10,
+         color = orgn(100),
+         cutree_rows = 8,
          breaks = seq(-4,4,length.out = 101),
          annotation_col = annot,
          annotation_colors = ann_colors)
-pdf("ftc_heatmap.pdf", width = 12, height = 9)
+# pdf("ftc_heatmap.pdf", width = 9, height = 9)
 grid::grid.newpage()
 grid::grid.draw(htmap$gtable)
-dev.off()
+# dev.off()
 ```
 
 
@@ -208,19 +212,24 @@ library(umap)
 tpm_norm <- tpm_norm %>% as.data.frame()
 
 tpm_subset <- tpm_norm[sample(1:nrow(tpm_norm),1000),]
+# tpm_mean_subset <- tpm_mean[sample(1:nrow(tpm_mean),1000),]
 
 custom.config = umap.defaults
-custom.config$random_state = 123
-custom.config$n_neighbors = 10
+custom.config$random_state = 1234
+custom.config$n_neighbors = 15
 custom.config$n_epochs <- 250
-custom.config$local_connectivity <- 0.5
-custom.config$bandwidth <- 1.5
-custom.config$alpha <- 1.5
-custom.config$gamma <- 1.5
-custom.config$spread <- 2
-custom.config$set_op_mix_ratio <- 3
+custom.config$local_connectivity <- 0.1
+custom.config$bandwidth <- 0.7
+custom.config$alpha <- 1
+custom.config$gamma <- 1
+custom.config$spread <- 1
+custom.config$set_op_mix_ratio <- 1
 # help(umap.defaults)
-tpm_umap <- umap(tpm_norm, custom.config)
+# tpm_umap <- umap(tpm_subset, custom.config)
+tpm_umap <- umap(tpm_subset)
+
+# clustering 
+kmeansfit <- kmeans(tpm_subset, 6)
 
 umap_layout <- tpm_umap$layout
 umap_layout <- data.frame("gene_id" = row.names(umap_layout),
@@ -231,7 +240,12 @@ umap_layout[which(umap_layout$gene_id %in% gene_sets[which(gene_sets$gene_set ==
 
 umap_layout$frdiff <- ""
 umap_layout[which(umap_layout$gene_id %in% gene_sets[which(gene_sets$gene_set == "firre_responder_genes_diffinwtko"),"gene_id"]), "frdiff"] <- "firre_responder_diff"
-g <- ggplot(umap_layout, aes(x = x, y = y, color = frdiff))
+
+# library(mclust)
+# mcfit <- Mclust(tpm_subset)
+umap_layout$cluster <- kmeansfit$cluster
+
+g <- ggplot(umap_layout, aes(x = x, y = y, color = as.character(cluster)))
 g + geom_point()
 
 ```

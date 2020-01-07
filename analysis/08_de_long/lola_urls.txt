@@ -1,0 +1,12 @@
+http://big.databio.org/regiondb/LOLACoreCaches_150504.tgz
+http://big.databio.org/regiondb/LOLACoreCaches_150518.tgz
+http://big.databio.org/regiondb/LOLACoreCaches_150622.tgz
+http://big.databio.org/regiondb/LOLACoreCaches_150914.tgz
+http://big.databio.org/regiondb/LOLACoreCaches_160427.tgz
+http://big.databio.org/regiondb/LOLACoreCaches_160617.tgz
+http://big.databio.org/regiondb/LOLACoreCaches_170206.tgz
+http://big.databio.org/regiondb/LOLACoreCaches_180412.tgz
+http://big.databio.org/regiondb/LOLAExtCaches_150901.tgz
+http://big.databio.org/regiondb/LOLAExtCaches_150914.tgz
+http://big.databio.org/regiondb/LOLAExtCaches_170203.tgz
+http://big.databio.org/regiondb/LOLAExtCaches_170206.tgz

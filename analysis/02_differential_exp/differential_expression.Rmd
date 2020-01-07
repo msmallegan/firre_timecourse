@@ -18,8 +18,8 @@ output:
 
 ```{r setup, message=FALSE, warning=FALSE}
 options(stringsAsFactors = FALSE)
-source("_setup.R")
-source("helper_functions.R")
+source("../util/_setup.R")
+source("../util/_util.R")
 library(tidyverse); library(tximport); library(bcbioRNASeq); library(pals)
 library(lemon); library(scales); library(ggrepel); library(colorspace)
 

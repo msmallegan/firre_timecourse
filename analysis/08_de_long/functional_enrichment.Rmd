@@ -1,0 +1,179 @@
+---
+title: "functional_enrichment"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(stringsAsFactors = FALSE)
+library(tidyverse)
+library(LOLA)
+library(GenomicRanges)
+```
+
+```{r}
+regionDB1 <- loadRegionDB("~/LOLA/LOLACore/mm10")
+regionDB2 <- loadRegionDB("~/LOLA/nm/t1/resources/regions/LOLACore/mm10")
+# data("sample_input", package="LOLA")
+# data("sample_universe", package="LOLA")
+```
+
+Phew, okay, now that we've got the LOLACore regions loaded in (from http://big.databio.org/regiondb/), now let's define some region sets of interest for 
+our Firre timecourse data. This is going to be a heavy lift. 
+
+```{r}
+# First let's read in the gtf file.
+
+gtf <- rtracklayer::import("/scratch/Shares/rinn/Michael/genomes/references/Mus_musculus/Gencode/M23/annotation/gencode.vM23.annotation.genes.gtf")
+gene_promoters <- GenomicRanges::promoters(gtf, upstream = 2000, downstream = 200)
+
+g2s <- data.frame(gene_id = gtf$gene_id, gene_name = gtf$gene_name)
+# Okay, now we need to decide what our gene universe is. 
+# We basically want genes that are expressed. 
+# Perhaps we'll look at how many columns have a tpm > 1
+tpm <- read.csv("results/ftc_tpm.csv") %>% 
+  column_to_rownames("gene_id") %>%
+  as.matrix()
+tpm_gt1 <- tpm > 0.2
+
+
+num_gt1 <- apply(tpm_gt1, 1, function(x) {
+  sum(as.numeric(x))
+})
+hist(num_gt1)
+
+length(which(num_gt1 > 1))
+exp_genes <- names(num_gt1[num_gt1 > 1])
+gene_lists <- read.csv("results/gene_sets.csv")
+length(which(!(gene_lists$gene_id %in% exp_genes)))
+
+# Wow okay, so these genes aren't greater than 0.2 tpm in any of the samples. 
+# I think we should get rid of them in both the universe and the genes of interest set.
+goi <- unique(gene_lists$gene_id)
+lowly_expressed_genes <- unique(gene_lists$gene_id[which(!(gene_lists$gene_id %in% exp_genes))])
+gene_lists <- gene_lists[which(!(gene_lists$gene_id %in% lowly_expressed_genes)),]
+
+unique(gene_lists$gene_set)
+fr_genes <- gene_lists[which(gene_lists$gene_set == "firre_responder_genes"),"gene_id"]
+fr_promoter_regions <- gene_promoters[which(gene_promoters$gene_id %in% fr_genes)]
+
+fr_diff_genes <- gene_lists[which(gene_lists$gene_set == "firre_responder_genes_diffinwtko"),"gene_id"]
+fr_diff_regions <- gene_promoters[which(gene_promoters$gene_id %in% fr_diff_genes)]
+# Unviverse
+exp_promoter_regions <- gene_promoters[which(gene_promoters$gene_id %in% exp_genes)]
+
+```
+
+```{r}
+# let's read in the fire results.
+res_delta_time <- read.csv("results/all_genes_changing_in_time.csv")
+shr_lfcdiff <- read.csv("results/shrunkenlfc_ftc_diffinwtko.csv")
+shr_lfc <- read.csv("results/shrunkenlfc_ftc.csv")
+
+
+```
+
+```{r}
+# let's plot firre
+tpm <- read.csv("results/ftc_tpm.csv")
+
+# Read in sample info.
+samples <- read.csv("../../samplesheet.csv") 
+
+# We're not going to analyze the mESC samples. 
+samples <- samples %>% filter(cell_type == "mESCs")
+# Let's also get rid of the 2nd WTiTg run. 
+samples <- samples %>% filter(!grepl("^A",sample_name))
+
+
+# Factorize design variables
+samples$firre_ko <- factor(samples$firre_ko, levels = c("WT", "KO"))
+
+samples$timepoint <- factor(samples$timepoint, 
+                            levels = c("0m", "0h", paste0(seq(30,330,30),"m"), "12h", "24h", "48h", "96h"))
+
+# Change from a boolean to a string
+samples[which(samples$firre_induced), "firre_induced"] <- "firre_induced"
+samples[which(samples$firre_induced == FALSE), "firre_induced"] <- "firre_uninduced"
+samples$firre_induced <- factor(samples$firre_induced, levels = c("firre_uninduced", "firre_induced"))
+
+tpm <- merge(tpm, g2s)
+firre_tpm <- tpm %>% filter(gene_name == "Firre") %>%
+  gather("sample_id", "tpm", 2:157) %>%
+  merge(samples)
+firre_tpm <- firre_tpm %>% unite("condition", c("firre_ko", "firre_induced"), remove = F)
+
+unique(firre_tpm$condition)
+g <- ggplot(firre_tpm, aes(x = timepoint, y = tpm, color = condition, group = condition))
+g + geom_point() + theme_paperwhite() + 
+  ggtitle("Firre RNA-seq profile") + 
+  stat_summary(fun.y=mean, geom="line") + 
+  scale_color_manual()
+  
+```
+
+
+
+```{r}
+# Let's try it out.
+locResults = runLOLA(fr_promoter_regions, exp_promoter_regions, regionDB1, cores=12)
+locResults2 <- runLOLA(fr_promoter_regions, exp_promoter_regions, regionDB2, cores=12)
+locResults3 <- runLOLA(fr_diff_regions, exp_promoter_regions, regionDB1, cores=12)
+
+
+write.csv(locResults3, "lola_results.csv")
+gene_lists <- merge(gene_lists, g2s)
+sigtfs <- locResults[which(locResults$qValue < 0.1),"antibody"]
+frtfs <- gene_lists[which(gene_lists$gene_name %in% sigtfs$antibody),]
+sigdifftfs <- locResults[which(locResults3$qValue < 0.05),"antibody"]
+frdifftfs <- gene_lists[which(gene_lists$gene_name %in% sigtfs$antibody),]
+# Let's look at overlap with Firre binders
+fb <- read.csv("incprint_firre_binders.csv")
+fb_sig <- gene_lists[which(tolower(gene_lists$gene_name) %in% tolower(fb$gene_name)),]
+
+
+fb_tfs <- fb[which(tolower(fb$gene_name) %in% tolower(sigtfs$antibody)),]
+
+
+# Let's make some pretty tables.
+summres <- locResults3 %>% 
+  arrange(qValue) %>%
+  filter(qValue < 0.05) %>%
+  dplyr::select(pValueLog, antibody)
+summres <- summres[!duplicated(summres$antibody),]
+summres <- summres %>% arrange(pValueLog)
+summres$antibody <- factor(summres$antibody, levels = summres$antibody)
+summres <- summres %>% arrange(-pValueLog)
+g <- ggplot(summres %>% slice(1:20), aes(y = pValueLog, x = antibody))
+g + geom_bar(stat = "identity") + coord_capped_flip() + 
+  ylab("-log10(pval)")
+```
+
+```{r}
+# let's just submit these directly to CODEX
+# library(biomaRt)
+# 
+# gene_lists$ens_id <- sapply(gene_lists$gene_id, function(x) {
+#   unlist(strsplit(x,".", fixed = T))[1]
+# })
+# mart <- useDataset("mmusculus_gene_ensembl", useMart("ensembl"))
+# entrezgenes <- getBM(
+#   filters="ensembl_gene_id",
+#   attributes=c("ensembl_gene_id", "entrezgene_id"),
+#   values=gene_lists[which(gene_lists$gene_set == "firre_responder_genes_diffinwtko"),"ens_id"],
+#   mart=mart)
+# # martattrs <- listAttributes(mart)
+# write.csv(entrezgenes, "firre_responders_entrez_id.csv")
+# write.table(entrezgenes %>% 
+#               filter(!is.na(entrezgene_id)) %>%
+#               dplyr::select(entrezgene_id), "fr_entrez.txt",
+#             row.names = FALSE, col.names = FALSE)
+
+write.table(gene_lists[which(gene_lists$gene_set == "firre_responder_genes_diffinwtko"),"gene_name"],"frdiff_names.txt",
+            col.names = FALSE, row.names = FALSE, quote = FALSE)
+```
+
+
+

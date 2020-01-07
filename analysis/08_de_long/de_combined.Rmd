@@ -79,7 +79,7 @@ rownames(samples) <- samples$sample_id
 names(counts_combined) <- sapply(names(counts_combined), function(x) {unlist(strsplit(x, "_"))[[1]]})
 rownames(counts_combined) <- counts_combined$Geneid
 counts <- as.matrix(counts_combined[,2:ncol(counts_combined)])
-rownames(counts)
+# rownames(counts)
 # Ensure that the ordering of the columns in the counts matrix 
 # is the same as in the sample sheet.
 # let's subset to just the samples which we would like to use
@@ -101,18 +101,18 @@ stopifnot(all(names(genes) == rownames(counts)))
 
 ```{r}
 # convert to tpm 
-counts <- fCountReader("../../results/featureCounts/gene_counts/",
-                       samples$sample_id, 
-                       "_read1Aligned.sortedByCoord.out_gene.featureCounts.txt")
-tpm <- countConverter(counts, return = "TPM") %>%
-  as.data.frame() %>%
-  rownames_to_column(var = "gene_id")
-write.csv(tpm, "./results/ftc_tpm.csv", row.names = FALSE)
+# counts <- fCountReader("../../results/featureCounts/gene_counts/",
+#                        samples$sample_id, 
+#                        "_read1Aligned.sortedByCoord.out_gene.featureCounts.txt")
+# tpm <- countConverter(counts, return = "TPM") %>%
+#   as.data.frame() %>%
+#   rownames_to_column(var = "gene_id")
+# write.csv(tpm, "./results/ftc_tpm.csvHb^2HRXz6w$5TBQ4O*N34IY", row.names = FALSE)
 
-fpkm <- countConverter(counts, return = "FPKM")  %>%
-  as.data.frame() %>%
-  rownames_to_column(var = "gene_id")
-write.csv(tpm, "./results/ftc_fpkm.csv", row.names = FALSE)
+# fpkm <- countConverter(counts, return = "FPKM")  %>%
+#   as.data.frame() %>%
+#   rownames_to_column(var = "gene_id")
+# write.csv(tpm, "./results/ftc_fpkm.csv", row.names = FALSE)
 ```
 
 
@@ -139,7 +139,7 @@ res <- results(dds, name = "timepoint96h.firre_inducedfirre_induced") %>%
   merge(g2s)
 
 # These are genes that are changing in the same way in response to firre tg.
-write.csv(res, "results/firre_responders.csv")
+# write.csv(res, "results/firre_responders.csv")
 res <- res %>% filter(padj < 0.05)
 firre_responder_genes <- res$gene_id
 gl <- list("firre_responder_genes" = firre_responder_genes)
@@ -208,7 +208,7 @@ sresdf$gene_name <- factor(sresdf$gene_name, levels = unique(sresdf$gene_name))
 
 
 
-write.csv(sresdf, "results/shrunkenlfc_ftc.csv")
+# write.csv(sresdf, "results/shrunkenlfc_ftc.csv")
 
 ```
 
@@ -319,10 +319,10 @@ bp <- merge(bp, xspacing)
 
 g1 <- ggplot(bp, aes(x = x, y = nDE, fill = DE, label = text))
 g1 <- g1 + geom_bar(stat = "identity", alpha = 0.8) + geom_hline(yintercept = 0, color =  "#7F7F7F", size = 0.2) + 
-  geom_text(data = bp %>% filter(DE == 1), nudge_y = 10, family = "Helvetica Nueue") + 
-  geom_text(data = bp %>% filter(DE == -1), nudge_y = -10, family = "Helvetica Nueue") +
+  geom_text(data = bp %>% filter(DE == 1), nudge_y = 10) + 
+  geom_text(data = bp %>% filter(DE == -1), nudge_y = -10) +
   scale_fill_manual(values = c(pals::ocean.curl(100)[[20]], pals::ocean.curl(100)[[80]]), guide = FALSE) + 
-  scale_y_continuous(breaks = seq(-30,90,30), limits = c(-30,95)) +
+  # scale_y_continuous(breaks = seq(-30,90,30), limits = c(-30,95)) +
    scale_x_continuous(breaks = c(seq(30,330,30),seq(400,550,50)),
                      labels = c(paste0(seq(30,330,30), "m"), "12h", "24h", "48h", "96h"))  +
   xlab("") + 
@@ -391,7 +391,7 @@ res <- results(dds, name = "timepoint96h.firre_inducedfirre_induced") %>%
   merge(g2s)
 
 # These are genes that are changing in the same way in response to firre tg.
-write.csv(res, "results/firre_responders_diffinwtko.csv")
+# write.csv(res, "results/firre_responders_diffinwtko.csv")
 res <- res %>% filter(padj < 0.05)
 firre_responder_genes_diffinwtko <- res$gene_id
 gl <- c(gl, list("firre_responder_genes_diffinwtko" = firre_responder_genes_diffinwtko))
@@ -422,7 +422,7 @@ sresdf$gene_name <- factor(sresdf$gene_name, levels = unique(sresdf$gene_name))
 
 
 
-write.csv(sresdf, "results/shrunkenlfc_ftc_diffinwtko.csv")
+# write.csv(sresdf, "results/shrunkenlfc_ftc_diffinwtko.csv")
 
 ```
 
@@ -504,6 +504,7 @@ library(plotly)
 
 p <- ggplotly(g2)
 p <- p %>% layout(showlegend = FALSE)
+save(p, file = "timeMA.RData")
 p
 
 # chart_link = plotly_POST(p, filename="firre_timecourse_pseudoMA")
@@ -533,10 +534,10 @@ bp <- merge(bp, xspacing)
 
 g1 <- ggplot(bp, aes(x = x, y = nDE, fill = DE, label = text))
 g1 <- g1 + geom_bar(stat = "identity", alpha = 0.8) + geom_hline(yintercept = 0, color =  "#7F7F7F", size = 0.2) + 
-  geom_text(data = bp %>% filter(DE == 1), nudge_y = 10, family = "Helvetica Nueue") + 
-  geom_text(data = bp %>% filter(DE == -1), nudge_y = -10, family = "Helvetica Nueue") +
+  geom_text(data = bp %>% filter(DE == 1), nudge_y = 10) + 
+  geom_text(data = bp %>% filter(DE == -1), nudge_y = -10) +
   scale_fill_manual(values = c(pals::ocean.curl(100)[[20]], pals::ocean.curl(100)[[80]]), guide = FALSE) + 
-  scale_y_continuous(breaks = seq(-30,90,30), limits = c(-30,95)) +
+  # scale_y_continuous(breaks = seq(-30,90,30), limits = c(-30,95)) +
    scale_x_continuous(breaks = c(seq(30,330,30),seq(400,550,50)),
                      labels = c(paste0(seq(30,330,30), "m"), "12h", "24h", "48h", "96h"))  +
   xlab("") + 
@@ -603,7 +604,7 @@ res <- results(dds, name = "timepoint_96h_vs_0m") %>%
   merge(g2s)
 
 # These are genes that are changing in the same way in response to firre tg.
-write.csv(res, "results/all_genes_changing_in_time.csv")
+# write.csv(res, "results/all_genes_changing_in_time.csv")
 res <- res %>% filter(padj < 0.05)
 all_genes_changing_in_time <- res$gene_id
 gl <- c(gl, list("all_genes_changing_in_time" = all_genes_changing_in_time))
@@ -625,6 +626,6 @@ gldf <- gldf %>% bind_rows(data.frame(gene_id = gl$firre_responder_genes_diffinw
                    gene_set = "firre_responder_genes_diffinwtko"))
 gldf <- gldf %>% bind_rows(data.frame(gene_id = gl$all_genes_changing_in_time, 
                    gene_set = "all_genes_changing_in_time"))
-write.csv(gldf, "results/gene_sets.csv", row.names = FALSE)
+# write.csv(gldf, "results/gene_sets.csv", row.names = FALSE)
 ```
 
