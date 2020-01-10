@@ -1,0 +1,4 @@
+H3K27me3_ES.bam firre_responders.Ensembl.txt  "H3K27me3 fr"
+H3K27me3_ES.bam all_genes_changing_in_time.Ensembl.txt  "H3K27me3 agt"
+H3K27me3_ES.bam background_baseMean_gt10.Ensembl.txt  "H3K27me3 bg"
+H3K27me3_ES.bam -1  "H3K27me3 all genes"

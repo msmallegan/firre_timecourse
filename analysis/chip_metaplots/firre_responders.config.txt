@@ -1,0 +1,5 @@
+H3K27me3_ES_ENCFF041GIV.bam firre_responders.Ensembl.txt  "Firre responders 1"
+H3K27me3_ES_ENCFF006QMD.bam firre_responders.Ensembl.txt  "Firre responders 2"
+H3K27me3_ES_ENCFF041GIV.bam firre_responders_same_in_both.Ensembl.txt  "fr sib 1"
+H3K27me3_ES_ENCFF006QMD.bam firre_responders_same_in_both.Ensembl.txt  "fr sib 2"
+H3K27me3_ES_ENCFF041GIV.bam -1  "background"

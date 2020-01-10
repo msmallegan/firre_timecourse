@@ -1,0 +1,120 @@
+---
+title: "firre_profile_plots"
+author: "Michael Smallegan"
+date: "8/6/2019"
+output: html_document
+---
+
+```{r}
+options(stringsAsFactors = FALSE)
+source("helper_functions.R")
+gene_counts <- read.table("../results/featureCounts/merged_gene_counts.txt",
+                          header = T)
+
+# Create a gene2symbol
+g2s <- gene_counts[,c(1,2)]
+names(g2s) <- c("geneID", "geneName")
+save(g2s, file = "gene2symbol.RData")
+
+sample_sheet <- read.csv("../sample_sheet.csv")
+
+count_dir <- "../results/featureCounts/gene_counts/"
+fCount <- fCountReader(count_dir, sample_sheet$id, "_read1Aligned.sortedByCoord.out_gene.featureCounts.txt")
+
+
+# Convert to tpm. 
+tpm <- countConverter(fCount,"TPM")
+
+save(tpm, file = "tpm.rda")
+
+sample_sheet$contains_itg_dna <- as.character(sample_sheet$contains_itg_dna)
+sample_sheet[which(sample_sheet$contains_itg_dna == "TRUE"), "contains_itg_dna"] <- "iTg_dna"
+sample_sheet[which(sample_sheet$contains_itg_dna == "FALSE"), "contains_itg_dna"] <- "no_Tg"
+
+sample_sheet$firre_expression_induced_by_dox <- as.character(sample_sheet$firre_expression_induced_by_dox)
+sample_sheet[which(sample_sheet$firre_expression_induced_by_dox == "TRUE"), "firre_expression_induced_by_dox"] <- "inducible"
+sample_sheet[which(sample_sheet$firre_expression_induced_by_dox == "FALSE"), "firre_expression_induced_by_dox"] <- "not_inducible"
+
+names(sample_sheet)[6] <- "firre_inducible"
+
+write.csv(sample_sheet, "timecourse_samplesheet.csv", row.names = FALSE)
+```
+
+```{r}
+firre_id <- as.character(gene_counts[which(gene_counts$gene_name == "Firre"), "Geneid"])
+firre_tpm <- tpm[which(rownames(tpm) == firre_id),]
+firre_df <- as.data.frame(firre_tpm)
+firre_df$id <- names(firre_tpm)
+
+firre_df <- merge(firre_df, sample_sheet)
+```
+
+```{r}
+  # todo: move this to parameters or options
+  line_colors <- c(rgb(228/255, 86/255, 44/255),
+                   rgb(215/255, 52/255, 88/255),
+                   rgb(0/255, 0/255, 0/255))
+  
+  fill_colors <- c(rgb(232/255, 141/255, 114/255), 
+                   rgb(247/255, 214/255, 222/255),
+                   rgb(255/255, 255/255, 255/255))
+  
+  point_colors <- c(rgb(228/255, 86/255, 44/255), 
+                    rgb(0/255, 0/255, 0/255),
+                    rgb(215/255, 52/255, 88/255))
+  
+  
+  gene_expr <- firre_df
+  
+  # gene_expr <- expr[which(row.names(expr) == gene_id), ] %>%
+  #   as.data.frame() %>% rownames_to_column(var = "SampleID") 
+  # names(gene_expr)[2] <- "expr"
+  # gene_expr <- merge(gene_expr, samples %>% select(SampleID, Condition, Timepoint, CellType))
+  gene_expr$dox_timepoint <- as.numeric(as.character(gene_expr$dox_timepoint))
+
+  library(tidyverse)
+  gene_expr[which(gene_expr$inducible_transgene == "Yes"), "inducible_transgene"] <- "iTg"
+  gene_expr[which(gene_expr$inducible_transgene == "No"), "inducible_transgene"] <- ""
+  gene_expr <- gene_expr %>% unite(col = "condition", firre, inducible_transgene,
+                                   remove = FALSE)
+  library(lemon)
+  library(ggthemes)
+  g <- ggplot(gene_expr, aes(x = dox_timepoint, y = firre_tpm)) +  
+    # Actual plotting
+    geom_smooth(aes(x = dox_timepoint, y = firre_tpm, group = condition, color = condition),
+                method = "loess", 
+                alpha = 0.5, 
+                color = line_colors[2],
+                fill = fill_colors[2],
+                fullrange = TRUE, span = 0.7) + 
+    geom_point(color = "#E8E8E8", size = 2) +
+    geom_point(color = point_colors[3]) + 
+    # Axis stuff
+    coord_capped_cart(left = 'both', bottom = 'both') + 
+    scale_x_continuous(breaks = seq(from = 0, to = 330, by = 30)) + 
+    # Labels
+    xlab("Time from induction (min)") +
+    ylab("Expression (tpm)") + 
+    ggtitle("Firre expression") + 
+    # Theme stuff
+    theme_tufte(base_size = 18, base_family = 'Helvetica') + 
+    theme(axis.line = element_line(colour = "#222222"),
+          axis.title.x = element_text(colour = "#222222", 
+                                      margin = margin(t = 20, r = 0, b = 0, l = 0)),
+          axis.title.y = element_text(colour = "#222222", 
+                                      margin = margin(t = 0, r = 20, b = 0, l = 0)),
+          axis.text.y = element_text(color = "#222222", 
+                                     margin = margin(t = 0, r = 40, b = 0, l = 20)),
+          axis.text.x = element_text(color = "#222222",
+                                     margin = margin(t = 40, r = 40, b = 40, l = 40),
+                                     angle = 45,
+                                     hjust = 1),
+          axis.ticks.length = unit(.3, "cm"),
+          plot.margin = unit(c(1,1,1.5,1.2),"cm")) +
+    # Layout
+    facet_wrap(~ cell_type + firre + contains_itg_dna + firre_expression_induced_by_dox, scales = "free_y")
+  ggsave(filename = "firre_expression_profile.pdf", width = 10, height = 10)
+  
+```
+
+

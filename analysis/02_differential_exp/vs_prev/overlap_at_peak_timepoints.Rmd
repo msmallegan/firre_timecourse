@@ -1,0 +1,186 @@
+---
+title: "Overlap at peak timepoints"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(stringsAsFactors = FALSE)
+library(tidyverse)
+library(VennDiagram)
+```
+
+## Purpose
+
+When you look at the number of genes changing in each timepoint, there is a striking pattern. In the WT cells regardless of Firre there is a bunch of genes change between 180 and 150 minutes. In the Firre KO cells regardless of Firre TG, there are a bunch of genes changing at 90 vs 60 minutes. I would like to know if these are the same genes that are changing in both the Firre induced and control cells. Then I would like to 
+know if there is a common transcription factor driving these changes.
+
+```{r}
+dat <- read.csv("delta_de_shrunkenlfc_results.csv")
+dat_sig <- dat %>% filter(padj < 0.1)
+table(dat_sig$contrast)
+```
+
+
+```{r}
+# Let's calculate the overlaps between cell types
+dat_sig$timepoint <- gsub("_vs_", ";", gsub("timepoint_", ";",dat_sig$contrast))
+dat_sig$timepoint <- sapply(dat_sig$timepoint, function(x) {
+  unlist(strsplit(x, ";"))[[2]]
+})
+dat_sig <- dat_sig %>% select(contrast, timepoint, log2FoldChange, padj, gene_id, gene_name)
+
+dat_sig$condition <- gsub("results/", ";", gsub("_shrunken", ";",dat_sig$contrast))
+dat_sig$condition <- sapply(dat_sig$condition, function(x) {
+  unlist(strsplit(x, ";"))[[2]]
+})
+
+
+# Okay, let's first check the KO 90vs60 timepoint.
+table(dat_sig$condition)
+ko_dox_90 <- dat_sig[which(dat_sig$timepoint == "90" & dat_sig$condition == "ko_dox"),"gene_id"]
+ko_firre_90 <- dat_sig[which(dat_sig$timepoint == "90" & dat_sig$condition == "ko_firre"),"gene_id"]
+
+
+v <- venn.diagram(list("ko_dox_90" = ko_dox_90, "ko_firre_90" = ko_firre_90), 
+                       filename = NULL)
+grid.newpage()
+grid.draw(v)
+
+# Hmm, are these 29 genes going in the same direction
+sg <- intersect(ko_dox_90, ko_firre_90)
+# That
+sgdf <- dat_sig %>% filter(gene_id %in% sg, timepoint == "90") %>%
+  select(condition, log2FoldChange, gene_name) %>%
+  as.data.frame()
+
+sgdf <- sgdf %>%
+  spread(condition, log2FoldChange)
+# Well damn. I'd say they line up pretty well. 
+g <- ggplot(sgdf, aes(x = ko_dox, y = ko_firre))
+g + geom_point()
+
+```
+
+
+```{r}
+# Now let's check out the KO 180 timepoint
+ko_dox_180 <- dat_sig[which(dat_sig$timepoint == "180" & dat_sig$condition == "ko_dox"),"gene_id"]
+ko_firre_180 <- dat_sig[which(dat_sig$timepoint == "180" & dat_sig$condition == "ko_firre"),"gene_id"]
+
+v <- venn.diagram(list("ko_dox_180" = ko_dox_180, "ko_firre_180" = ko_firre_180), 
+                       filename = NULL)
+grid.newpage()
+grid.draw(v)
+
+```
+
+```{r}
+# How about the WT 180 timepoint
+wt_dox_180 <- dat_sig[which(dat_sig$timepoint == "180" & dat_sig$condition == "wt_dox"),"gene_id"]
+wt_firre_180 <- dat_sig[which(dat_sig$timepoint == "180" & dat_sig$condition == "wt_firre"),"gene_id"]
+
+v <- venn.diagram(list("wt_dox_180" = wt_dox_180, "wt_firre_180" = wt_firre_180), 
+                       filename = NULL)
+grid.newpage()
+grid.draw(v)
+# Hmm, are these 20 genes going in the same direction
+sg <- intersect(wt_dox_180, wt_firre_180)
+# That
+sgdf <- dat_sig %>% filter(gene_id %in% sg, timepoint == "180") %>%
+  select(condition, log2FoldChange, gene_name) %>%
+  as.data.frame()
+
+sgdf <- sgdf %>%
+  spread(condition, log2FoldChange)
+# Well damn. I'd say they line up pretty well. 
+g <- ggplot(sgdf, aes(x = wt_dox, y = wt_firre))
+g + geom_point() + geom_abline(slope = 1)
+
+```
+
+```{r}
+sg_ko_90 <- intersect(ko_dox_90, ko_firre_90)
+sg_wt_180 <- intersect(wt_dox_180, wt_firre_180)
+
+v <- venn.diagram(list("sg_ko_90" = sg_ko_90, "sg_wt_180" = sg_wt_180), 
+                       filename = NULL)
+grid.newpage()
+grid.draw(v)
+intersect(sg_ko_90, sg_wt_180)
+```
+
+```{r}
+# Hmm, what if I take the overlap of all the 90 min KO genes and all the 180 minute WT genes
+wt_180 <- unique(dat_sig[which(dat_sig$timepoint == "180" & (dat_sig$condition == "wt_dox" | dat_sig$condition == "wt_firre")),"gene_id"])
+ko_90 <- unique(dat_sig[which(dat_sig$timepoint == "90" & (dat_sig$condition == "ko_dox" | dat_sig$condition == "ko_firre")),"gene_id"])
+
+v <- venn.diagram(list("ko_90" = ko_90, "wt_180" = wt_180), 
+                       filename = NULL)
+grid.newpage()
+grid.draw(v)
+
+
+sg_wtko <- intersect(ko_90, wt_180)
+paste(unique(dat_sig[which(dat_sig$gene_id %in% sg_wtko),"gene_name"]), collapse = ";")
+```
+
+Okay, for future reference, it would be good to know what these lists of overlapping genes are. 
+
+```{r}
+# Let's get a g2s to merge in
+g2s <- dat_sig %>% select(gene_id, gene_name) %>% distinct()
+
+vp <- get.venn.partitions(list("ko_dox_90" = ko_dox_90, "ko_firre_90" = ko_firre_90)) 
+vp$comparison <- paste0(names(vp)[1],"_vs_", names(vp)[2])
+names(vp) <- c("group1", "group2", "set", "gene_id", "count", "comparison")
+vp <- vp %>% select(-count)  
+vp <- vp %>% unnest(gene_id)
+vp <- merge(vp, g2s)
+
+
+v <- get.venn.partitions(list("ko_dox_180" = ko_dox_180, "ko_firre_180" = ko_firre_180))
+v$comparison <- paste0(names(v)[1],"_vs_", names(v)[2])
+names(v) <- c("group1", "group2", "set", "gene_id", "count", "comparison")
+v <- v %>% select(-count)  
+v <- v %>% unnest(gene_id)
+v <- merge(v, g2s)
+vp <- bind_rows(vp, v)
+
+v <- get.venn.partitions(list("wt_dox_180" = wt_dox_180, "wt_firre_180" = wt_firre_180))
+v$comparison <- paste0(names(v)[1],"_vs_", names(v)[2])
+names(v) <- c("group1", "group2", "set", "gene_id", "count", "comparison")
+v <- v %>% select(-count)  
+v <- v %>% unnest(gene_id)
+v <- merge(v, g2s)
+vp <- bind_rows(vp, v)
+
+v <- get.venn.partitions(list("sg_ko_90" = sg_ko_90, "sg_wt_180" = sg_wt_180))
+v$comparison <- paste0(names(v)[1],"_vs_", names(v)[2])
+names(v) <- c("group1", "group2", "set", "gene_id", "count", "comparison")
+v <- v %>% select(-count)  
+v <- v %>% unnest(gene_id)
+v <- merge(v, g2s)
+vp <- bind_rows(vp, v)
+
+v <- get.venn.partitions(list("ko_90" = ko_90, "wt_180" = wt_180))
+v$comparison <- paste0(names(v)[1],"_vs_", names(v)[2])
+names(v) <- c("group1", "group2", "set", "gene_id", "count", "comparison")
+v <- v %>% select(-count)  
+v <- v %>% unnest(gene_id)
+v <- merge(v, g2s)
+vp <- bind_rows(vp, v)
+
+
+
+
+
+
+
+write.csv(vp, "deg_delta_overlaps.csv", row.names = FALSE)
+```
+
+
+

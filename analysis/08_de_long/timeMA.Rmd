@@ -1,0 +1,17 @@
+---
+title: "TimeMA"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(plotly)
+```
+
+```{r, echo=FALSE}
+load("timeMA.RData")
+p
+```
+

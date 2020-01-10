@@ -1,0 +1,95 @@
+---
+title: "tissue_tpm"
+author: "Michael Smallegan"
+date: "9/10/2019"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+```{r}
+library(tidyverse)
+source("helper_functions.R")
+```
+
+
+```{r}
+base_file <- "/scratch/Shares/rinn/Michael/camp_firre/"
+counts_combined <- read.table(paste0(base_file, "results/featureCounts/merged_gene_counts.txt"),
+                              header = T)
+g2s <- counts_combined[,c(1,2)]
+names(g2s) <- c("gene_id", "gene_name")
+
+genes <- rtracklayer::import(paste0(base_file, "analysis/Mus_musculus.GRCm38.81.gtf.gz"))
+genes <- genes[which(genes$type == "gene")]
+
+
+# Read in sample annotations
+samples <- read.csv(paste0(base_file, "analysis/andergassen_2019_samplesheet.csv")) %>%
+  # let's just the homozygotes
+  filter(age == "6 weeks")
+samples$sampleName <- samples$id
+rownames(samples) <- samples$id
+
+
+# Read in the featureCounts.
+counts <- fCountReader(paste0(base_file, "results/featureCounts/gene_counts/"),
+                       samples$id, 
+                       "_read1Aligned.sortedByCoord.out_gene.featureCounts.txt")
+
+
+# Ensure that the ordering of the columns in the counts matrix 
+# is the same as in the sample sheet.
+samples <- samples[colnames(counts$count),]
+stopifnot(all(rownames(samples) == colnames(counts$count)))
+
+
+# Ensure that the ordering of the rows (gene info) 
+# is the same between the counts and the gencode
+names(genes) <- genes$gene_id
+length(which(names(genes) %in% rownames(counts$count)))
+genes <- genes[rownames(counts$count)]
+# stopifnot(all(names(gtf) == rownames(counts$count)))
+
+
+# convert to tpm
+tpm <- countConverter(counts, return = "TPM")
+tpm <- tpm %>% as.data.frame() %>%
+  rownames_to_column(var = "gene_id")
+write.csv(tpm, "results/andergassen_tpm.csv", row.names = FALSE)
+```
+
+```{r}
+samples <- read.csv(paste0(base_file, "analysis/lewandowski_samplesheet.csv")) 
+samples$sampleName <- samples$id
+rownames(samples) <- samples$id
+
+
+# Read in the featureCounts.
+counts <- fCountReader(paste0(base_file, "results/featureCounts/gene_counts/"),
+                       samples$id, 
+                       "_read1Aligned.sortedByCoord.out_gene.featureCounts.txt")
+
+
+# Ensure that the ordering of the columns in the counts matrix 
+# is the same as in the sample sheet.
+samples <- samples[colnames(counts$count),]
+stopifnot(all(rownames(samples) == colnames(counts$count)))
+
+
+# Ensure that the ordering of the rows (gene info) 
+# is the same between the counts and the gencode
+names(genes) <- genes$gene_id
+genes <- genes[rownames(counts$count)]
+stopifnot(all(names(genes) == rownames(counts$count)))
+
+# convert to tpm
+tpm <- countConverter(counts, return = "TPM")
+tpm <- tpm %>% as.data.frame() %>%
+  rownames_to_column(var = "gene_id")
+write.csv(tpm, "results/lewandowski_tpm.csv", row.names = FALSE)
+
+```
+
+
+
+
