@@ -52,8 +52,8 @@ counts_combined <- merge(counts_combined, cc3)
 genes <- rtracklayer::import("/scratch/Shares/rinn/Michael/genomes/references/Mus_musculus/Gencode/M23/annotation/gencode.vM23.annotation.genes.gtf")
 
 # Read in sample info.
-samples <- read.csv("../../samplesheet.csv") 
-
+# samples <- read.csv("../../samplesheet.csv") 
+samples <- read.csv("../../rnaseq/samplesheet.csv")
 # We're not going to analyze the mESC samples. 
 samples <- samples %>% filter(cell_type == "mESCs")
 # Let's also get rid of the 2nd WTiTg run. 
@@ -582,6 +582,94 @@ grid.arrange(
 #"#7F7F7F","#EC1C24", "#7F7F7F"
 ```
 
+```{r}
+# Let's remove those genes that are changing (>0.2) only in one timepoint.
+sresdf <- read.csv("results/shrunkenlfc_ftc_diffinwtko.csv")
+# let's create some coloring for plotting
+sresdf$timepoint <- sapply(sresdf$contrast, function(x) {
+  unlist(strsplit(unlist(strsplit(x, "int"))[[2]],".firre"))[[1]]
+})
+sresdf$timepoint <- factor(sresdf$timepoint, levels = c(paste0(seq(30,330,30),"m"), "12h", "24h", "48h", "96h"))
+
+sresdf$DE <- 0
+sresdf[which(sresdf$padj < 0.05 & sresdf$log2FoldChange > 0.2), "DE"] <- 1
+sresdf[which(sresdf$padj < 0.05 & sresdf$log2FoldChange <= -0.2), "DE"] <- -1
+table(sresdf$DE)
+
+gsum <- sresdf %>% group_by(gene_id) %>%
+  summarize(delta_count = sum(abs(DE)))
+
+sresdf <- merge(sresdf, gsum)
+
+sresdf <- sresdf %>% filter(delta_count != 1)
+
+degs <- sresdf %>% group_by(gene_id) %>% summarize(isDE = max(abs(DE)))
+sresdf <- sresdf %>% merge(degs)
+
+sresdf$DE <- factor(sresdf$DE, levels = c("-1", "0", "1"))
+
+maxfc <- sresdf %>% group_by(gene_id) %>% summarise(maxfc = max(log2FoldChange))
+sresdf <- merge(sresdf, maxfc)
+
+# sresdf$point_color <- cut(sresdf$log2FoldChange, breaks = seq(-5,5,length.out = 100), labels = FALSE)
+# sresdf$point_color <- pals::ocean.curl(100)[sresdf$point_color]
+sresdf$point_color <- "#424242"
+sresdf[which(sresdf$gene_name == "Firre"),"point_color"] <- "#a8404c"
+
+sresdf[which(sresdf$DE == "0"), "point_color"] <- "#7F7F7F"
+table(sresdf$point_color)
+
+min(sresdf$log2FoldChange)
+max(sresdf$log2FoldChange)
+# g <- ggplot(sresdf, aes(x = timepoint, y = log2FoldChange, color = point_color, group = gene_id))
+# g + geom_line(position = pd, aes(group = gene_id), data = sresdf %>% filter(isDE != "0"),
+#             color = "#7F7F7F", alpha = 0.1) +
+#   geom_point(position = pd, alpha = 0.7) + 
+#   scale_color_identity()
+
+
+# Let's create a pseudo-time axis which will build in the baseMean so that it's a pseudo MA plot
+
+sresdf$x <- gsub("h", "", gsub("m", "", sresdf$timepoint))
+sresdf[which(sresdf$x == "12"), "x"] <- "400"
+sresdf[which(sresdf$x == "24"), "x"] <- "450"
+sresdf[which(sresdf$x == "48"), "x"] <- "500"
+sresdf[which(sresdf$x == "96"), "x"] <- "550"
+table(sresdf$x)
+sresdf$x <- as.numeric(sresdf$x)
+
+sresdf$log_base_mean <- log10(sresdf$baseMean)
+
+mbm <- sresdf %>% group_by(timepoint) %>%
+  summarize(max_log_base_mean = max(log_base_mean))
+sresdf <- merge(sresdf, mbm)
+
+sresdf$bm_norm <- sresdf$log_base_mean / sresdf$max_log_base_mean
+hist(sresdf$bm_norm)
+
+sresdf$x_bm <- sresdf$x + sresdf$bm_norm * 15
+
+g2 <- ggplot(sresdf, aes(x = x_bm, y = log2FoldChange, color = point_color, group = gene_id, text = paste("gene_name:", gene_name)))
+g2 <- g2 + 
+  # stat_smooth(geom = "line", aes(group = gene_id), data = sresdf %>% filter(isDE != "0"),
+  #           color = "#7F7F7F", alpha = 0.3, se = F, method = "loess", span = 0.15, size = 0.2) +
+    geom_line(aes(group = gene_id), data = sresdf %>% filter(isDE != "0"),
+            color = "#7F7F7F", alpha = 0.3, size = 0.2) +
+  geom_hline(yintercept = 0, size = 2, color = "white") +
+  geom_point(alpha = 0.7, data = sresdf %>% filter(DE == "1" | DE == "-1"), size = 2) + 
+  geom_point(alpha = 0.1, data = sresdf %>% filter(DE == "0") %>% sample_n(5e3), color = "#f2f2f2") +
+  scale_x_continuous(breaks = c(seq(30,330,30),seq(400,550,50)),
+                     labels = c(paste0(seq(30,330,30), "m"), "12h", "24h", "48h", "96h")) +
+  xlab("Timepoint") +
+  ylim(-1,5) +
+  # ggtitle("Firre induction vs. control") +
+  scale_color_identity(guide = FALSE)
+show(g2)
+
+# pdf("firre_responder_ma_plot.pdf", height = 7, width = 11)
+# show(g2)
+# dev.off()
+```
 
 #### All genes changing in time. 
 
