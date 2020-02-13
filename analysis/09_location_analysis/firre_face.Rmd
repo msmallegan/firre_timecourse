@@ -136,6 +136,7 @@ Man what is happening with 48400 through 48388?
 
 ```{r}
 bins[48400:48388] %>% as.data.frame()
+bins[80610:80611] %>% as.data.frame()
 ```
 
 Oh wow, it's still the SNHG14 region, just spread across many bins now.
