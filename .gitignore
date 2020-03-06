@@ -2,7 +2,7 @@
 .Rhistory
 .RData
 .Ruserdata
-fastq/*
+*fastq*
 .nextflow*
 log/*
 results/*

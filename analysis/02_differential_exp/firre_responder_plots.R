@@ -58,22 +58,22 @@ row.names(tpm) <- row.names(counts)
 colnames(tpm)
 
 # write.csv(tpm, "mesc_firre_tc_tpm.csv")
+fr_sb_overlap_96 <- read.csv("../../../ftc_long/analysis/fr_sb_overlap_96.csv")
+# fr <- read.csv("results/differential_expression/firre_responders_same_in_both.csv")
 
-fr <- read.csv("results/differential_expression/firre_responders_same_in_both.csv")
-
-fr <- fr %>%
-  filter(padj < 0.05)
+# fr <- fr %>%
+#   filter(padj < 0.05)
 
 
 
-ex_counts <- tpm[fr$gene_id,] %>%
+ex_counts <- tpm[fr_sb_overlap_96$gene_id,] %>%
   as.data.frame() %>%
   rownames_to_column(var = "gene_id") %>%
   gather(key = "id", value = "tpm", 2:ncol(.)) %>%
   merge(g2s) %>%
   merge(samples)
 
-ex_counts <- merge(ex_counts, fr %>% select(-gene_name))
+ex_counts <- merge(ex_counts, fr_sb_overlap_96 %>% select(-gene_name))
 ex_counts <- ex_counts %>% arrange(padj)
 ex_counts$gene_name <- factor(ex_counts$gene_name, levels = unique(ex_counts$gene_name))
 
