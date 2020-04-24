@@ -1,3 +1,4 @@
+*.fa
 .Rproj.user
 .Rhistory
 .RData
@@ -28,3 +29,4 @@ work/*
 *.bam
 *.bai
 *.zip
+*work*
