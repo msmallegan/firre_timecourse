@@ -1,0 +1,102 @@
+---
+title: "Comparison with SPRITE data"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(parallel)
+
+```
+
+```{r}
+firre_clusters <- readLines("../../../firre_clusters.txt")
+
+cluster_to_df <- function(cluster) {
+  cluster <- unlist(strsplit(cluster, "\t"))
+  cluster <- data.frame("cluster_id" = as.character(cluster[[1]]),
+                      "cluster_members" = cluster[2:length(cluster)])
+  cluster_df <- cluster %>% 
+  separate(col = "cluster_members", into = c("type", "info"), sep = "\\[") %>%
+  separate(col = "info", into = c("info", "coordinates"), sep = "\\]_") %>%
+  separate_rows("info", sep = ";") %>%
+  filter(grepl("exon|intron", info)) %>%
+  separate(col = "info", into = c("gene_name", "feature_type"), 
+           sep = "\\.[e|i]") %>%
+  mutate(feature_type = gsub("xon", "exon", feature_type),
+         feature_type = gsub("ntron", "intron", feature_type))
+  return(cluster_df)
+}
+
+clusters_df <- mclapply(firre_clusters, cluster_to_df,
+                        mc.cores = 16) %>%
+  bind_rows()
+
+write_csv(clusters_df, "firre_clusters.csv")
+
+
+clusters_summary <- clusters_df %>%
+  group_by(cluster_id, gene_name, type) %>%
+  summarize(count = n())
+```
+
+Should we normalize to cluster size?
+
+Should there be a cutoff of number of counts within a cluster?
+
+```{r}
+firre_de <- read_csv("data/shrunkenlfc_ftc_diffinwtko_with_streaks.csv")
+
+# TODO: Did I get short and long mixed up?
+short_streak_de <- firre_de %>% filter(!is.na(streak_short),
+                                       streak_short == TRUE) %>%
+  pull(gene_name) %>%
+  unique() 
+long_streak_de <-  firre_de %>% filter(!is.na(streak_long),
+                                       streak_long == TRUE) %>%
+  pull(gene_name) %>%
+  unique() 
+
+all_sig <- firre_de %>% filter(sig == TRUE) %>%
+  pull(gene_name) %>%
+  unique()
+```
+
+```{r}
+
+firre_de_clusters <- clusters_summary %>%
+  filter(gene_name %in% all_sig)
+
+length(unique(firre_de_clusters$gene_name))
+
+clusters_combined_count <- clusters_summary %>% group_by(type, gene_name) %>%
+  summarize(count = sum(count))
+
+clusters_combined_count_de <- clusters_combined_count %>%
+  filter(gene_name %in% all_sig)
+
+hist(log10(clusters_combined_count_de$count))
+
+
+clusters_combined_count$de_type <- "none"
+clusters_combined_count[clusters_combined_count$gene_name %in% all_sig, "de_type"] <- "sig_de"
+clusters_combined_count[clusters_combined_count$gene_name %in% long_streak_de, "de_type"] <- "short_streak"
+clusters_combined_count[clusters_combined_count$gene_name %in% short_streak_de, "de_type"] <- "long_streak"
+
+g <- ggplot(clusters_combined_count, aes(x = log10(count), fill = de_type))
+g + geom_density(alpha = 0.2, bw = 0.4) + 
+  # scale_fill_manual(values = c(c("#424242","#a8404c"))) +
+  theme_bw() +
+  facet_wrap(~type) +
+  ggtitle("Firre cluster counts")
+
+length(which(short_streak_de %in% long_streak_de))
+
+
+```
+
+
+
