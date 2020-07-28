@@ -1,0 +1,82 @@
+---
+title: "cutnrun"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+options(stringsAsFactors = FALSE)
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+### Peak count
+
+Let's see how many peaks we have with the more relaxed Henipipe threshold.
+
+```{r}
+
+pr_df <- data.frame("path" = list.files("/scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/fastq/henipipe/",
+                            pattern = "relaxed.bed", full.names = T))
+pr_df$sample <- sapply(pr_df$path, function(x) {
+  unlist(strsplit(unlist(strsplit(x, "//"))[[2]], "_"))[[1]]
+})
+
+sample_info <- read.csv("/scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/fastq/henipipe/runsheet.csv") %>%
+  dplyr::select("sample", "SEACR_key")
+names(sample_info)[2] <- "condition"
+
+
+
+pr_df <- merge(pr_df, sample_info %>% filter(sample %in% pr_df$sample))
+
+
+peaks_relaxed <- lapply(pr_df$path, read.table, sep = "\t")
+
+pr_df$num_peaks <- sapply(peaks_relaxed, nrow)
+```
+
+
+# Write fastp script
+
+
+```{r}
+
+samples <- sample_info$sample
+for(i in 1:length(samples)) {
+  sample <- samples[[i]]
+  script <- paste0("#!/bin/bash
+#SBATCH -p short
+#SBATCH --job-name=cutnrun_fastp_", sample, "
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=michael.smallegan@colorado.edu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --mem=12gb
+#SBATCH --time=3:00:00
+#SBATCH --output=", sample,".out
+#SBATCH --error=", sample,".err
+
+pwd; hostname; date
+
+module load fastp/0.20.1
+
+fastp -i /scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/fastq/", sample,"/",sample,"_R1_.fastq.gz \\
+-I /scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/fastq/", sample,"/", sample,"_R2_.fastq.gz \\
+-o /scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/qc/", sample,"_R1.fastq.gz \\
+-O /scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/qc/", sample,"_R2.fastq.gz \\
+-h ", sample, "_fastp.html \\
+-j ", sample, "_fastp.json
+
+date
+")
+writeLines(script, con = paste0("/scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/qc/", sample, "_fastp.sh"))
+}
+
+writeLines(c("#!/bin/bash", paste0("sbatch ", samples, "_fastp.sh")), con = "/scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/qc/run.sh")
+
+
+
+```
+

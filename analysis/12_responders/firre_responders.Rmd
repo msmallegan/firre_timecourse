@@ -1,0 +1,138 @@
+---
+title: "Firre responders"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+options(stringsAsFactors = FALSE)
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+```{r}
+dat <- read.csv("shrunkenlfc_ftc_diffinwtko_with_streaks.csv")
+
+length(unique(dat$gene_id))
+sig <- dat %>% filter(padj < 0.01)
+length(unique(sig$gene_id))
+table(dat$streak_long)
+slong <- dat %>% filter(streak_long > 0)
+length(unique(slong$gene_id))
+length(unique(slong$gene_id))
+sshort <- dat %>% filter(streak_short > 0)
+length(unique(sshort$gene_id))
+length(unique(sshort$gene_id))
+
+```
+
+
+```{r}
+gene <- sshort$gene_id[1]
+gdat <- sshort %>% filter(gene_name == "Firre")
+g <- ggplot(gdat, aes(x = timepoint_number, y = log2FoldChange))
+g + geom_point() + geom_smooth()
+```
+
+```{r}
+# heatmap
+fcmat <- sshort %>% dplyr::select(gene_name, log2FoldChange, timepoint_number) %>%
+  distinct() %>%
+  arrange(timepoint_number) %>%
+  pivot_wider(names_from = timepoint_number, values_from = log2FoldChange) %>%
+  column_to_rownames("gene_name") %>%
+  as.matrix() 
+fcscaled <- fcmat %>%
+  t() %>%
+  scale(center = FALSE) %>%
+  t()
+
+library(stats)
+fcsmoothed <- apply(fcscaled,1,smooth) %>% t()
+rownames(fcsmoothed) <- rownames(fcmat)
+library(pheatmap)
+pheatmap(fcsmoothed, cluster_cols = FALSE, 
+         breaks = seq(-2,2,length.out = 100),
+         cutree_rows = 10,
+         color = rev(pals::brewer.rdbu(100)),
+         border_color = NA)
+# pheatmap(fcmat, cluster_cols = FALSE, breaks = seq(-1,1, length.out = 100))
+g <- ggplot(sshort, aes(x = log2FoldChange))
+g + geom_density() + geom_vline(xintercept = 0.3)
+```
+
+```{r}
+# Let's order the rows by the first timepoint above 0.3
+sshort_ftp <- sshort %>% 
+  mutate(gt3 = abs(log2FoldChange) > 0.1) %>%
+  filter(gt3 == TRUE) %>%
+  group_by(gene_name) %>%
+  summarize(ftp_gt3 = min(timepoint_number))
+roworder <- sshort_ftp %>% arrange(ftp_gt3) %>%
+  pull(gene_name) %>%
+  unique()
+fcordered <- fcsmoothed[roworder,]
+pheatmap(fcordered, cluster_cols = FALSE, 
+         # cluster_rows = FALSE,
+         breaks = seq(-2,2,length.out = 100),
+         cutree_rows = 20,
+         color = rev(pals::brewer.rdbu(100)),
+         border_color = NA)
+paste(roworder, collapse = " ")
+```
+
+```{r}
+# nanog network
+# https://string-db.org/cgi/network.pl?taskId=HcH1A8GKNafk
+nn <- c("Prdm14", "Nanog", "Kdr", "Vegfc", "Spp1", "Gfap", "Id4", "Sox2")
+nn_ordered <- roworder[which(roworder %in% nn)]
+nnmat <- fcsmoothed[nn_ordered,]
+pheatmap(nnmat, cluster_cols = FALSE, 
+         cluster_rows = FALSE,
+         breaks = seq(-2,2,length.out = 100),
+         # cutree_rows = 20,
+         color = rev(pals::brewer.rdbu(100)),
+         border_color = NA)
+nn <- c("Rap1gap", "Rapgef4")
+nn_ordered <- roworder[which(roworder %in% nn)]
+nnmat <- fcsmoothed[nn_ordered,]
+pheatmap(nnmat, cluster_cols = FALSE, 
+         cluster_rows = FALSE,
+         breaks = seq(-2,2,length.out = 100),
+         # cutree_rows = 20,
+         color = rev(pals::brewer.rdbu(100)),
+         border_color = NA)
+
+nn <- c("Impdh1", "Umps")
+nn_ordered <- roworder[which(roworder %in% nn)]
+nnmat <- fcsmoothed[nn_ordered,]
+pheatmap(nnmat, cluster_cols = FALSE, 
+         # cluster_rows = FALSE,
+         breaks = seq(-2,2,length.out = 100),
+         # cutree_rows = 20,
+         color = rev(pals::brewer.rdbu(100)),
+         border_color = NA)
+
+
+nn <- c("Arih1", "Bbs4")
+nn_ordered <- roworder[which(roworder %in% nn)]
+nnmat <- fcsmoothed[nn_ordered,]
+pheatmap(nnmat, cluster_cols = FALSE, 
+         cluster_rows = FALSE,
+         breaks = seq(-2,2,length.out = 100),
+         # cutree_rows = 20,
+         color = rev(pals::brewer.rdbu(100)),
+         border_color = NA)
+```
+
+```{r}
+# Let's see where these genes are. 
+
+```
+
+
+
+
+
+

@@ -15,19 +15,20 @@ library(parallel)
 ```{r}
 firre_clusters <- readLines("../../../firre_clusters.txt")
 
+cluster <- firre_clusters[[1]]
 cluster_to_df <- function(cluster) {
   cluster <- unlist(strsplit(cluster, "\t"))
   cluster <- data.frame("cluster_id" = as.character(cluster[[1]]),
                       "cluster_members" = cluster[2:length(cluster)])
   cluster_df <- cluster %>% 
   separate(col = "cluster_members", into = c("type", "info"), sep = "\\[") %>%
-  separate(col = "info", into = c("info", "coordinates"), sep = "\\]_") %>%
-  separate_rows("info", sep = ";") %>%
-  filter(grepl("exon|intron", info)) %>%
-  separate(col = "info", into = c("gene_name", "feature_type"), 
-           sep = "\\.[e|i]") %>%
-  mutate(feature_type = gsub("xon", "exon", feature_type),
-         feature_type = gsub("ntron", "intron", feature_type))
+  separate(col = "info", into = c("info", "coordinates"), sep = "\\]_")
+  # separate_rows("info", sep = ";") %>%
+  # filter(grepl("exon|intron", info)) %>%
+  # separate(col = "info", into = c("gene_name", "feature_type"), 
+  #          sep = "\\.[e|i]") %>%
+  # mutate(feature_type = gsub("xon", "exon", feature_type),
+  #        feature_type = gsub("ntron", "intron", feature_type))
   return(cluster_df)
 }
 
@@ -35,68 +36,274 @@ clusters_df <- mclapply(firre_clusters, cluster_to_df,
                         mc.cores = 16) %>%
   bind_rows()
 
-write_csv(clusters_df, "firre_clusters.csv")
+write_csv(clusters_df, "firre_clusters_all_reads.csv")
+
+# 
+# firre_counts <- clusters_df %>% filter(gene_name == "Firre") %>%
+#   group_by(type, cluster_id) %>%
+#   summarize(count = n()) %>%
+#   filter(type == "RPM") %>%
+#   filter(count > 3)
 
 
-clusters_summary <- clusters_df %>%
-  group_by(cluster_id, gene_name, type) %>%
-  summarize(count = n())
+# 
+# clusters_summary <- clusters_df %>%
+#   group_by(cluster_id, gene_name, type) %>%
+#   summarize(count = n())
 ```
+
+```{r}
+
+# firre_clusters <- clusters_df %>% filter(cluster_id %in% firre_counts$cluster_id)
+clusters_reg <- clusters_df %>%
+  filter(type == "DPM") %>%
+  dplyr::select(coordinates) %>%
+  separate(col = "coordinates", into = c("chr", "reg"),
+           sep = ":") %>%
+  separate(col = "reg", into = c("start", "end"),
+           sep = "-")
+clusters_reg <- clusters_reg %>%
+  mutate(start = as.integer(start),
+         end = as.integer(end))
+library(GenomicRanges)
+clusters_gr <- GRanges(seqnames = clusters_reg$chr,
+                       ranges = IRanges(start = clusters_reg$start,
+                                        end = clusters_reg$end))
+clusters_vr <- gr_to_bed(clusters_gr)
+library(valr)
+
+chr_sizes <- read_genome("/scratch/Shares/rinn/genomes/Mus_musculus/Gencode/M23/sequence/GRCm38_genome_sizes.txt")
+# chr_sizes <- chr_sizes %>%
+#   mutate(start = 1, end = size)
+# chr_sizes <- chr_sizes %>% filter(chrom %in%
+#                                     c("chr1","chr2","chrX","chr3","chr4","chr5","chr6", "chr7",
+#                                       "chr10","chr8","chr14","chr9", "chr11","chr13", "chr12","chr15","chr16","chr17","chrY","chr18","chr19"))
+
+hmm <- bed_cluster(clusters_vr, max_dist = 10000)
+
+hmms <- hmm %>% group_by(chrom, .id) %>%
+  summarize(count = n(), start = min(start), end = max(end))
+
+
+g <- ggplot(hmms %>% filter(chrom == "chr2"),aes(x = start, y = count, color = log10(count)))
+g + geom_line() 
+```
+
 
 Should we normalize to cluster size?
 
 Should there be a cutoff of number of counts within a cluster?
 
+
 ```{r}
-firre_de <- read_csv("data/shrunkenlfc_ftc_diffinwtko_with_streaks.csv")
+# How many clusters do we have?
 
-# TODO: Did I get short and long mixed up?
-short_streak_de <- firre_de %>% filter(!is.na(streak_short),
-                                       streak_short == TRUE) %>%
-  pull(gene_name) %>%
-  unique() 
-long_streak_de <-  firre_de %>% filter(!is.na(streak_long),
-                                       streak_long == TRUE) %>%
-  pull(gene_name) %>%
-  unique() 
+# length(unique(clusters_summary$cluster_id))
+# 
+# csum <- clusters_summary %>% group_by(gene_name, type) %>%
+#   summarize(count = sum(count))
+# 
+# csum$firre_responder <- csum$gene_name %in% short_streak_de
+# 
+# g <- ggplot(csum %>% filter(type == "DPM"), aes(x = log10(count)))
+# g + stat_ecdf() + geom_point(data = csum %>% filter(firre_responder == TRUE),
+#                              aes(x = log10(count), y = 0.5))
+```
 
-all_sig <- firre_de %>% filter(sig == TRUE) %>%
-  pull(gene_name) %>%
-  unique()
+
+
+
+```{r}
+# firre_de <- read_csv("../12_responders/shrunkenlfc_ftc_diffinwtko_with_streaks.csv")
+# sshort <- dat %>% filter(streak_short > 0)
+# # TODO: Did I get short and long mixed up?
+# short_streak_de <- firre_de %>% filter(streak_short > 0)%>%
+#   pull(gene_name) %>%
+#   unique()
+# long_streak_de <-  firre_de %>% filter(!is.na(streak_long),
+#                                        streak_long == TRUE) %>%
+#   pull(gene_name) %>%
+#   unique()
+# 
+# all_sig <- firre_de %>% filter(sig == TRUE) %>%
+#   pull(gene_name) %>%
+#   unique()
 ```
 
 ```{r}
 
-firre_de_clusters <- clusters_summary %>%
-  filter(gene_name %in% all_sig)
-
-length(unique(firre_de_clusters$gene_name))
-
-clusters_combined_count <- clusters_summary %>% group_by(type, gene_name) %>%
-  summarize(count = sum(count))
-
-clusters_combined_count_de <- clusters_combined_count %>%
-  filter(gene_name %in% all_sig)
-
-hist(log10(clusters_combined_count_de$count))
-
-
-clusters_combined_count$de_type <- "none"
-clusters_combined_count[clusters_combined_count$gene_name %in% all_sig, "de_type"] <- "sig_de"
-clusters_combined_count[clusters_combined_count$gene_name %in% long_streak_de, "de_type"] <- "short_streak"
-clusters_combined_count[clusters_combined_count$gene_name %in% short_streak_de, "de_type"] <- "long_streak"
-
-g <- ggplot(clusters_combined_count, aes(x = log10(count), fill = de_type))
-g + geom_density(alpha = 0.2, bw = 0.4) + 
-  # scale_fill_manual(values = c(c("#424242","#a8404c"))) +
-  theme_bw() +
-  facet_wrap(~type) +
-  ggtitle("Firre cluster counts")
-
-length(which(short_streak_de %in% long_streak_de))
+# firre_de_clusters <- clusters_summary %>%
+#   filter(gene_name %in% all_sig)
+# 
+# length(unique(firre_de_clusters$gene_name))
+# 
+# clusters_combined_count <- clusters_summary %>% group_by(type, gene_name) %>%
+#   summarize(count = sum(count))
+# 
+# clusters_combined_count_de <- clusters_combined_count %>%
+#   filter(gene_name %in% all_sig)
+# 
+# hist(log10(clusters_combined_count_de$count))
+# 
+# 
+# clusters_combined_count$de_type <- "none"
+# clusters_combined_count[clusters_combined_count$gene_name %in% all_sig, "de_type"] <- "sig_de"
+# clusters_combined_count[clusters_combined_count$gene_name %in% long_streak_de, "de_type"] <- "short_streak"
+# clusters_combined_count[clusters_combined_count$gene_name %in% short_streak_de, "de_type"] <- "long_streak"
+# 
+# g <- ggplot(clusters_combined_count, aes(x = log10(count), fill = de_type))
+# g + geom_density(alpha = 0.2, bw = 0.4) + 
+#   # scale_fill_manual(values = c(c("#424242","#a8404c"))) +
+#   theme_bw() +
+#   facet_wrap(~type) +
+#   ggtitle("Firre cluster counts")
+# 
+# length(which(short_streak_de %in% long_streak_de))
 
 
 ```
+
+ˆ
+```{r}
+gencode_M23 <- rtracklayer::import("/scratch/Shares/rinn/genomes/Mus_musculus/Gencode/M23/annotation/gencode.vM23.annotation.genes.gtf") %>%
+  as.data.frame()
+firre_targs <- gencode_M23 %>% filter(gene_id %in% sshort$gene_id)
+
+ft_bed <- GRanges(seqnames = firre_targs$seqnames,
+                  ranges = IRanges(start = firre_targs$start,
+                                   end = firre_targs$end),
+                  strand = firre_targs$strand) %>% gr_to_bed()
+ft_bed$name <- firre_targs$gene_name
+
+# Let's add 5kb up and downstream
+# ft_bed <- bed_slop(ft_bed, genome = chr_sizes, both = 5000)
+ft_promoter <- create_tss(ft_bed) %>%
+  bed_slop(both = 3000, genome = chr_sizes)
+# hmm_intersect <- bed_intersect(hmms, ft_bed)
+hmm_intersect <- bed_intersect(hmms, ft_promoter)
+per_gene <- hmm_intersect %>% dplyr::select(chrom, name.y, count.x) %>%
+  group_by(name.y) %>%
+  summarize(count = sum(count.x))
+
+# Let's shuffle and look at the overlaps
+set.seed(1209)
+shuffled_pg <- data.frame("name.y" = character(),
+                          "count" = numeric(),
+                          "iteration" = integer())
+for (i in 1:1000) {
+  bs <- bed_shuffle(ft_promoter, genome = chr_sizes, within = TRUE,
+                    seed = i+2e4)
+  hi <- bed_intersect(hmms, bs)
+  pg <- hi %>% dplyr::select(chrom, name.y, count.x) %>%
+  group_by(name.y) %>%
+  summarize(count = sum(count.x))
+  pg$iteration <- i
+  shuffled_pg <- bind_rows(shuffled_pg, pg)
+}
+
+
+shuf_summ <- shuffled_pg %>%
+  group_by(name.y) %>%
+  summarize(mean_counts = mean(count, na.rm = T),
+            sd_counts = sd(count, na.rm = T))
+
+per_gene <- merge(per_gene, shuf_summ)
+per_gene <- per_gene %>%
+   mutate(zscore = (count - mean_counts)/sd_counts)
+
+for(i in 1:nrow(per_gene)) {
+  rand_ov <- shuffled_pg$count[which(shuffled_pg$name.y == per_gene$name.y[i])]
+  per_gene$pval[i] <- (sum(per_gene$count[i] <= rand_ov, na.rm=TRUE) + 1) / (10000 + 1)
+}
+
+per_gene$padj <- p.adjust(per_gene$pval)
+
+# write.csv(per_gene, "firre_sprite_dna_enrichment.csv", row.names = F)
+write.csv(per_gene, "firre_sprite_dna_promoter_enrichment.csv", row.names = F)
+# Let's look at 1
+# g <- ggplot(shuffled_pg %>% filter(name.y == "Gfap"), aes(x = count))
+# g + geom_histogram(bins = 15) + 
+#   geom_vline(xintercept = per_gene$count[which(per_gene$name.y == "Duox1")])
+
+g <- ggplot(shuffled_pg %>% filter(name.y == "Firre"), aes(x = count))
+g + geom_histogram(bins = 60) + 
+  geom_vline(xintercept = per_gene$count[which(per_gene$name.y == "Firre")],
+             color = "red", lty = 2) +
+  ggtitle("Firre promoter: observed binding vs. permuted") +
+  theme_bw(base_size = 18) +
+  xlim(0,2000)
+
+g <- ggplot(shuffled_pg %>% filter(name.y == "Shf"), aes(x = count))
+g + geom_histogram(bins = 60) + 
+  geom_vline(xintercept = per_gene$count[which(per_gene$name.y == "Shf")],
+             color = "red", lty = 2) +
+  ggtitle("Shf promoter: observed binding vs. permuted") +
+  theme_bw(base_size = 18) +
+  xlim(0,500)
+
+
+
+
+g <- ggplot(shuffled_pg %>% filter(name.y == "Zfp367"), aes(x = count))
+g + geom_histogram(bins = 60) + 
+  geom_vline(xintercept = per_gene$count[which(per_gene$name.y == "Zfp367")],
+             color = "red", lty = 2) +
+  ggtitle("Zfp367: observed binding vs. permuted") +
+  theme_bw(base_size = 18) +
+  xlim(0,400)
+
+
+
+```
+
+```{r}
+# Let's look at the Shf region
+
+ft_promoter %>%
+  filter(name == "Shf")
+
+# chr2  122366161 122372162
+
+# chr2:122,079,726-122,620,427
+chr2_reg <- clusters_vr %>%
+  filter(chrom == "chr2",
+         start > 122079726,
+         end < 122620427)
+chr2_reg$value <- 1
+?bed_coverage
+x <- tibble::tribble(
+  ~chrom, ~start, ~end,
+  'chr2',  122079726,   122620427
+)
+# mw <- bed_makewindows(x, win_size = 500, step_size = 500)
+
+chr2_huh <- bed_intersect(mw, chr2_reg)
+# chr2_hmm <- bed_cluster(chr2_reg, max_dist = 1000)
+chr2_huh <- chr2_huh %>% filter(.overlap > 0)
+chr2_huh <- chr2_huh %>% dplyr::select(chrom, start.x, end.x, .overlap)
+
+# chr2_hmms <- chr2_hmm %>% group_by(chrom, .id) %>%
+#   summarize(count = n(), start = min(start), end = max(end))
+# chr2_gr <- GRanges(seqnames = chr2_hmms$chrom,
+#                    ranges = IRanges(start = chr2_hmms$start,
+#                                     end = chr2_hmms$end),
+#                    score = chr2_hmms$count)
+# chr2_df <- chr2_gr %>% as.data.frame()
+
+# chr2_df <- chr2_df %>% dplyr::select(seqnames, start, end, score)
+# rtracklayer::export.bedGraph(chr2_gr, "shf_region.bedGraph")
+write.table(chr2_huh, "firre_sprite_shf_region.bedGraph",
+            row.names = F,
+            col.names = F,
+            sep = "\t",
+            quote = F)
+```
+
+```{r}
+
+```
+
+
 
 
 
