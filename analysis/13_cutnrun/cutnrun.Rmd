@@ -42,7 +42,7 @@ pr_df$num_peaks <- sapply(peaks_relaxed, nrow)
 
 
 ```{r}
-
+# fastp
 samples <- sample_info$sample
 for(i in 1:length(samples)) {
   sample <- samples[[i]]
@@ -76,7 +76,259 @@ writeLines(script, con = paste0("/scratch/Shares/rinn/Michael/firre_timecourse/c
 
 writeLines(c("#!/bin/bash", paste0("sbatch ", samples, "_fastp.sh")), con = "/scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/qc/run.sh")
 
+# Fastqc
+
+for(i in 1:length(samples)) {
+  sample <- samples[[i]]
+  script <- paste0("#!/bin/bash
+#SBATCH -p short
+#SBATCH --job-name=cutnrun_fastqc_", sample, "
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=michael.smallegan@colorado.edu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --mem=12gb
+#SBATCH --time=3:00:00
+#SBATCH --output=", sample,".out
+#SBATCH --error=", sample,".err
+
+pwd; hostname; date
+
+module load fastqc/0.11.8
+
+fastqc  /scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/fastq/", sample,"/",sample,"_R*_.fastq.gz
+
+date
+")
+writeLines(script, con = paste0("/scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/qc/", sample, "_fastqc.sh"))
+}
+
+writeLines(c("#!/bin/bash", paste0("sbatch ", samples, "_fastqc.sh")), con = "/scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/qc/run_fastqc.sh")
+system("source /etc/profile; cd /scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/qc; chmod u+x run_fastqc.sh; ./run_fastqc.sh")
 
 
 ```
+
+# Compile fastq info from fastp
+
+Let's gather some data from the fastp in json format and make some plots.
+
+```{r}
+# let's run multiqc to summarize these fastp results
+# /scratch/Shares/public/singularity/multiqc-1.7.img
+
+ script <- paste0("#!/bin/bash
+#SBATCH -p short
+#SBATCH --job-name=cutnrun_multiqc
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=michael.smallegan@colorado.edu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --mem=12gb
+#SBATCH --time=3:00:00
+#SBATCH --output=cutnrun_multiqc.out
+#SBATCH --error=cutnrun_multiqc.err
+
+pwd; hostname; date
+
+module load singularity
+
+singularity exec /scratch/Shares/public/singularity/multiqc-1.7.img multiqc qc fastq
+
+date
+")
+writeLines(script, "../../cutnrun/multiqc.sbatch")
+system("source /etc/profile; cd ../../cutnrun/; sbatch multiqc.sbatch")
+```
+
+
+# Custom mapping parameters
+
+Let's start with the Henipipe parameters and see why they chose those. 
+
+```{r}
+# Henipipe BowTie flags --end-to-end --very-sensitive --no-overlap --no-dovetail --no-mixed --no-discordant -q --phred33 -I 10 -X 700
+# bowtie2 --end-to-end --very-sensitive --no-mixed --no-discordant -q --phred33 -I 10 -X 700 -p None -1 /scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/fastq/JR2877/JR2877_R1_.fastq.gz -2 /scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/fastq/JR2877/JR2877_R2_.fastq.gz -x /scratch/Shares/rinn/genomes/Mus_musculus/Gencode/M23/bowtie2/gencode_M23
+
+
+
+# my alternative bowtie2 --local --very-sensitive-local --phred33 -p 16 \
+#-1 /scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/qc/JR2862_R1.fastq.gz
+#-2 /scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/qc/JR2862_R2.fastq.gz
+# -x /scratch/Shares/rinn/genomes/Mus_musculus/Gencode/M23/bowtie2/gencode_M23 \
+# | samtools view -bS - > JR2862.bam
+
+
+for(i in 1:length(samples)) {
+  sample <- samples[[i]]
+  script <- paste0("#!/bin/bash
+#SBATCH -p short
+#SBATCH --job-name=align_", sample, "
+#SBATCH --mail-type=NONE
+#SBATCH --mail-user=michael.smallegan@colorado.edu
+#SBATCH --nodes=1
+#SBATCH --ntasks=16
+#SBATCH --mem=16gb
+#SBATCH --time=3:00:00
+#SBATCH --output=", sample,".out
+#SBATCH --error=", sample,".err
+
+pwd; hostname; date
+
+module load bowtie/2.2.9
+module load samtools/1.10
+
+bowtie2 --local --very-sensitive-local --phred33 -p 16 \\
+-1 /scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/qc/", sample, "_R1.fastq.gz \\
+-2 /scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/qc/", sample, "_R2.fastq.gz \\
+-x /scratch/Shares/rinn/genomes/Mus_musculus/Gencode/M23/bowtie2/gencode_M23 \\
+| samtools view -bS - > ", sample, ".bam
+
+date
+")
+  writeLines(script, con = paste0("/scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/align/", sample, "_bowtie2.sh"))
+}
+
+writeLines(c("#!/bin/bash", paste0("sbatch ", samples, "_bowtie2.sh")), con = "/scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/align/run_bowtie2.sh")
+system("source /etc/profile; cd /scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/align; chmod u+x run_bowtie2.sh; ./run_bowtie2.sh")
+
+
+```
+
+### bamCoverage
+
+```{r}
+sample_info <- sample_info %>% filter(!(sample %in% c("JR2871")))
+for(i in 1:length(samples)) {
+  sample <- samples[[i]]
+  script <- paste0("#!/bin/bash
+#SBATCH -p short
+#SBATCH --job-name=bw_", sample, "
+#SBATCH --mail-type=NONE
+#SBATCH --mail-user=michael.smallegan@colorado.edu
+#SBATCH --nodes=1
+#SBATCH --ntasks=4
+#SBATCH --mem=12gb
+#SBATCH --time=3:00:00
+#SBATCH --output=", sample,"_bw.out
+#SBATCH --error=", sample,"_bw.err
+
+pwd; hostname; date
+
+
+module load singularity/3.1.1
+module load samtools
+
+samtools sort -T /tmp/", sample, ".sorted -o ", sample, ".sorted.bam ", sample, ".bam
+samtools index ", sample, ".sorted.bam
+
+singularity exec /scratch/Shares/public/singularity/deeptools-3.0.1-py35_1.img \\
+bamCoverage -b ", sample, ".sorted.bam \\
+-o ", sample, ".bw \\
+-p 4 \\
+--blackListFileName mm10-blacklist.v2.bed \\
+--outFileFormat bigwig \\
+--binSize 10 \\
+--normalizeUsing RPGC \\
+--effectiveGenomeSize 2652783500 \\
+--extendReads
+
+date
+")
+  writeLines(script, con = paste0("/scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/align/", sample, "_bw.sh"))
+}
+
+writeLines(c("#!/bin/bash", paste0("sbatch ", samples, "_bw.sh")), con = "/scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/align/run_bw.sh")
+system("source /etc/profile; cd /scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/align; chmod u+x run_bowtie2.sh; ./run_bw.sh")
+```
+
+# Write trackDb
+
+```{r}
+bw_tracks <- list()
+for(i in 1:length(samples)) {
+  sample <- samples[[i]]
+  script <- paste0("track  ", sample, "
+bigDataUrl https://biof-trackhub.colorado.edu/rinnlab/micahel/firre_timecourse/firre_cutnrun/", sample, ".bw
+shortLabel ", sample_info$condition[i], "
+longLabel Firre H3K27me3 ", sample_info$condition[i],"
+type bigWig
+visibility full
+")
+  bw_tracks[i] <- script
+}
+
+writeLines(unlist(bw_tracks), 
+           con = "/scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/align/trackDb.txt")
+?con
+```
+
+# Plot correlation
+
+```{r}
+# For now cut out the samples that didn't finish mapping
+script <- paste0("#!/bin/bash
+#SBATCH -p short
+#SBATCH --job-name=cutnrun_bam_summary
+#SBATCH --mail-type=NONE
+#SBATCH --mail-user=michael.smallegan@colorado.edu
+#SBATCH --nodes=1
+#SBATCH --ntasks=4
+#SBATCH --mem=30gb
+#SBATCH --time=3:00:00
+#SBATCH --output=bamsum.out
+#SBATCH --error=bamsum.err
+
+pwd; hostname; date
+
+module load singularity/3.1.1
+
+singularity exec /scratch/Shares/public/singularity/deeptools-3.0.1-py35_1.img \\
+multiBamSummary bins -b ", paste(paste0(sample_info$sample, ".sorted.bam"), collapse = " "), " \\
+-o bamsummary.npz \\
+-p 4 \\
+--blackListFileName mm10-blacklist.v2.bed \\
+--labels ", paste(sample_info$condition, collapse = " "), " \\
+--extendReads \\
+--centerReads
+
+date
+")
+writeLines(script, 
+           con = "/scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/align/bamcompare.sh")
+```
+
+```{r}
+script <- paste0("#!/bin/bash
+#SBATCH -p short
+#SBATCH --job-name=cutnrun_correlation
+#SBATCH --mail-type=NONE
+#SBATCH --mail-user=michael.smallegan@colorado.edu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --mem=8gb
+#SBATCH --time=3:00:00
+#SBATCH --output=bamcorr.out
+#SBATCH --error=bamcorr.err
+
+pwd; hostname; date
+
+module load singularity/3.1.1
+
+singularity exec /scratch/Shares/public/singularity/deeptools-3.0.1-py35_1.img \\
+plotCorrelation --corData bamsummary.npz \\
+--corMethod spearman \\
+--whatToPlot heatmap \\
+-o sample_correlation.pdf \\
+--skipZeros \\
+--plotTitle 'Spearman correlation of Read Counts' \\
+--outFileCorMatrix spearman_corr_readcounts.tab
+
+date
+")
+writeLines(script, 
+           con = "/scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/align/bamcorrelate.sh")
+```
+
+
 
