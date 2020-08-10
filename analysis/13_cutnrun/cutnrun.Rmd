@@ -169,7 +169,7 @@ for(i in 1:length(samples)) {
 #SBATCH --nodes=1
 #SBATCH --ntasks=16
 #SBATCH --mem=16gb
-#SBATCH --time=3:00:00
+#SBATCH --time=6:00:00
 #SBATCH --output=", sample,".out
 #SBATCH --error=", sample,".err
 
@@ -198,7 +198,7 @@ system("source /etc/profile; cd /scratch/Shares/rinn/Michael/firre_timecourse/cu
 ### bamCoverage
 
 ```{r}
-sample_info <- sample_info %>% filter(!(sample %in% c("JR2871")))
+
 for(i in 1:length(samples)) {
   sample <- samples[[i]]
   script <- paste0("#!/bin/bash
@@ -239,7 +239,7 @@ date
 }
 
 writeLines(c("#!/bin/bash", paste0("sbatch ", samples, "_bw.sh")), con = "/scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/align/run_bw.sh")
-system("source /etc/profile; cd /scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/align; chmod u+x run_bowtie2.sh; ./run_bw.sh")
+system("source /etc/profile; cd /scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/align; chmod u+x run_bw.sh; ./run_bw.sh")
 ```
 
 # Write trackDb
@@ -330,5 +330,137 @@ writeLines(script,
            con = "/scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/align/bamcorrelate.sh")
 ```
 
+```{r}
+# library(rslurm)
+# print_sample_names<- function(sample_id, sample_name) {
+#   print(sample_id)
+# }
+# params <- sample_info 
+# names(params) <- c("sample_id", "sample_info")
+# Scratch that for now, I'm just going to not overcomplicate this and continue writing 
+# it in R.
+```
+
+```{r}
+
+comparisons <- sample_info %>%
+  separate(condition, into = c("condition", "control"), sep = "_")
+comparisons[is.na(comparisons$control), "control"] <- "cutnrun"
+comparisons$control <- gsub("CONTROL", "control", comparisons$control)
+comparisons <- comparisons %>% pivot_wider(names_from = control, values_from = sample)
+for (i in 1:nrow(comparisons)) {
+  script <- paste0("#!/bin/bash
+#SBATCH -p short
+#SBATCH --job-name=macs_" , comparisons$condition[i], "
+#SBATCH --mail-type=NONE
+#SBATCH --mail-user=michael.smallegan@colorado.edu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --mem=8gb
+#SBATCH --time=6:00:00
+#SBATCH --output=", comparisons$condition[i], ".out
+#SBATCH --error=", comparisons$condition[i], ".err
+
+pwd; hostname; date
+
+source ~/jhub_venv/bin/activate
+
+macs2 callpeak -t ", comparisons$cutnrun[i], ".bam \\
+-c ", comparisons$control[i],".bam \\
+-f BAM \\
+-g mm \\
+-n ", comparisons$condition[i], " \\
+-B \\
+-q 0.05 \\
+--broad
+
+
+date
+")
+  writeLines(script, con = paste0("/scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/align/", comparisons$condition[i], "_macs2.sh"))
+}
+
+writeLines(c("#!/bin/bash", paste0("sbatch ", comparisons$condition, "_macs2.sh")), con = "/scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/align/run_macs2.sh")
+system("source /etc/profile; cd /scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/align; chmod u+x run_macs2.sh; ./run_macs2.sh")
+
+
+```
+
+### Make NF-CORE design file
+```{r}
+design <- data.frame("group" = sample_info$condition,
+"replicate" = 1,
+"fastq_1" = paste0("/scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/qc/", sample_info$sample, "_R1.fastq.gz"),
+"fastq_2" = paste0("/scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/qc/", sample_info$sample, "_R2.fastq.gz"),
+"antibody" = c(rep("", 4), rep("H3K27me3", 4), rep("", 4), rep("H3K27me3", 4)),
+"control" = c(rep("",4), paste0(sample_info$condition[5:8], "_CONTROL"),
+              rep("", 4), paste0(sample_info$condition[13:16], "_CONTROL"))) %>%
+  arrange(desc(antibody))
+
+write_csv(design, "/scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/nfcore_chipseq/design.csv")
+```
+
+
+```{r}
+script <- paste0("#!/bin/bash
+#SBATCH -p long
+#SBATCH --job-name=cutnrun_chip_nfcore
+#SBATCH --mail-type=NONE
+#SBATCH --mail-user=michael.smallegan@colorado.edu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --mem=6gb
+#SBATCH --time=40:00:00
+#SBATCH --output=nextflow.out
+#SBATCH --error=nextflow.err
+
+pwd; hostname; date
+
+module load singularity/3.1.1
+
+nextflow run nf-core/chipseq -r 1.2.1 \\
+-profile singularity \\
+--input design.csv \\
+--fasta /scratch/Shares/rinn/genomes/Mus_musculus/Gencode/M25/GRCm38.primary_assembly.genome.fa \\
+--gtf /scratch/Shares/rinn/genomes/Mus_musculus/Gencode/M25/gencode.vM25.primary_assembly.annotation.gtf \\
+--macs_gsize 1.87e9 \\
+--blacklist mm10-blacklist.v2.bed \\
+--email michael.smallegan@colorado.edu \\
+-resume \\
+-c nextflow.config
+
+date")
+writeLines(script, "/scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/nfcore_chipseq/run.sh")
+
+# nfconfig <- "process \{
+#   executor='slurm'
+#   queue='short'
+#   memory='32 GB'
+#   maxForks=5
+# \}"
+# writeLines(nfconfig, "/scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/nfcore_chipseq/nextflow.config")
+```
+
+```{r}
+# Let's check out the peaks a bit.
+pl <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/align", 
+                 pattern = "*.broadPeak", full.names = T)
+peaks <- lapply(pl, rtracklayer::import)
+lapply(peaks, length)
+names(peaks) <- sapply(pl, function(x) {
+  unlist(strsplit(unlist(strsplit(x, "/"))[[9]], "_peaks"))[[1]]
+})
+canon_chr <- c(paste0("chr", 1:20), "chrX", "chrM", "chrY")
+pf <- lapply(peaks, function(x) {
+  x[as.character(x@seqnames) %in% canon_chr]
+})
+lapply(pf, length)
+library(rtracklayer)
+??TrackLine
+for(i in 1:length(pf)) {
+  rtracklayer::export.bed(pf[[i]], paste0("/scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/align/",
+                                     names(pf)[i],"_peaks.bed"))
+}
+```
 
 
