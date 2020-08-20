@@ -1,205 +1,253 @@
-sample_id,cell_type,genotype,firre_ko,contains_itg,firre_induced,timepoint,replicate,sample_name,experiment
-JR2536,mESCs,Firre WT,WT,FALSE,FALSE,0m,1,Firre WT1 0-1,short
-JR2529,mESCs,Firre WT,WT,FALSE,FALSE,30m,1,Firre WT1 30-1,short
-JR2519,mESCs,Firre WT,WT,FALSE,FALSE,60m,1,Firre WT1 60-1,short
-JR2526,mESCs,Firre WT,WT,FALSE,FALSE,90m,1,Firre WT1 90-1,short
-JR2521,mESCs,Firre WT,WT,FALSE,FALSE,120m,1,Firre WT1 120-1,short
-JR2531,mESCs,Firre WT,WT,FALSE,FALSE,150m,1,Firre WT1 150-1,short
-JR2530,mESCs,Firre WT,WT,FALSE,FALSE,180m,1,Firre WT1 180-1,short
-JR2524,mESCs,Firre WT,WT,FALSE,FALSE,210m,1,Firre WT1 210-1,short
-JR2516,mESCs,Firre WT,WT,FALSE,FALSE,240m,1,Firre WT1 240-1,short
-JR2517,mESCs,Firre WT,WT,FALSE,FALSE,270m,1,Firre WT1 270-1,short
-JR2532,mESCs,Firre WT,WT,FALSE,FALSE,300m,1,Firre WT1 300-1,short
-JR2535,mESCs,Firre WT,WT,FALSE,FALSE,330m,1,Firre WT1 330-1,short
-JR2520,mESCs,Firre WT,WT,FALSE,FALSE,0m,2,Firre WT1 0-2,short
-JR2533,mESCs,Firre WT,WT,FALSE,FALSE,30m,2,Firre WT1 30-2,short
-JR2537,mESCs,Firre WT,WT,FALSE,FALSE,60m,2,Firre WT1 60-2,short
-JR2518,mESCs,Firre WT,WT,FALSE,FALSE,90m,2,Firre WT1 90-2,short
-JR2525,mESCs,Firre WT,WT,FALSE,FALSE,120m,2,Firre WT1 120-2,short
-JR2528,mESCs,Firre WT,WT,FALSE,FALSE,150m,2,Firre WT1 150-2,short
-JR2522,mESCs,Firre WT,WT,FALSE,FALSE,180m,2,Firre WT1 180-2,short
-JR2539,mESCs,Firre WT,WT,FALSE,FALSE,210m,2,Firre WT1 210-2,short
-JR2538,mESCs,Firre WT,WT,FALSE,FALSE,240m,2,Firre WT1 240-2,short
-JR2523,mESCs,Firre WT,WT,FALSE,FALSE,270m,2,Firre WT1 270-2,short
-JR2527,mESCs,Firre WT,WT,FALSE,FALSE,300m,2,Firre WT1 300-2,short
-JR2534,mESCs,Firre WT,WT,FALSE,FALSE,330m,2,Firre WT1 330-2,short
-JR2563,mESCs,Firre WTiTg,WT,TRUE,TRUE,0m,1,Firre WTiTg1 0-1,short
-JR2556,mESCs,Firre WTiTg,WT,TRUE,TRUE,30m,1,Firre WTiTg1 30-1,short
-JR2546,mESCs,Firre WTiTg,WT,TRUE,TRUE,60m,1,Firre WTiTg1 60-1,short
-JR2555,mESCs,Firre WTiTg,WT,TRUE,TRUE,90m,1,Firre WTiTg1 90-1,short
-JR2561,mESCs,Firre WTiTg,WT,TRUE,TRUE,120m,1,Firre WTiTg1 120-1,short
-JR2544,mESCs,Firre WTiTg,WT,TRUE,TRUE,150m,1,Firre WTiTg1 150-1,short
-JR2540,mESCs,Firre WTiTg,WT,TRUE,TRUE,180m,1,Firre WTiTg1 180-1,short
-JR2545,mESCs,Firre WTiTg,WT,TRUE,TRUE,210m,1,Firre WTiTg1 210-1,short
-JR2558,mESCs,Firre WTiTg,WT,TRUE,TRUE,240m,1,Firre WTiTg1 240-1,short
-JR2559,mESCs,Firre WTiTg,WT,TRUE,TRUE,270m,1,Firre WTiTg1 270-1,short
-JR2541,mESCs,Firre WTiTg,WT,TRUE,TRUE,300m,1,Firre WTiTg1 300-1,short
-JR2547,mESCs,Firre WTiTg,WT,TRUE,TRUE,330m,1,Firre WTiTg1 330-1,short
-JR2551,mESCs,Firre WTiTg,WT,TRUE,TRUE,0m,2,Firre WTiTg1 0-2,short
-JR2548,mESCs,Firre WTiTg,WT,TRUE,TRUE,30m,2,Firre WTiTg1 30-2,short
-JR2557,mESCs,Firre WTiTg,WT,TRUE,TRUE,60m,2,Firre WTiTg1 60-2,short
-JR2550,mESCs,Firre WTiTg,WT,TRUE,TRUE,90m,2,Firre WTiTg1 90-2,short
-JR2543,mESCs,Firre WTiTg,WT,TRUE,TRUE,120m,2,Firre WTiTg1 120-2,short
-JR2549,mESCs,Firre WTiTg,WT,TRUE,TRUE,150m,2,Firre WTiTg1 150-2,short
-JR2560,mESCs,Firre WTiTg,WT,TRUE,TRUE,180m,2,Firre WTiTg1 180-2,short
-JR2552,mESCs,Firre WTiTg,WT,TRUE,TRUE,210m,2,Firre WTiTg1 210-2,short
-JR2554,mESCs,Firre WTiTg,WT,TRUE,TRUE,240m,2,Firre WTiTg1 240-2,short
-JR2562,mESCs,Firre WTiTg,WT,TRUE,TRUE,270m,2,Firre WTiTg1 270-2,short
-JR2542,mESCs,Firre WTiTg,WT,TRUE,TRUE,300m,2,Firre WTiTg1 300-2,short
-JR2553,mESCs,Firre WTiTg,WT,TRUE,TRUE,330m,2,Firre WTiTg1 330-2,short
-JR2420,mESCs,Firre KO,KO,TRUE,FALSE,0m,1,Firre KOiTg1 0-1,short
-JR2423,mESCs,Firre KO,KO,TRUE,FALSE,30m,1,Firre KOiTg1 30-1,short
-JR2419,mESCs,Firre KO,KO,TRUE,FALSE,60m,1,Firre KOiTg1 60-1,short
-JR2408,mESCs,Firre KO,KO,TRUE,FALSE,90m,1,Firre KOiTg1 90-1,short
-JR2422,mESCs,Firre KO,KO,TRUE,FALSE,120m,1,Firre KOiTg1 120-1,short
-JR2411,mESCs,Firre KO,KO,TRUE,FALSE,150m,1,Firre KOiTg1 150-1,short
-JR2409,mESCs,Firre KO,KO,TRUE,FALSE,180m,1,Firre KOiTg1 180-1,short
-JR2418,mESCs,Firre KO,KO,TRUE,FALSE,210m,1,Firre KOiTg1 210-1,short
-JR2407,mESCs,Firre KO,KO,TRUE,FALSE,240m,1,Firre KOiTg1 240-1,short
-JR2406,mESCs,Firre KO,KO,TRUE,FALSE,270m,1,Firre KOiTg1 270-1,short
-JR2421,mESCs,Firre KO,KO,TRUE,FALSE,300m,1,Firre KOiTg1 300-1,short
-JR2410,mESCs,Firre KO,KO,TRUE,FALSE,330m,1,Firre KOiTg1 330-1,short
-JR2443,mESCs,Firre KO,KO,TRUE,FALSE,0m,2,Firre KOiTg1 0-2,short
-JR2435,mESCs,Firre KO,KO,TRUE,FALSE,30m,2,Firre KOiTg1 30-2,short
-JR2447,mESCs,Firre KO,KO,TRUE,FALSE,60m,2,Firre KOiTg1 60-2,short
-JR2446,mESCs,Firre KO,KO,TRUE,FALSE,90m,2,Firre KOiTg1 90-2,short
-JR2445,mESCs,Firre KO,KO,TRUE,FALSE,120m,2,Firre KOiTg1 120-2,short
-JR2444,mESCs,Firre KO,KO,TRUE,FALSE,150m,2,Firre KOiTg1 150-2,short
-JR2432,mESCs,Firre KO,KO,TRUE,FALSE,180m,2,Firre KOiTg1 180-2,short
-JR2442,mESCs,Firre KO,KO,TRUE,FALSE,210m,2,Firre KOiTg1 210-2,short
-JR2430,mESCs,Firre KO,KO,TRUE,FALSE,240m,2,Firre KOiTg1 240-2,short
-JR2431,mESCs,Firre KO,KO,TRUE,FALSE,270m,2,Firre KOiTg1 270-2,short
-JR2433,mESCs,Firre KO,KO,TRUE,FALSE,300m,2,Firre KOiTg1 300-2,short
-JR2434,mESCs,Firre KO,KO,TRUE,FALSE,330m,2,Firre KOiTg1 330-2,short
-JR2415,mESCs,Firre KOiTg,KO,TRUE,TRUE,0m,1,Firre KOiTg2 0-1,short
-JR2413,mESCs,Firre KOiTg,KO,TRUE,TRUE,30m,1,Firre KOiTg2 30-1,short
-JR2427,mESCs,Firre KOiTg,KO,TRUE,TRUE,60m,1,Firre KOiTg2 60-1,short
-JR2417,mESCs,Firre KOiTg,KO,TRUE,TRUE,90m,1,Firre KOiTg2 90-1,short
-JR2416,mESCs,Firre KOiTg,KO,TRUE,TRUE,120m,1,Firre KOiTg2 120-1,short
-JR2425,mESCs,Firre KOiTg,KO,TRUE,TRUE,150m,1,Firre KOiTg2 150-1,short
-JR2429,mESCs,Firre KOiTg,KO,TRUE,TRUE,180m,1,Firre KOiTg2 180-1,short
-JR2412,mESCs,Firre KOiTg,KO,TRUE,TRUE,210m,1,Firre KOiTg 210-1,short
-JR2426,mESCs,Firre KOiTg,KO,TRUE,TRUE,240m,1,Firre KOiTg2 240-1,short
-JR2428,mESCs,Firre KOiTg,KO,TRUE,TRUE,270m,1,Firre KOiTg2 270-1,short
-JR2424,mESCs,Firre KOiTg,KO,TRUE,TRUE,300m,1,Firre KOiTg2 300-1,short
-JR2414,mESCs,Firre KOiTg,KO,TRUE,TRUE,330m,1,Firre KOiTg2 330-1,short
-JR2437,mESCs,Firre KOiTg,KO,TRUE,TRUE,0m,2,Firre KOiTg2 0-2,short
-JR2440,mESCs,Firre KOiTg,KO,TRUE,TRUE,30m,2,Firre KOiTg2 30-2,short
-JR2438,mESCs,Firre KOiTg,KO,TRUE,TRUE,60m,2,Firre KOiTg2 60-2,short
-JR2453,mESCs,Firre KOiTg,KO,TRUE,TRUE,90m,2,Firre KOiTg2 90-2,short
-JR2439,mESCs,Firre KOiTg,KO,TRUE,TRUE,120m,2,Firre KOiTg2 120-2,short
-JR2450,mESCs,Firre KOiTg,KO,TRUE,TRUE,150m,2,Firre KOiTg2 150-2,short
-JR2441,mESCs,Firre KOiTg,KO,TRUE,TRUE,180m,2,Firre KOiTg2 180-2,short
-JR2449,mESCs,Firre KOiTg,KO,TRUE,TRUE,210m,2,Firre KOiTg2 210-2,short
-JR2436,mESCs,Firre KOiTg,KO,TRUE,TRUE,240m,2,Firre KOiTg2 240-2,short
-JR2451,mESCs,Firre KOiTg,KO,TRUE,TRUE,270m,2,Firre KOiTg2 270-2,short
-JR2448,mESCs,Firre KOiTg,KO,TRUE,TRUE,300m,2,Firre KOiTg2 300-2,short
-JR2452,mESCs,Firre KOiTg,KO,TRUE,TRUE,330m,2,Firre KOiTg2 330-2,short
-JR2492,pMEFs,Firre WT,WT,TRUE,FALSE,0m,1,Firre WTiTg1 0-1,short
-JR2503,pMEFs,Firre WT,WT,TRUE,FALSE,30m,1,Firre WTiTg1 30-1,short
-JR2497,pMEFs,Firre WT,WT,TRUE,FALSE,60m,1,Firre WTiTg1 60-1,short
-JR2495,pMEFs,Firre WT,WT,TRUE,FALSE,90m,1,Firre WTiTg1 90-1,short
-JR2499,pMEFs,Firre WT,WT,TRUE,FALSE,120m,1,Firre WTiTg1 120-1,short
-JR2500,pMEFs,Firre WT,WT,TRUE,FALSE,150m,1,Firre WTiTg1 150-1,short
-JR2498,pMEFs,Firre WT,WT,TRUE,FALSE,180m,1,Firre WTiTg1 180-1,short
-JR2496,pMEFs,Firre WT,WT,TRUE,FALSE,210m,1,Firre WTiTg1 210-1,short
-JR2501,pMEFs,Firre WT,WT,TRUE,FALSE,240m,1,Firre WTiTg1 240-1,short
-JR2502,pMEFs,Firre WT,WT,TRUE,FALSE,270m,1,Firre WTiTg1 270-1,short
-JR2493,pMEFs,Firre WT,WT,TRUE,FALSE,300m,1,Firre WTiTg1 300-1,short
-JR2494,pMEFs,Firre WT,WT,TRUE,FALSE,330m,1,Firre WTiTg1 330-1,short
-JR2515,pMEFs,Firre KOiTg,KO,TRUE,TRUE,0m,1,Firre KOiTg1 0-1,short
-JR2514,pMEFs,Firre KOiTg,KO,TRUE,TRUE,30m,1,Firre KOiTg1 30-1,short
-JR2513,pMEFs,Firre KOiTg,KO,TRUE,TRUE,60m,1,Firre KOiTg1 60-1,short
-JR2512,pMEFs,Firre KOiTg,KO,TRUE,TRUE,90m,1,Firre KOiTg1 90-1,short
-JR2504,pMEFs,Firre KOiTg,KO,TRUE,TRUE,120m,1,Firre KOiTg1 120-1,short
-JR2509,pMEFs,Firre KOiTg,KO,TRUE,TRUE,150m,1,Firre KOiTg1 150-1,short
-JR2506,pMEFs,Firre KOiTg,KO,TRUE,TRUE,180m,1,Firre KOiTg1 180-1,short
-JR2510,pMEFs,Firre KOiTg,KO,TRUE,TRUE,210m,1,Firre KOiTg1 210-1,short
-JR2508,pMEFs,Firre KOiTg,KO,TRUE,TRUE,240m,1,Firre KOiTg1 240-1,short
-JR2507,pMEFs,Firre KOiTg,KO,TRUE,TRUE,270m,1,Firre KOiTg1 270-1,short
-JR2511,pMEFs,Firre KOiTg,KO,TRUE,TRUE,300m,1,Firre KOiTg1 300-1,short
-JR2505,pMEFs,Firre KOiTg,KO,TRUE,TRUE,330m,1,Firre KOiTg1 330-1,short
-JR2102,mESCs,Firre WTiTg,WT,TRUE,TRUE,0m,1,A49_mESCs_Firre iTg 0-1,short
-JR2103,mESCs,Firre WTiTg,WT,TRUE,TRUE,30m,1,A52_mESCs_Firre iTg 30-1,short
-JR2104,mESCs,Firre WTiTg,WT,TRUE,TRUE,60m,1,A55_mESCs_Firre iTg 60-1,short
-JR2105,mESCs,Firre WTiTg,WT,TRUE,TRUE,90m,1,A58_mESCs_Firre iTg 90-1,short
-JR2106,mESCs,Firre WTiTg,WT,TRUE,TRUE,120m,1,A61_mESCs_Firre iTg 120-1,short
-JR2107,mESCs,Firre WTiTg,WT,TRUE,TRUE,150m,1,A64_mESCs_Firre iTg 150-1,short
-JR2108,mESCs,Firre WTiTg,WT,TRUE,TRUE,180m,1,A67_mESCs_Firre iTg 180-1,short
-JR2109,mESCs,Firre WTiTg,WT,TRUE,TRUE,210m,1,A70_mESCs_Firre iTg 210-1,short
-JR2110,mESCs,Firre WTiTg,WT,TRUE,TRUE,240m,1,A73_mESCs_Firre iTg 240-1,short
-JR2111,mESCs,Firre WTiTg,WT,TRUE,TRUE,270m,1,A76_mESCs_Firre iTg 270-1,short
-JR2112,mESCs,Firre WTiTg,WT,TRUE,TRUE,300m,1,A79_mESCs_Firre iTg 300-1,short
-JR2113,mESCs,Firre WTiTg,WT,TRUE,TRUE,330m,1,A82_mESCs_Firre iTg 330-1,short
-JR2114,mESCs,Firre WTiTg,WT,TRUE,TRUE,0m,2,A50_mESCs_Firre iTg 0-2,short
-JR2115,mESCs,Firre WTiTg,WT,TRUE,TRUE,30m,2,A53_mESCs_Firre iTg 30-2,short
-JR2116,mESCs,Firre WTiTg,WT,TRUE,TRUE,60m,2,A56_mESCs_Firre iTg 60-2,short
-JR2117,mESCs,Firre WTiTg,WT,TRUE,TRUE,90m,2,A59_mESCs_Firre iTg 90-2,short
-JR2118,mESCs,Firre WTiTg,WT,TRUE,TRUE,120m,2,A62_mESCs_Firre iTg 120-2,short
-JR2119,mESCs,Firre WTiTg,WT,TRUE,TRUE,150m,2,A65_mESCs_Firre iTg 150-2,short
-JR2120,mESCs,Firre WTiTg,WT,TRUE,TRUE,180m,2,A68_mESCs_Firre iTg 180-2,short
-JR2121,mESCs,Firre WTiTg,WT,TRUE,TRUE,210m,2,A71_mESCs_Firre iTg 210-2,short
-JR2122,mESCs,Firre WTiTg,WT,TRUE,TRUE,240m,2,A74_mESCs_Firre iTg 240-2,short
-JR2123,mESCs,Firre WTiTg,WT,TRUE,TRUE,270m,2,A77_mESCs_Firre iTg 270-2,short
-JR2124,mESCs,Firre WTiTg,WT,TRUE,TRUE,300m,2,A80_mESCs_Firre iTg 300-2,short
-JR2125,mESCs,Firre WTiTg,WT,TRUE,TRUE,330m,2,A83_mESCs_Firre iTg 330-2,short
-JR2706,mESCs,Firre WT,WT,FALSE,FALSE,96h,2,Firre WT 96h-2,long
-JR2707,mESCs,Firre WT,WT,FALSE,FALSE,0h,3,Firre WT 0h-3,long
-JR2708,mESCs,Firre WT,WT,FALSE,FALSE,0h,1,Firre WT 0h-1,long
-JR2709,mESCs,Firre WT,WT,TRUE,TRUE,96h,3,Firre WTiTg 96h-3,long
-JR2710,mESCs,Firre WT,WT,FALSE,FALSE,0h,2,Firre WT 0h-2,long
-JR2711,mESCs,Firre WT,WT,TRUE,TRUE,0h,1,Firre WTiTg 0h-1,long
-JR2712,mESCs,Firre WT,WT,TRUE,TRUE,96h,1,Firre WTiTg 96h-1,long
-JR2713,mESCs,Firre WT,WT,TRUE,TRUE,96h,2,Firre WTiTg 96h-2,long
-JR2714,mESCs,Firre WT,WT,TRUE,TRUE,0h,3,Firre WTiTg 0h-3,long
-JR2715,mESCs,Firre WT,WT,FALSE,FALSE,96h,1,Firre WT 96h-1,long
-JR2716,mESCs,Firre WT,WT,FALSE,FALSE,96h,3,Firre WT 96h-3,long
-JR2717,mESCs,Firre WT,WT,TRUE,TRUE,0h,2,Firre WTiTg 0h-2,long
-JR2718,mESCs,Firre KO,KO,TRUE,TRUE,96h,2,Firre KOiTg 96h-2,long
-JR2719,mESCs,Firre KO,KO,TRUE,FALSE,96h,3,Firre KO 96h-3,long
-JR2720,mESCs,Firre KO,KO,TRUE,FALSE,0h,3,Firre KO 0h-3,long
-JR2721,mESCs,Firre KO,KO,TRUE,FALSE,96h,1,Firre KO 96h-1,long
-JR2722,mESCs,Firre KO,KO,TRUE,FALSE,0h,2,Firre KO 0h-2,long
-JR2723,mESCs,Firre KO,KO,TRUE,TRUE,0h,3,Firre KOiTg 0h-3,long
-JR2724,mESCs,Firre KO,KO,TRUE,TRUE,0h,2,Firre KOiTg 0h-2,long
-JR2725,mESCs,Firre KO,KO,TRUE,TRUE,96h,1,Firre KOiTg 96h-1,long
-JR2726,mESCs,Firre KO,KO,TRUE,TRUE,0h,1,Firre KOiTg 0h-1,long
-JR2727,mESCs,Firre KO,KO,TRUE,FALSE,0h,1,Firre KO 0h-1,long
-JR2728,mESCs,Firre KO,KO,TRUE,FALSE,96h,2,Firre KO 96h-2,long
-JR2729,mESCs,Firre KO,KO,TRUE,TRUE,96h,3,Firre KOiTg 96h-3,long
-JR2730,mESCs,Firre WT,WT,FALSE,FALSE,24h,3,Firre WT 24h-3,long
-JR2731,mESCs,Firre WT,WT,FALSE,FALSE,48h,1,Firre WT 48h-1,long
-JR2732,mESCs,Firre WT,WT,FALSE,FALSE,24h,2,Firre WT 24h-2,long
-JR2733,mESCs,Firre WT,WT,TRUE,TRUE,48h,1,Firre WTiTg 48h-1,long
-JR2734,mESCs,Firre WT,WT,TRUE,TRUE,48h,3,Firre WTiTg 48h-3,long
-JR2735,mESCs,Firre WT,WT,TRUE,TRUE,24h,1,Firre WTiTg 24h-1,long
-JR2736,mESCs,Firre WT,WT,TRUE,TRUE,24h,2,Firre WTiTg 24h-2,long
-JR2737,mESCs,Firre WT,WT,FALSE,FALSE,48h,3,Firre WT 48h-3,long
-JR2738,mESCs,Firre WT,WT,FALSE,FALSE,48h,2,Firre WT 48h-2,long
-JR2739,mESCs,Firre WT,WT,TRUE,TRUE,48h,2,Firre WTiTg 48h-2,long
-JR2740,mESCs,Firre WT,WT,TRUE,TRUE,24h,3,Firre WTiTg 24h-3,long
-JR2741,mESCs,Firre WT,WT,FALSE,FALSE,24h,1,Firre WT 24h-1,long
-JR2742,mESCs,Firre KO,KO,TRUE,TRUE,24h,3,Firre KOiTg 24h-3,long
-JR2743,mESCs,Firre KO,KO,TRUE,TRUE,48h,2,Firre KOiTg 48h-2,long
-JR2744,mESCs,Firre KO,KO,TRUE,TRUE,48h,3,Firre KOiTg 48h-3,long
-JR2745,mESCs,Firre KO,KO,TRUE,FALSE,24h,3,Firre KO 24h-3,long
-JR2746,mESCs,Firre KO,KO,TRUE,TRUE,24h,1,Firre KOiTg 24h-1,long
-JR2747,mESCs,Firre KO,KO,TRUE,TRUE,48h,1,Firre KOiTg 48h-1,long
-JR2748,mESCs,Firre KO,KO,TRUE,TRUE,24h,2,Firre KOiTg 24h-2,long
-JR2749,mESCs,Firre KO,KO,TRUE,FALSE,24h,1,Firre KO 24h-1,long
-JR2750,mESCs,Firre KO,KO,TRUE,FALSE,48h,1,Firre KO 48h-1,long
-JR2751,mESCs,Firre KO,KO,TRUE,FALSE,24h,2,Firre KO 24h-2,long
-JR2752,mESCs,Firre KO,KO,TRUE,FALSE,48h,2,Firre KO 48h-2,long
-JR2753,mESCs,Firre KO,KO,TRUE,FALSE,48h,3,Firre KO 48h-3,long
-JR2754,mESCs,Firre KO,KO,TRUE,TRUE,12h,2,Firre KOiTg 12h-2,long
-JR2755,mESCs,Firre WT,WT,TRUE,TRUE,12h,1,Firre WTiTg 12h-1,long
-JR2756,mESCs,Firre KO,KO,TRUE,FALSE,12h,1,Firre KO 12h-1,long
-JR2757,mESCs,Firre KO,KO,TRUE,TRUE,12h,3,Firre KOiTg 12h-3,long
-JR2758,mESCs,Firre WT,WT,FALSE,FALSE,12h,3,Firre WT 12h-3,long
-JR2759,mESCs,Firre WT,WT,TRUE,TRUE,12h,3,Firre WTiTg 12h-3,long
-JR2760,mESCs,Firre WT,WT,TRUE,TRUE,12h,2,Firre WTiTg 12h-2,long
-JR2761,mESCs,Firre KO,KO,TRUE,TRUE,12h,1,Firre KOiTg 12h-1,long
-JR2762,mESCs,Firre WT,WT,FALSE,FALSE,12h,1,Firre WT 12h-1,long
-JR2763,mESCs,Firre KO,KO,TRUE,FALSE,12h,2,Firre KO 12h-2,long
-JR2764,mESCs,Firre KO,KO,TRUE,FALSE,12h,3,Firre KO 12h-3,long
-JR2765,mESCs,Firre WT,WT,FALSE,FALSE,12h,2,Firre WT 12h-2,long
+sample_id,cell_type,firre_ko,firre_induced,timepoint_minutes,replicate,date_sequenced,sample_name
+JR2102,mESC,WT,firre_induced,0,1,Sep-18,JR2102_mESC_WT_firre_induced_0_rep1
+JR2103,mESC,WT,firre_induced,30,1,Sep-18,JR2103_mESC_WT_firre_induced_30_rep1
+JR2104,mESC,WT,firre_induced,60,1,Sep-18,JR2104_mESC_WT_firre_induced_60_rep1
+JR2105,mESC,WT,firre_induced,90,1,Sep-18,JR2105_mESC_WT_firre_induced_90_rep1
+JR2106,mESC,WT,firre_induced,120,1,Sep-18,JR2106_mESC_WT_firre_induced_120_rep1
+JR2107,mESC,WT,firre_induced,150,1,Sep-18,JR2107_mESC_WT_firre_induced_150_rep1
+JR2108,mESC,WT,firre_induced,180,1,Sep-18,JR2108_mESC_WT_firre_induced_180_rep1
+JR2109,mESC,WT,firre_induced,210,1,Sep-18,JR2109_mESC_WT_firre_induced_210_rep1
+JR2110,mESC,WT,firre_induced,240,1,Sep-18,JR2110_mESC_WT_firre_induced_240_rep1
+JR2111,mESC,WT,firre_induced,270,1,Sep-18,JR2111_mESC_WT_firre_induced_270_rep1
+JR2112,mESC,WT,firre_induced,300,1,Sep-18,JR2112_mESC_WT_firre_induced_300_rep1
+JR2113,mESC,WT,firre_induced,330,1,Sep-18,JR2113_mESC_WT_firre_induced_330_rep1
+JR2114,mESC,WT,firre_induced,0,2,Sep-18,JR2114_mESC_WT_firre_induced_0_rep2
+JR2115,mESC,WT,firre_induced,30,2,Sep-18,JR2115_mESC_WT_firre_induced_30_rep2
+JR2116,mESC,WT,firre_induced,60,2,Sep-18,JR2116_mESC_WT_firre_induced_60_rep2
+JR2117,mESC,WT,firre_induced,90,2,Sep-18,JR2117_mESC_WT_firre_induced_90_rep2
+JR2118,mESC,WT,firre_induced,120,2,Sep-18,JR2118_mESC_WT_firre_induced_120_rep2
+JR2119,mESC,WT,firre_induced,150,2,Sep-18,JR2119_mESC_WT_firre_induced_150_rep2
+JR2120,mESC,WT,firre_induced,180,2,Sep-18,JR2120_mESC_WT_firre_induced_180_rep2
+JR2121,mESC,WT,firre_induced,210,2,Sep-18,JR2121_mESC_WT_firre_induced_210_rep2
+JR2122,mESC,WT,firre_induced,240,2,Sep-18,JR2122_mESC_WT_firre_induced_240_rep2
+JR2123,mESC,WT,firre_induced,270,2,Sep-18,JR2123_mESC_WT_firre_induced_270_rep2
+JR2124,mESC,WT,firre_induced,300,2,Sep-18,JR2124_mESC_WT_firre_induced_300_rep2
+JR2125,mESC,WT,firre_induced,330,2,Sep-18,JR2125_mESC_WT_firre_induced_330_rep2
+JR2406,mESC,KO,control,270,1,Mar-19,JR2406_mESC_KO_control_270_rep1
+JR2407,mESC,KO,control,240,1,Mar-19,JR2407_mESC_KO_control_240_rep1
+JR2408,mESC,KO,control,90,1,Mar-19,JR2408_mESC_KO_control_90_rep1
+JR2409,mESC,KO,control,180,1,Mar-19,JR2409_mESC_KO_control_180_rep1
+JR2410,mESC,KO,control,330,1,Mar-19,JR2410_mESC_KO_control_330_rep1
+JR2411,mESC,KO,control,150,1,Mar-19,JR2411_mESC_KO_control_150_rep1
+JR2412,mESC,KO,firre_induced,210,1,Mar-19,JR2412_mESC_KO_firre_induced_210_rep1
+JR2413,mESC,KO,firre_induced,30,1,Mar-19,JR2413_mESC_KO_firre_induced_30_rep1
+JR2414,mESC,KO,firre_induced,330,1,Mar-19,JR2414_mESC_KO_firre_induced_330_rep1
+JR2415,mESC,KO,firre_induced,0,1,Mar-19,JR2415_mESC_KO_firre_induced_0_rep1
+JR2416,mESC,KO,firre_induced,120,1,Mar-19,JR2416_mESC_KO_firre_induced_120_rep1
+JR2417,mESC,KO,firre_induced,90,1,Mar-19,JR2417_mESC_KO_firre_induced_90_rep1
+JR2418,mESC,KO,control,210,1,Mar-19,JR2418_mESC_KO_control_210_rep1
+JR2419,mESC,KO,control,60,1,Mar-19,JR2419_mESC_KO_control_60_rep1
+JR2420,mESC,KO,control,0,1,Mar-19,JR2420_mESC_KO_control_0_rep1
+JR2421,mESC,KO,control,300,1,Mar-19,JR2421_mESC_KO_control_300_rep1
+JR2422,mESC,KO,control,120,1,Mar-19,JR2422_mESC_KO_control_120_rep1
+JR2423,mESC,KO,control,30,1,Mar-19,JR2423_mESC_KO_control_30_rep1
+JR2424,mESC,KO,firre_induced,300,1,Mar-19,JR2424_mESC_KO_firre_induced_300_rep1
+JR2425,mESC,KO,firre_induced,150,1,Mar-19,JR2425_mESC_KO_firre_induced_150_rep1
+JR2426,mESC,KO,firre_induced,240,1,Mar-19,JR2426_mESC_KO_firre_induced_240_rep1
+JR2427,mESC,KO,firre_induced,60,1,Mar-19,JR2427_mESC_KO_firre_induced_60_rep1
+JR2428,mESC,KO,firre_induced,270,1,Mar-19,JR2428_mESC_KO_firre_induced_270_rep1
+JR2429,mESC,KO,firre_induced,180,1,Mar-19,JR2429_mESC_KO_firre_induced_180_rep1
+JR2430,mESC,KO,control,240,2,Mar-19,JR2430_mESC_KO_control_240_rep2
+JR2431,mESC,KO,control,270,2,Mar-19,JR2431_mESC_KO_control_270_rep2
+JR2432,mESC,KO,control,180,2,Mar-19,JR2432_mESC_KO_control_180_rep2
+JR2433,mESC,KO,control,300,2,Mar-19,JR2433_mESC_KO_control_300_rep2
+JR2434,mESC,KO,control,330,2,Mar-19,JR2434_mESC_KO_control_330_rep2
+JR2435,mESC,KO,control,30,2,Mar-19,JR2435_mESC_KO_control_30_rep2
+JR2436,mESC,KO,firre_induced,240,2,Mar-19,JR2436_mESC_KO_firre_induced_240_rep2
+JR2437,mESC,KO,firre_induced,0,2,Mar-19,JR2437_mESC_KO_firre_induced_0_rep2
+JR2438,mESC,KO,firre_induced,60,2,Mar-19,JR2438_mESC_KO_firre_induced_60_rep2
+JR2439,mESC,KO,firre_induced,120,2,Mar-19,JR2439_mESC_KO_firre_induced_120_rep2
+JR2440,mESC,KO,firre_induced,30,2,Mar-19,JR2440_mESC_KO_firre_induced_30_rep2
+JR2441,mESC,KO,firre_induced,180,2,Mar-19,JR2441_mESC_KO_firre_induced_180_rep2
+JR2442,mESC,KO,control,210,2,Mar-19,JR2442_mESC_KO_control_210_rep2
+JR2443,mESC,KO,control,0,2,Mar-19,JR2443_mESC_KO_control_0_rep2
+JR2444,mESC,KO,control,150,2,Mar-19,JR2444_mESC_KO_control_150_rep2
+JR2445,mESC,KO,control,120,2,Mar-19,JR2445_mESC_KO_control_120_rep2
+JR2446,mESC,KO,control,90,2,Mar-19,JR2446_mESC_KO_control_90_rep2
+JR2447,mESC,KO,control,60,2,Mar-19,JR2447_mESC_KO_control_60_rep2
+JR2448,mESC,KO,firre_induced,300,2,Mar-19,JR2448_mESC_KO_firre_induced_300_rep2
+JR2449,mESC,KO,firre_induced,210,2,Mar-19,JR2449_mESC_KO_firre_induced_210_rep2
+JR2450,mESC,KO,firre_induced,150,2,Mar-19,JR2450_mESC_KO_firre_induced_150_rep2
+JR2451,mESC,KO,firre_induced,270,2,Mar-19,JR2451_mESC_KO_firre_induced_270_rep2
+JR2452,mESC,KO,firre_induced,330,2,Mar-19,JR2452_mESC_KO_firre_induced_330_rep2
+JR2453,mESC,KO,firre_induced,90,2,Mar-19,JR2453_mESC_KO_firre_induced_90_rep2
+JR2492,pMEF,WT,control,0,1,May-19,JR2492_pMEF_WT_control_0_rep1
+JR2493,pMEF,WT,control,300,1,May-19,JR2493_pMEF_WT_control_300_rep1
+JR2494,pMEF,WT,control,330,1,May-19,JR2494_pMEF_WT_control_330_rep1
+JR2495,pMEF,WT,control,90,1,May-19,JR2495_pMEF_WT_control_90_rep1
+JR2496,pMEF,WT,control,210,1,May-19,JR2496_pMEF_WT_control_210_rep1
+JR2497,pMEF,WT,control,60,1,May-19,JR2497_pMEF_WT_control_60_rep1
+JR2498,pMEF,WT,control,180,1,May-19,JR2498_pMEF_WT_control_180_rep1
+JR2499,pMEF,WT,control,120,1,May-19,JR2499_pMEF_WT_control_120_rep1
+JR2500,pMEF,WT,control,150,1,May-19,JR2500_pMEF_WT_control_150_rep1
+JR2501,pMEF,WT,control,240,1,May-19,JR2501_pMEF_WT_control_240_rep1
+JR2502,pMEF,WT,control,270,1,May-19,JR2502_pMEF_WT_control_270_rep1
+JR2503,pMEF,WT,control,30,1,May-19,JR2503_pMEF_WT_control_30_rep1
+JR2504,pMEF,KO,firre_induced,120,1,May-19,JR2504_pMEF_KO_firre_induced_120_rep1
+JR2505,pMEF,KO,firre_induced,330,1,May-19,JR2505_pMEF_KO_firre_induced_330_rep1
+JR2506,pMEF,KO,firre_induced,180,1,May-19,JR2506_pMEF_KO_firre_induced_180_rep1
+JR2507,pMEF,KO,firre_induced,270,1,May-19,JR2507_pMEF_KO_firre_induced_270_rep1
+JR2508,pMEF,KO,firre_induced,240,1,May-19,JR2508_pMEF_KO_firre_induced_240_rep1
+JR2509,pMEF,KO,firre_induced,150,1,May-19,JR2509_pMEF_KO_firre_induced_150_rep1
+JR2510,pMEF,KO,firre_induced,210,1,May-19,JR2510_pMEF_KO_firre_induced_210_rep1
+JR2511,pMEF,KO,firre_induced,300,1,May-19,JR2511_pMEF_KO_firre_induced_300_rep1
+JR2512,pMEF,KO,firre_induced,90,1,May-19,JR2512_pMEF_KO_firre_induced_90_rep1
+JR2513,pMEF,KO,firre_induced,60,1,May-19,JR2513_pMEF_KO_firre_induced_60_rep1
+JR2514,pMEF,KO,firre_induced,30,1,May-19,JR2514_pMEF_KO_firre_induced_30_rep1
+JR2515,pMEF,KO,firre_induced,0,1,May-19,JR2515_pMEF_KO_firre_induced_0_rep1
+JR2516,mESC,WT,control,240,1,Jun-19,JR2516_mESC_WT_control_240_rep1
+JR2517,mESC,WT,control,270,1,Jun-19,JR2517_mESC_WT_control_270_rep1
+JR2518,mESC,WT,control,90,2,Jun-19,JR2518_mESC_WT_control_90_rep2
+JR2519,mESC,WT,control,60,1,Jun-19,JR2519_mESC_WT_control_60_rep1
+JR2520,mESC,WT,control,0,2,Jun-19,JR2520_mESC_WT_control_0_rep2
+JR2521,mESC,WT,control,120,1,Jun-19,JR2521_mESC_WT_control_120_rep1
+JR2522,mESC,WT,control,180,2,Jun-19,JR2522_mESC_WT_control_180_rep2
+JR2523,mESC,WT,control,270,2,Jun-19,JR2523_mESC_WT_control_270_rep2
+JR2524,mESC,WT,control,210,1,Jun-19,JR2524_mESC_WT_control_210_rep1
+JR2525,mESC,WT,control,120,2,Jun-19,JR2525_mESC_WT_control_120_rep2
+JR2526,mESC,WT,control,90,1,Jun-19,JR2526_mESC_WT_control_90_rep1
+JR2527,mESC,WT,control,300,2,Jun-19,JR2527_mESC_WT_control_300_rep2
+JR2528,mESC,WT,control,150,2,Jun-19,JR2528_mESC_WT_control_150_rep2
+JR2529,mESC,WT,control,30,1,Jun-19,JR2529_mESC_WT_control_30_rep1
+JR2530,mESC,WT,control,180,1,Jun-19,JR2530_mESC_WT_control_180_rep1
+JR2531,mESC,WT,control,150,1,Jun-19,JR2531_mESC_WT_control_150_rep1
+JR2532,mESC,WT,control,300,1,Jun-19,JR2532_mESC_WT_control_300_rep1
+JR2533,mESC,WT,control,30,2,Jun-19,JR2533_mESC_WT_control_30_rep2
+JR2534,mESC,WT,control,330,2,Jun-19,JR2534_mESC_WT_control_330_rep2
+JR2535,mESC,WT,control,330,1,Jun-19,JR2535_mESC_WT_control_330_rep1
+JR2536,mESC,WT,control,0,1,Jun-19,JR2536_mESC_WT_control_0_rep1
+JR2537,mESC,WT,control,60,2,Jun-19,JR2537_mESC_WT_control_60_rep2
+JR2538,mESC,WT,control,240,2,Jun-19,JR2538_mESC_WT_control_240_rep2
+JR2539,mESC,WT,control,210,2,Jun-19,JR2539_mESC_WT_control_210_rep2
+JR2540,mESC,WT,firre_induced,180,1,Jun-19,JR2540_mESC_WT_firre_induced_180_rep1
+JR2541,mESC,WT,firre_induced,300,1,Jun-19,JR2541_mESC_WT_firre_induced_300_rep1
+JR2542,mESC,WT,firre_induced,300,2,Jun-19,JR2542_mESC_WT_firre_induced_300_rep2
+JR2543,mESC,WT,firre_induced,120,2,Jun-19,JR2543_mESC_WT_firre_induced_120_rep2
+JR2544,mESC,WT,firre_induced,150,1,Jun-19,JR2544_mESC_WT_firre_induced_150_rep1
+JR2545,mESC,WT,firre_induced,210,1,Jun-19,JR2545_mESC_WT_firre_induced_210_rep1
+JR2546,mESC,WT,firre_induced,60,1,Jun-19,JR2546_mESC_WT_firre_induced_60_rep1
+JR2547,mESC,WT,firre_induced,330,1,Jun-19,JR2547_mESC_WT_firre_induced_330_rep1
+JR2548,mESC,WT,firre_induced,30,2,Jun-19,JR2548_mESC_WT_firre_induced_30_rep2
+JR2549,mESC,WT,firre_induced,150,2,Jun-19,JR2549_mESC_WT_firre_induced_150_rep2
+JR2550,mESC,WT,firre_induced,90,2,Jun-19,JR2550_mESC_WT_firre_induced_90_rep2
+JR2551,mESC,WT,firre_induced,0,2,Jun-19,JR2551_mESC_WT_firre_induced_0_rep2
+JR2552,mESC,WT,firre_induced,210,2,Jun-19,JR2552_mESC_WT_firre_induced_210_rep2
+JR2553,mESC,WT,firre_induced,330,2,Jun-19,JR2553_mESC_WT_firre_induced_330_rep2
+JR2554,mESC,WT,firre_induced,240,2,Jun-19,JR2554_mESC_WT_firre_induced_240_rep2
+JR2555,mESC,WT,firre_induced,90,1,Jun-19,JR2555_mESC_WT_firre_induced_90_rep1
+JR2556,mESC,WT,firre_induced,30,1,Jun-19,JR2556_mESC_WT_firre_induced_30_rep1
+JR2557,mESC,WT,firre_induced,60,2,Jun-19,JR2557_mESC_WT_firre_induced_60_rep2
+JR2558,mESC,WT,firre_induced,240,1,Jun-19,JR2558_mESC_WT_firre_induced_240_rep1
+JR2559,mESC,WT,firre_induced,270,1,Jun-19,JR2559_mESC_WT_firre_induced_270_rep1
+JR2560,mESC,WT,firre_induced,180,2,Jun-19,JR2560_mESC_WT_firre_induced_180_rep2
+JR2561,mESC,WT,firre_induced,120,1,Jun-19,JR2561_mESC_WT_firre_induced_120_rep1
+JR2562,mESC,WT,firre_induced,270,2,Jun-19,JR2562_mESC_WT_firre_induced_270_rep2
+JR2563,mESC,WT,firre_induced,0,1,Jun-19,JR2563_mESC_WT_firre_induced_0_rep1
+JR2706,mESC,WT,control,5760,2,Nov-19,JR2706_mESC_WT_control_5760_rep2
+JR2707,mESC,WT,control,0,3,Nov-19,JR2707_mESC_WT_control_0_rep3
+JR2708,mESC,WT,control,0,1,Nov-19,JR2708_mESC_WT_control_0_rep1
+JR2709,mESC,WT,firre_induced,5760,3,Nov-19,JR2709_mESC_WT_firre_induced_5760_rep3
+JR2710,mESC,WT,control,0,2,Nov-19,JR2710_mESC_WT_control_0_rep2
+JR2711,mESC,WT,firre_induced,0,1,Nov-19,JR2711_mESC_WT_firre_induced_0_rep1
+JR2712,mESC,WT,firre_induced,5760,1,Nov-19,JR2712_mESC_WT_firre_induced_5760_rep1
+JR2713,mESC,WT,firre_induced,5760,2,Nov-19,JR2713_mESC_WT_firre_induced_5760_rep2
+JR2714,mESC,WT,firre_induced,0,3,Nov-19,JR2714_mESC_WT_firre_induced_0_rep3
+JR2715,mESC,WT,control,5760,1,Nov-19,JR2715_mESC_WT_control_5760_rep1
+JR2716,mESC,WT,control,5760,3,Nov-19,JR2716_mESC_WT_control_5760_rep3
+JR2717,mESC,WT,firre_induced,0,2,Nov-19,JR2717_mESC_WT_firre_induced_0_rep2
+JR2718,mESC,KO,firre_induced,5760,2,Nov-19,JR2718_mESC_KO_firre_induced_5760_rep2
+JR2719,mESC,KO,control,5760,3,Nov-19,JR2719_mESC_KO_control_5760_rep3
+JR2720,mESC,KO,control,0,3,Nov-19,JR2720_mESC_KO_control_0_rep3
+JR2721,mESC,KO,control,5760,1,Nov-19,JR2721_mESC_KO_control_5760_rep1
+JR2722,mESC,KO,control,0,2,Nov-19,JR2722_mESC_KO_control_0_rep2
+JR2723,mESC,KO,firre_induced,0,3,Nov-19,JR2723_mESC_KO_firre_induced_0_rep3
+JR2724,mESC,KO,firre_induced,0,2,Nov-19,JR2724_mESC_KO_firre_induced_0_rep2
+JR2725,mESC,KO,firre_induced,5760,1,Nov-19,JR2725_mESC_KO_firre_induced_5760_rep1
+JR2726,mESC,KO,firre_induced,0,1,Nov-19,JR2726_mESC_KO_firre_induced_0_rep1
+JR2727,mESC,KO,control,0,1,Nov-19,JR2727_mESC_KO_control_0_rep1
+JR2728,mESC,KO,control,5760,2,Nov-19,JR2728_mESC_KO_control_5760_rep2
+JR2729,mESC,KO,firre_induced,5760,3,Nov-19,JR2729_mESC_KO_firre_induced_5760_rep3
+JR2730,mESC,WT,control,1440,3,Dec-19,JR2730_mESC_WT_control_1440_rep3
+JR2731,mESC,WT,control,2880,1,Dec-19,JR2731_mESC_WT_control_2880_rep1
+JR2732,mESC,WT,control,1440,2,Dec-19,JR2732_mESC_WT_control_1440_rep2
+JR2733,mESC,WT,firre_induced,2880,1,Dec-19,JR2733_mESC_WT_firre_induced_2880_rep1
+JR2734,mESC,WT,firre_induced,2880,3,Dec-19,JR2734_mESC_WT_firre_induced_2880_rep3
+JR2735,mESC,WT,firre_induced,1440,1,Dec-19,JR2735_mESC_WT_firre_induced_1440_rep1
+JR2736,mESC,WT,firre_induced,1440,2,Dec-19,JR2736_mESC_WT_firre_induced_1440_rep2
+JR2737,mESC,WT,control,2880,3,Dec-19,JR2737_mESC_WT_control_2880_rep3
+JR2738,mESC,WT,control,2880,2,Dec-19,JR2738_mESC_WT_control_2880_rep2
+JR2739,mESC,WT,firre_induced,2880,2,Dec-19,JR2739_mESC_WT_firre_induced_2880_rep2
+JR2740,mESC,WT,firre_induced,1440,3,Dec-19,JR2740_mESC_WT_firre_induced_1440_rep3
+JR2741,mESC,WT,control,1440,1,Dec-19,JR2741_mESC_WT_control_1440_rep1
+JR2742,mESC,KO,firre_induced,1440,3,Dec-19,JR2742_mESC_KO_firre_induced_1440_rep3
+JR2743,mESC,KO,firre_induced,2880,2,Dec-19,JR2743_mESC_KO_firre_induced_2880_rep2
+JR2744,mESC,KO,firre_induced,2880,3,Dec-19,JR2744_mESC_KO_firre_induced_2880_rep3
+JR2745,mESC,KO,control,1440,3,Dec-19,JR2745_mESC_KO_control_1440_rep3
+JR2746,mESC,KO,firre_induced,1440,1,Dec-19,JR2746_mESC_KO_firre_induced_1440_rep1
+JR2747,mESC,KO,firre_induced,2880,1,Dec-19,JR2747_mESC_KO_firre_induced_2880_rep1
+JR2748,mESC,KO,firre_induced,1440,2,Dec-19,JR2748_mESC_KO_firre_induced_1440_rep2
+JR2749,mESC,KO,control,1440,1,Dec-19,JR2749_mESC_KO_control_1440_rep1
+JR2750,mESC,KO,control,2880,1,Dec-19,JR2750_mESC_KO_control_2880_rep1
+JR2751,mESC,KO,control,1440,2,Dec-19,JR2751_mESC_KO_control_1440_rep2
+JR2752,mESC,KO,control,2880,2,Dec-19,JR2752_mESC_KO_control_2880_rep2
+JR2753,mESC,KO,control,2880,3,Dec-19,JR2753_mESC_KO_control_2880_rep3
+JR2754,mESC,KO,firre_induced,720,2,Dec-19,JR2754_mESC_KO_firre_induced_720_rep2
+JR2755,mESC,WT,firre_induced,720,1,Dec-19,JR2755_mESC_WT_firre_induced_720_rep1
+JR2756,mESC,KO,control,720,1,Dec-19,JR2756_mESC_KO_control_720_rep1
+JR2757,mESC,KO,firre_induced,720,3,Dec-19,JR2757_mESC_KO_firre_induced_720_rep3
+JR2758,mESC,WT,control,720,3,Dec-19,JR2758_mESC_WT_control_720_rep3
+JR2759,mESC,WT,firre_induced,720,3,Dec-19,JR2759_mESC_WT_firre_induced_720_rep3
+JR2760,mESC,WT,firre_induced,720,2,Dec-19,JR2760_mESC_WT_firre_induced_720_rep2
+JR2761,mESC,KO,firre_induced,720,1,Dec-19,JR2761_mESC_KO_firre_induced_720_rep1
+JR2762,mESC,WT,control,720,1,Dec-19,JR2762_mESC_WT_control_720_rep1
+JR2763,mESC,KO,control,720,2,Dec-19,JR2763_mESC_KO_control_720_rep2
+JR2764,mESC,KO,control,720,3,Dec-19,JR2764_mESC_KO_control_720_rep3
+JR2765,mESC,WT,control,720,2,Dec-19,JR2765_mESC_WT_control_720_rep2
+JR2878,NPC,WT,control,0,1,Aug-20,JR2878_NPC_WT_control_0_rep1
+JR2879,NPC,WT,control,0,2,Aug-20,JR2879_NPC_WT_control_0_rep2
+JR2880,NPC,WT,control,90,2,Aug-20,JR2880_NPC_WT_control_90_rep2
+JR2881,NPC,WT,control,180,2,Aug-20,JR2881_NPC_WT_control_180_rep2
+JR2882,NPC,WT,control,360,2,Aug-20,JR2882_NPC_WT_control_360_rep2
+JR2883,NPC,WT,control,30,1,Aug-20,JR2883_NPC_WT_control_30_rep1
+JR2884,NPC,WT,control,360,1,Aug-20,JR2884_NPC_WT_control_360_rep1
+JR2885,NPC,WT,control,30,2,Aug-20,JR2885_NPC_WT_control_30_rep2
+JR2886,NPC,WT,control,180,1,Aug-20,JR2886_NPC_WT_control_180_rep1
+JR2887,NPC,WT,control,270,2,Aug-20,JR2887_NPC_WT_control_270_rep2
+JR2888,NPC,WT,control,270,1,Aug-20,JR2888_NPC_WT_control_270_rep1
+JR2889,NPC,WT,control,90,1,Aug-20,JR2889_NPC_WT_control_90_rep1
+JR2890,NPC,WT,firre_induced,360,2,Aug-20,JR2890_NPC_WT_firre_induced_360_rep2
+JR2891,NPC,WT,firre_induced,30,2,Aug-20,JR2891_NPC_WT_firre_induced_30_rep2
+JR2892,NPC,WT,firre_induced,90,1,Aug-20,JR2892_NPC_WT_firre_induced_90_rep1
+JR2893,NPC,WT,firre_induced,360,1,Aug-20,JR2893_NPC_WT_firre_induced_360_rep1
+JR2894,NPC,WT,firre_induced,180,2,Aug-20,JR2894_NPC_WT_firre_induced_180_rep2
+JR2895,NPC,WT,firre_induced,270,1,Aug-20,JR2895_NPC_WT_firre_induced_270_rep1
+JR2896,NPC,WT,firre_induced,30,1,Aug-20,JR2896_NPC_WT_firre_induced_30_rep1
+JR2897,NPC,WT,firre_induced,180,1,Aug-20,JR2897_NPC_WT_firre_induced_180_rep1
+JR2898,NPC,WT,firre_induced,90,2,Aug-20,JR2898_NPC_WT_firre_induced_90_rep2
+JR2899,NPC,WT,firre_induced,270,2,Aug-20,JR2899_NPC_WT_firre_induced_270_rep2
+JR2900,NPC,WT,firre_induced,0,2,Aug-20,JR2900_NPC_WT_firre_induced_0_rep2
+JR2901,NPC,WT,firre_induced,0,1,Aug-20,JR2901_NPC_WT_firre_induced_0_rep1
+JR2902,NPC,KO,control,0,1,Aug-20,JR2902_NPC_KO_control_0_rep1
+JR2903,NPC,KO,control,0,2,Aug-20,JR2903_NPC_KO_control_0_rep2
+JR2904,NPC,KO,control,360,1,Aug-20,JR2904_NPC_KO_control_360_rep1
+JR2905,NPC,KO,control,270,2,Aug-20,JR2905_NPC_KO_control_270_rep2
+JR2906,NPC,KO,control,270,1,Aug-20,JR2906_NPC_KO_control_270_rep1
+JR2907,NPC,KO,control,30,1,Aug-20,JR2907_NPC_KO_control_30_rep1
+JR2908,NPC,KO,control,360,2,Aug-20,JR2908_NPC_KO_control_360_rep2
+JR2909,NPC,KO,control,180,1,Aug-20,JR2909_NPC_KO_control_180_rep1
+JR2910,NPC,KO,control,90,1,Aug-20,JR2910_NPC_KO_control_90_rep1
+JR2911,NPC,KO,control,180,2,Aug-20,JR2911_NPC_KO_control_180_rep2
+JR2912,NPC,KO,control,30,2,Aug-20,JR2912_NPC_KO_control_30_rep2
+JR2913,NPC,KO,control,90,2,Aug-20,JR2913_NPC_KO_control_90_rep2
+JR2914,NPC,KO,firre_induced,0,2,Aug-20,JR2914_NPC_KO_firre_induced_0_rep2
+JR2915,NPC,KO,firre_induced,360,2,Aug-20,JR2915_NPC_KO_firre_induced_360_rep2
+JR2916,NPC,KO,firre_induced,360,1,Aug-20,JR2916_NPC_KO_firre_induced_360_rep1
+JR2917,NPC,KO,firre_induced,90,1,Aug-20,JR2917_NPC_KO_firre_induced_90_rep1
+JR2918,NPC,KO,firre_induced,270,2,Aug-20,JR2918_NPC_KO_firre_induced_270_rep2
+JR2919,NPC,KO,firre_induced,30,1,Aug-20,JR2919_NPC_KO_firre_induced_30_rep1
+JR2920,NPC,KO,firre_induced,90,2,Aug-20,JR2920_NPC_KO_firre_induced_90_rep2
+JR2921,NPC,KO,firre_induced,180,2,Aug-20,JR2921_NPC_KO_firre_induced_180_rep2
+JR2922,NPC,KO,firre_induced,0,1,Aug-20,JR2922_NPC_KO_firre_induced_0_rep1
+JR2923,NPC,KO,firre_induced,30,2,Aug-20,JR2923_NPC_KO_firre_induced_30_rep2
+JR2924,NPC,KO,firre_induced,180,1,Aug-20,JR2924_NPC_KO_firre_induced_180_rep1
+JR2925,NPC,KO,firre_induced,270,1,Aug-20,JR2925_NPC_KO_firre_induced_270_rep1
