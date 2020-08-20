@@ -30,3 +30,6 @@ work/*
 *.bai
 *.zip
 *work*
+*.bedGraph
+*qc*
+*align*
