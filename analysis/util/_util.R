@@ -1,62 +1,72 @@
-# written by Taeyoung Hwang, taeyoungh@gmail.com
-# last update: 5/1/2018
-
-fCountReader <- function (countDir, sampleID, suffix=".fCounts") {
+run_timecourse_deseq <- function(experiment,
+                                 counts, samples, genes,
+                                 design_formula,  
+                                 reduced_formula, 
+                                 ncores = 12,
+                                 save_dds = TRUE) {
   
-  for (i in 1:length(sampleID)) {
-    filename=paste(countDir,"/",sampleID[i],suffix,sep="")
-    print(filename)
-    temp=read.table(filename,header=T,stringsAsFactors = F)
-    if (i==1) {
-      annot=temp[,c(1,5,6)]
-      fCount=data.frame(temp[,8])
-    } else {
-      fCount=data.frame(fCount,temp[,8])
-    }
+  ct <- unlist(strsplit(experiment, "_"))[[1]]
+  fko <- unlist(strsplit(experiment, "_"))[[2]]
+  
+  samples <- samples %>% filter(cell_type == ct,
+                                firre_ko == fko)
+  
+  counts <- counts[,samples$sample_id]
+  mode(counts) <- "integer"
+  
+  # Reorder gencode genes
+  genes <- genes[rownames(counts)]
+  
+  # Check ordering
+  stopifnot(all(rownames(samples) == colnames(counts)))
+  stopifnot(all(names(gencode_genes) == rownames(counts)))
+  
+  dds <- DESeqDataSetFromMatrix(countData = counts, 
+                                colData = samples, 
+                                design = design_formula,
+                                rowData = gencode_genes)
+  dds <- DESeq(dds, 
+               test="LRT", 
+               reduced = reduced_formula,
+               parallel=TRUE,
+               BPPARAM=MulticoreParam(ncores))
+  
+  if(save_dds == TRUE) {
+    saveRDS(dds, paste0("results/",
+                        ct, "_",
+                        fko, "_dds.rds"))
   }
-  colnames(annot)=c("geneID","strand","length")
-  annot$strand=substr(annot$strand,1,1)
   
-  colnames(fCount)=sampleID
-  rownames(fCount)=annot$geneID
-  return(list(count=fCount,annot=annot))
-}
-
-countConverter<-function(fCount,return="TPM") {
-  if (return=="FPKM") {
-    out=fCount$count/(fCount$annot$length/1000)
-    out=t(t(out)/(colSums(fCount$count)/10^6))
-  } else if (return=="TPM") {
-    out=fCount$count/(fCount$annot$length/1000)
-    out=t(t(out)/(colSums(out)/10^6))
+  # TODO: Fix base mean filtering since I previously set
+  # independent filtering to false.
+  # https://support.bioconductor.org/p/76144/
+  # res$pvalue[res$baseMean < x] <- NA
+  # res$padj <- p.adjust(res$pvalue, method="BH")
+  
+  # Compile results
+  res_names <- resultsNames(dds)
+  res <- results(dds, 
+                 name = res_names[1],
+                 independentFiltering=FALSE,
+                 cooksCutoff=FALSE) %>% 
+    as.data.frame() %>%
+    rownames_to_column(var = "gene_id") %>%
+    merge(g2s) %>%
+    mutate(result_name = res_names[1]) 
+  
+  for(i in 2:length(res_names)) {
+    tmp_res <- results(dds, 
+                       name = res_names[i],
+                       independentFiltering=FALSE) %>% 
+      as.data.frame() %>%
+      rownames_to_column(var = "gene_id") %>%
+      merge(g2s) %>%
+      mutate(result_name = res_names[i]) 
+    res <- bind_rows(res, tmp_res)
   }
-  return(out)
+  
+  # Label results
+  res$cell_type <- ct
+  res$firre_ko <- fko
+  return(res)
 }
-
-plotPCA <- function (expr, sampleSheet, colorVar=NA, shapeVar=NA, pointSize=5) {
-  require("ggplot2")
-  pcaObj<-prcomp(t(expr[which(apply(expr,1,var)>0),]), center=T, scale=T)
-  pcaRes=data.frame(sampleSheet,PC1=pcaObj$x[,1],PC2=pcaObj$x[,2])
-  pcaVarsPct=signif(((pcaObj$sdev)^2)/(sum((pcaObj$sdev)^2)),3)*100
-  
-  if (!is.na(colorVar) & !is.na(shapeVar)) {
-    p=ggplot(pcaRes, aes_string("PC1", "PC2", color=colorVar, shape=shapeVar))
-  }  
-  
-  if (!is.na(colorVar) & is.na(shapeVar)) {
-    p=ggplot(pcaRes, aes_string("PC1", "PC2", color=colorVar))
-  }  
-  
-  if (is.na(colorVar) & !is.na(shapeVar)) {
-    p=ggplot(pcaRes, aes_string("PC1", "PC2", shape=shapeVar))
-  }  
-  
-  if (is.na(colorVar) & is.na(shapeVar)) {
-    p=ggplot(pcaRes, aes_string("PC1", "PC2"))
-  }  
-  
-  p + geom_point(size=pointSize) +
-    xlab(paste0("PC1: ",pcaVarsPct[1],"% variance")) + ylab(paste0("PC2: ",pcaVarsPct[2],"% variance"))
-  
-}
-

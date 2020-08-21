@@ -1,0 +1,335 @@
+---
+title: "de"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(stringsAsFactors = FALSE)
+library(tidyverse)
+library(DESeq2)
+source("../util/_plot_theme.R")
+source("../util/_util.R")
+```
+
+```{r import}
+### ANNOTATIONS
+if(!file.exists("../util/gencode.vM25.annotation.genes.gtf")) {
+  gencode <- rtracklayer::import(file.path("../../../../genomes/Mus_musculus/",
+                                           "Gencode/M25/",
+                                           "gencode.vM25.annotation.gtf"))
+  gencode_genes <- gencode[gencode$type == "gene"]
+  rtracklayer::export(gencode_genes, 
+                      "../util/gencode.vM25.annotation.genes.gtf")
+}
+gencode_genes <- rtracklayer::import(file.path("../util/",
+                                               "gencode.vM25.annotation.genes.gtf"))
+names(gencode_genes) <- gencode_genes$gene_id
+
+g2s <- gencode_genes %>% as.data.frame() %>%
+  dplyr::select(gene_id, gene_name)
+
+tx2gene <- read.csv("../../rnaseq/results/salmon/tx2gene.csv")
+
+### COUNTS
+tpm <- read.csv("../../rnaseq/results/salmon/salmon_merged_gene_tpm.csv") %>%
+  merge(g2s) %>%
+  dplyr::select(gene_id, gene_name, everything())
+
+salmon_gene_counts <- read.csv(file.path("../../rnaseq/results/salmon/",
+                                         "salmon_merged_gene_counts.csv")) %>%
+  column_to_rownames("gene_id") %>%
+  as.matrix()
+mode(salmon_gene_counts) <- "integer"
+
+### SAMPLE INFO
+# Somehow the long timepoints didn't make it into this run.
+# TODO: re-run with the long timepoints. Gaaah.
+# Here we sloppily remove also the zero timepoints.
+samples <- read.csv("../../rnaseq/samplesheet.csv") %>%
+  filter(cell_type != "pMEF",
+         date_sequenced != "Sep-18",
+         timepoint_minutes < 400,
+         !sample_id %in% c("JR2707", "JR2708", "JR2710", "JR2711", 
+                           "JR2714", "JR2717", "JR2720", "JR2722",
+                           "JR2723", "JR2724", "JR2726", "JR2727")) %>%
+  mutate(firre_ko = factor(firre_ko, levels = c("WT", "KO")),
+         timepoint_minutes = factor(timepoint_minutes, 
+                                    levels = c(seq(0,360,30),720,1440,2880,5760)),
+         firre_induced = factor(firre_induced, 
+                                levels = c("control", "firre_induced")))
+rownames(samples) <- samples$sample_id
+```
+
+
+```{r}
+# Since this takes a while to run, we'll cache this part
+if(!file.exists("results/deseq_res.csv")) {
+  
+  design_formula <- formula(paste0("~ timepoint_minutes + firre_induced + ",
+                                   "firre_induced*timepoint_minutes"))
+  reduced_formula <- formula("~ timepoint_minutes + firre_induced")
+  # We're going to make 4 comparisons
+  experiments <- c("ESC_KO","ESC_WT", "NPC_KO", "NPC_WT")
+  
+  deseq_res <- lapply(experiments, run_timecourse_deseq,
+                      counts = salmon_gene_counts, 
+                      samples = samples,
+                      genes = gencode_genes,
+                      design_formula = design_formula,
+                      reduced_formula = reduced_formula)
+  
+  resdf <- bind_rows(deseq_res)
+  write_csv(resdf, "results/deseq_res.csv")
+}
+resdf <- read.csv("results/deseq_res.csv")
+
+# Fix the base mean problem here?
+# TODO: Come up with a better threshold based on what DEseq2 originally set
+# as the threshold for independent filtering. 
+resdf$pvalue[resdf$baseMean < 70] <- NA
+resdf$padj <- p.adjust(resdf$pvalue, method="BH")
+```
+
+```{r plot_venn, message=FALSE}
+sig_matrix <- resdf %>% filter(padj < 0.05) %>%
+  dplyr::select(gene_id, gene_name, cell_type, firre_ko) %>%
+  unite("experiment", cell_type, firre_ko) %>%
+  mutate(sig = 1) %>%
+  distinct() %>%
+  pivot_wider(names_from = experiment, values_from = sig, values_fill = 0) %>%
+  dplyr::select(-gene_id) %>%
+  column_to_rownames("gene_name") %>%
+  as.matrix()
+
+
+library(gplots)
+# pdf("figures/venn.pdf")
+gplots::venn(sig_matrix, simplify = TRUE)
+# dev.off()
+```
+
+## Time LFC Plot
+
+```{r}
+# I suppose first, it's better for this plot to use the shrunked lfc
+# but let's try it out with the non-shrunken lfc
+
+# Label the comparisons
+resdf$comparison <- "intercept"
+resdf[grep("timepoint_minutes_",resdf$result_name),"comparison"] <- "vs_zero"
+resdf[resdf$result_name == "firre_induced_firre_induced_vs_control",
+        "comparison"] <- "static_firre_induction_vs_control"
+resdf[resdf$result_name == "firre_ko_KO_vs_WT",
+        "comparison"] <- "KO_vs_WT"
+resdf[grep(".firre_induced",resdf$result_name,
+             fixed = T),"comparison"] <- "dynamic_firre_induction_vs_control"
+
+# Then let's just grab the dynamic comparison
+dyn_res <- resdf %>% filter(comparison == "dynamic_firre_induction_vs_control")
+dyn_res$timepoint <- sapply(dyn_res$result_name,
+                                    function(x) {
+                                      x <- gsub("timepoint_minutes", "", x)
+                                      gsub(".firre_inducedfirre_induced", "", x,
+                                           fixed = T)
+                                    }) %>%
+  as.numeric()
+# Add zeros for visual apeal
+dyn_res_zeros <- dyn_res %>% dplyr::select(gene_id,
+                                           baseMean,
+                                           stat,
+                                           pvalue,
+                                           padj,
+                                           gene_name,
+                                           cell_type,
+                                           firre_ko,
+                                           comparison) %>%
+  distinct()
+dyn_res_zeros$timepoint <- 0
+dyn_res_zeros$log2FoldChange <- 0
+dyn_res_zeros$lfcSE <- 0
+dyn_res_zeros$result_name <- "zeros"
+#Put in order for merging
+dyn_res_zeros <- dyn_res_zeros %>% dplyr::select(colnames(dyn_res))
+dyn_res <- bind_rows(dyn_res, dyn_res_zeros)
+dyn_res$timepoint <- factor(dyn_res$timepoint, 
+                                    levels = seq(0,360,30))
+# first let's just plot the significant genes
+# TODO: this is kind of hacky to filter out this 
+# gene which is small baseMean and probably kind of noisy
+# The base mean cutoff should probably be made per experiment
+sig_dyn_res_esc <- dyn_res %>% filter(padj < 0.05,
+                                      lfcSE < 1)
+g <- ggplot(sig_dyn_res_esc, aes(x = timepoint, y = log2FoldChange, group = gene_name))
+g + geom_hline(yintercept = 0) +
+  geom_point(alpha = 0.7) + 
+  geom_line(color = "#424242", alpha = 0.2) + 
+  facet_wrap(cell_type~firre_ko, scales = "free_y") +
+  theme_paperwhite()
+
+g <- ggplot(sig_dyn_res_esc %>% filter(gene_name != "Firre"), 
+            aes(x = timepoint, y = log2FoldChange, group = gene_name))
+g + geom_hline(yintercept = 0) +
+  geom_point(alpha = 0.7) + 
+  geom_line(color = "#424242", alpha = 0.2) + 
+  facet_wrap(cell_type~firre_ko, scales = "free_y") +
+  theme_paperwhite()
+  
+```
+
+```{r}
+# Let's try out some shrinkage
+dds1 <- readRDS("results/ESC_KO_dds.rds")
+resultsNames(dds1)
+res1 <- lfcShrink(dds1, coef = "timepoint_minutes30.firre_inducedfirre_induced",
+                  type = "apeglm", parallel = TRUE, BPPARAM=MulticoreParam(8))
+```
+
+
+
+
+
+
+
+```{r}
+
+
+
+resdf_wide <- resdf %>% dplyr::select(gene_id,
+                                      gene_name, cell_type,
+                                      result_name, log2FoldChange,
+                                      padj) %>%
+  pivot_wider(id_cols = c("gene_id", "gene_name", "result_name"),
+              names_from = "cell_type", values_from = c("log2FoldChange", "padj"))
+
+sig_both <- resdf_wide %>% filter(padj_mESC < 0.01,
+                                  padj_NPC < 0.01)
+sig_npc <- resdf_wide %>% filter(padj_NPC < 0.05)
+sig_esc <- resdf_wide %>% filter(padj_mESC < 0.05)
+length(unique(sig_npc$gene_name))
+length(unique(sig_esc$gene_name))
+# Let's make some sweet plots.
+goi <- "Firre"
+goi <- "Supv3l1"
+goi <- "Shf"
+goi <- "Adgrg1"
+goi <- "Lefty2"
+goi <- "Gm47652"
+goi <- "Il9r"
+goi <- "Shf"
+goi <- "Duox1"
+goi <- "Gfap"
+goi <- "Apod"
+goi <- "Gm13040"
+
+res_goi <- resdf %>% filter(gene_name == goi)
+tpm_goi <- tpm %>% filter(gene_name == goi) %>%
+  pivot_longer(3:ncol(.), names_to = "sample_id",
+               values_to = "tpm")
+tpm_npc_goi <- tpm_goi %>% filter(sample_id %in% npc_samples$sample_id) %>%
+  merge(npc_samples)
+tpm_esc_goi <- tpm_goi %>% filter(sample_id %in% esc_samples$sample_id) %>%
+  merge(esc_samples)
+
+tpm_goi <- bind_rows(tpm_esc_goi, tpm_npc_goi)
+tpm_goi <- tpm_goi %>% 
+  unite("condition", cell_type, firre_ko, firre_induced, sep = ";",
+        remove = FALSE)
+
+g <- ggplot(tpm_goi, aes(x = timepoint_minutes, y = tpm, 
+                         color = firre_induced,
+                         group = condition))
+g + geom_point() + 
+  geom_smooth(method = "loess", formula = "y ~ x", se = FALSE) +
+  facet_grid(cell_type~firre_ko, scales = "free_y") +
+  theme_paperwhite() +
+  scale_color_manual(values = c("#424242","#a8404c")) + 
+  ggtitle(goi)
+
+
+# Label the comparisons
+res_goi$comparison <- "intercept"
+res_goi[grep("timepoint_minutes_",res_goi$result_name),"comparison"] <- "vs_zero"
+res_goi[res_goi$result_name == "firre_induced_firre_induced_vs_control",
+        "comparison"] <- "static_firre_induction_vs_control"
+res_goi[res_goi$result_name == "firre_ko_KO_vs_WT",
+        "comparison"] <- "KO_vs_WT"
+res_goi[grep(".firre_induced",res_goi$result_name,
+             fixed = T),"comparison"] <- "dynamic_firre_induction_vs_control"
+
+res_goi_dynamic <- res_goi %>% 
+  filter(comparison == "dynamic_firre_induction_vs_control") 
+res_goi_dynamic$timepoint <- sapply(res_goi_dynamic$result_name,
+                                    function(x) {
+                                      x <- gsub("timepoint_minutes", "", x)
+                                      gsub(".firre_inducedfirre_induced", "", x,
+                                           fixed = T)
+                                    }) %>%
+  as.numeric()
+res_goi_dynamic$timepoint <- factor(res_goi_dynamic$timepoint, 
+                                    levels = seq(30,360,30))
+g <- ggplot(res_goi_dynamic, aes(y = log2FoldChange, x = timepoint))
+g + geom_segment( aes(x= timepoint, xend= timepoint, y=0, yend=log2FoldChange)) +
+  geom_point() + 
+  geom_hline(yintercept = 0) +
+  facet_grid(cell_type~.) + 
+  theme_paperwhite() +
+  ggtitle("Firre induction vs control")
+
+res_goi_vs_zero <- res_goi %>% filter(comparison == "vs_zero")
+res_goi_vs_zero$timepoint <- sapply(res_goi_vs_zero$result_name,
+                                    function(x) {
+                                      unlist(strsplit(x,"tes_"))[[2]]
+                                    })
+res_goi_vs_zero$timepoint <- factor(res_goi_vs_zero$timepoint, 
+                                    levels = paste0(seq(30,360,30),"_vs_0"))
+
+g <- ggplot(res_goi_vs_zero, aes(x = timepoint, y = log2FoldChange))
+g + geom_hline(yintercept = 0) +
+  geom_segment( aes(x= timepoint, xend= timepoint, y=0, yend=log2FoldChange)) +
+  geom_point() +
+  facet_grid(cell_type ~.) + 
+  theme_paperwhite() + 
+  ggtitle("Comparison to zero timepoint")
+
+
+# Responds to Firre in time
+# Is DE in response to Firre KO
+```
+
+```{r}
+# # Aside for Adgrg1
+# # https://storage.googleapis.com/gtex_analysis_v8/rna_seq_data/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_gene_tpm.gct.gz
+# gtex <- read.table("data/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_gene_tpm.gct",
+#                    sep = "\t",
+#                    header = T,
+#                    skip=2)
+# grep("FIRRE", gtex$Description)
+# grep("ADGRG1", gtex$Description)
+# gtex_goi <- gtex[c(55114,42360),]
+# gtex_goi <- gtex_goi %>%
+#   pivot_longer(3:ncol(.),names_to = "sample",
+#                values_to = "exp") %>%
+#   dplyr::select(-Name) %>%
+#   pivot_wider(names_from = Description, values_from = exp)
+# library(ggpubr)
+# gtex_goi$log10_firre <- log10(gtex_goi$FIRRE)
+# gtex_goi$log10_adgrg1 <- log10(gtex_goi$ADGRG1)
+# ggscatter(gtex_goi %>% filter(log10_firre > -3), x = "log10_firre", y = "log10_adgrg1") + 
+#   stat_cor()
+# g <- ggplot(gtex_goi %>% filter(), aes(x = log10(FIRRE), y = log10(ADGRG1)))
+# g + stat_density_2d(aes(fill = ..level..), geom = "polygon") +
+#   scale_fill_gradientn(colors = c("#FFEDA0", "#FEB24C", "#F03B20")) + 
+#   theme_paperwhite() + 
+#   stat_cor() + 
+#   ggtitle("Co-expression across GTEX samples",
+#           subtitle = "n = 17382")
+# write_csv(gtex_goi, "results/gtex_firre_adgrg1.csv")
+```
+
+
+
+
+

@@ -33,4 +33,5 @@ work/*
 *.bedGraph
 *qc*
 *align*
+*.svg
 
