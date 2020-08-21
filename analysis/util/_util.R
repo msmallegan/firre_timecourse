@@ -2,6 +2,7 @@ run_timecourse_deseq <- function(experiment,
                                  counts, samples, genes,
                                  design_formula,  
                                  reduced_formula, 
+                                 independent_filtering = TRUE,
                                  ncores = 12,
                                  save_dds = TRUE) {
   
@@ -37,17 +38,11 @@ run_timecourse_deseq <- function(experiment,
                         fko, "_dds.rds"))
   }
   
-  # TODO: Fix base mean filtering since I previously set
-  # independent filtering to false.
-  # https://support.bioconductor.org/p/76144/
-  # res$pvalue[res$baseMean < x] <- NA
-  # res$padj <- p.adjust(res$pvalue, method="BH")
-  
   # Compile results
   res_names <- resultsNames(dds)
   res <- results(dds, 
                  name = res_names[1],
-                 independentFiltering=FALSE,
+                 independentFiltering=independent_filtering,
                  cooksCutoff=FALSE) %>% 
     as.data.frame() %>%
     rownames_to_column(var = "gene_id") %>%

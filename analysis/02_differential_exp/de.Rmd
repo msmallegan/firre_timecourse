@@ -10,6 +10,8 @@ knitr::opts_chunk$set(echo = TRUE)
 options(stringsAsFactors = FALSE)
 library(tidyverse)
 library(DESeq2)
+library(gplots)
+library(ggrepel)
 source("../util/_plot_theme.R")
 source("../util/_util.R")
 ```
@@ -43,6 +45,9 @@ salmon_gene_counts <- read.csv(file.path("../../rnaseq/results/salmon/",
   column_to_rownames("gene_id") %>%
   as.matrix()
 mode(salmon_gene_counts) <- "integer"
+
+# Put in order
+gencode_genes <- gencode_genes[rownames(salmon_gene_counts)]
 
 ### SAMPLE INFO
 # Somehow the long timepoints didn't make it into this run.
@@ -79,18 +84,34 @@ if(!file.exists("results/deseq_res.csv")) {
                       samples = samples,
                       genes = gencode_genes,
                       design_formula = design_formula,
-                      reduced_formula = reduced_formula)
+                      reduced_formula = reduced_formula,
+                      independent_filtering = FALSE)
   
   resdf <- bind_rows(deseq_res)
   write_csv(resdf, "results/deseq_res.csv")
 }
 resdf <- read.csv("results/deseq_res.csv")
 
-# Fix the base mean problem here?
-# TODO: Come up with a better threshold based on what DEseq2 originally set
-# as the threshold for independent filtering. 
+# Something is kind of wonky with the independent filtering cutoff for NPCWT
+# I think it could be because not much is changing in that data, but it
+# has a really high filterThreshold. 
+# For that reason, I will run the experiments without filtering in 
+# DESeq2 and then filter at a filterThreshold of 70.
+# ORIGINAL DESEQ2 filterThresholds:
+# NPC WT = 969.9947
+# NPC KO = 0
+# ESC WT = 3.355927
+# ESC KO = 79.98546
+
 resdf$pvalue[resdf$baseMean < 70] <- NA
-resdf$padj <- p.adjust(resdf$pvalue, method="BH")
+resdf$padj <- NA
+
+# Also, since we're testing different experiments,
+# it's best to make the multiple testing correction 
+# on everything together.
+resdf <- resdf %>% group_by(cell_type, firre_ko) %>%
+  mutate(padj = p.adjust(pvalue, method="BH"))
+# resdf$padj <- p.adjust(resdf$pvalue, method="BH")
 ```
 
 ```{r plot_venn, message=FALSE}
@@ -104,11 +125,10 @@ sig_matrix <- resdf %>% filter(padj < 0.05) %>%
   column_to_rownames("gene_name") %>%
   as.matrix()
 
-
-library(gplots)
-# pdf("figures/venn.pdf")
 gplots::venn(sig_matrix, simplify = TRUE)
-# dev.off()
+pdf("figures/venn.pdf")
+gplots::venn(sig_matrix, simplify = TRUE)
+dev.off()
 ```
 
 ## Time LFC Plot
@@ -160,23 +180,34 @@ dyn_res$timepoint <- factor(dyn_res$timepoint,
 # TODO: this is kind of hacky to filter out this 
 # gene which is small baseMean and probably kind of noisy
 # The base mean cutoff should probably be made per experiment
-sig_dyn_res_esc <- dyn_res %>% filter(padj < 0.05,
-                                      lfcSE < 1)
-g <- ggplot(sig_dyn_res_esc, aes(x = timepoint, y = log2FoldChange, group = gene_name))
+sig_dyn <- dyn_res %>% filter(padj < 0.05)
+
+ltp <- sig_dyn %>% filter(timepoint == 330 | timepoint == 360) %>%
+  arrange(-abs(log2FoldChange)) %>%
+  group_by(cell_type, firre_ko) %>%
+  dplyr::slice(1:3)
+
+g <- ggplot(sig_dyn, aes(x = timepoint, y = log2FoldChange, group = gene_name))
 g + geom_hline(yintercept = 0) +
   geom_point(alpha = 0.7) + 
   geom_line(color = "#424242", alpha = 0.2) + 
   facet_wrap(cell_type~firre_ko, scales = "free_y") +
-  theme_paperwhite()
+  theme_paperwhite() +
+    geom_text_repel(data = ltp,
+                  aes(label = gene_name))
 
-g <- ggplot(sig_dyn_res_esc %>% filter(gene_name != "Firre"), 
+g <- ggplot(sig_dyn %>% filter(gene_name != "Firre"), 
             aes(x = timepoint, y = log2FoldChange, group = gene_name))
 g + geom_hline(yintercept = 0) +
   geom_point(alpha = 0.7) + 
   geom_line(color = "#424242", alpha = 0.2) + 
   facet_wrap(cell_type~firre_ko, scales = "free_y") +
-  theme_paperwhite()
-  
+  theme_paperwhite() + 
+  geom_text_repel(data = ltp %>% filter(gene_name != "Firre"),
+                  aes(label = gene_name))
+
+
+
 ```
 
 ```{r}
@@ -223,18 +254,13 @@ goi <- "Duox1"
 goi <- "Gfap"
 goi <- "Apod"
 goi <- "Gm13040"
+goi <- "Gm10039"
 
 res_goi <- resdf %>% filter(gene_name == goi)
 tpm_goi <- tpm %>% filter(gene_name == goi) %>%
   pivot_longer(3:ncol(.), names_to = "sample_id",
-               values_to = "tpm")
-tpm_npc_goi <- tpm_goi %>% filter(sample_id %in% npc_samples$sample_id) %>%
-  merge(npc_samples)
-tpm_esc_goi <- tpm_goi %>% filter(sample_id %in% esc_samples$sample_id) %>%
-  merge(esc_samples)
-
-tpm_goi <- bind_rows(tpm_esc_goi, tpm_npc_goi)
-tpm_goi <- tpm_goi %>% 
+               values_to = "tpm") %>%
+  merge(samples) %>%
   unite("condition", cell_type, firre_ko, firre_induced, sep = ";",
         remove = FALSE)
 
