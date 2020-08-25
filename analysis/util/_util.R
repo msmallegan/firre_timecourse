@@ -4,7 +4,8 @@ run_timecourse_deseq <- function(experiment,
                                  reduced_formula, 
                                  independent_filtering = TRUE,
                                  ncores = 12,
-                                 save_dds = TRUE) {
+                                 save_dds = TRUE,
+                                 save_res = TRUE) {
   
   ct <- unlist(strsplit(experiment, "_"))[[1]]
   fko <- unlist(strsplit(experiment, "_"))[[2]]
@@ -14,18 +15,25 @@ run_timecourse_deseq <- function(experiment,
   
   counts <- counts[,samples$sample_id]
   mode(counts) <- "integer"
+
+  
   
   # Reorder gencode genes
   genes <- genes[rownames(counts)]
   
   # Check ordering
   stopifnot(all(rownames(samples) == colnames(counts)))
-  stopifnot(all(names(gencode_genes) == rownames(counts)))
+  stopifnot(all(names(genes) == rownames(counts)))
   
   dds <- DESeqDataSetFromMatrix(countData = counts, 
                                 colData = samples, 
                                 design = design_formula,
-                                rowData = gencode_genes)
+                                rowData = genes)
+  
+  # Filter low counts
+  dds <- dds[rowSums(counts(dds)) >= 100,]
+  
+  
   dds <- DESeq(dds, 
                test="LRT", 
                reduced = reduced_formula,
@@ -42,8 +50,15 @@ run_timecourse_deseq <- function(experiment,
   res_names <- resultsNames(dds)
   res <- results(dds, 
                  name = res_names[1],
-                 independentFiltering=independent_filtering,
-                 cooksCutoff=FALSE) %>% 
+                 independentFiltering=independent_filtering) 
+  if(save_res == TRUE) {
+    saveRDS(res, paste0("results/",
+                        ct, "_",
+                        fko, "_res.rds"))
+  }
+  
+  # Convert to data frame
+  res <- res %>% 
     as.data.frame() %>%
     rownames_to_column(var = "gene_id") %>%
     merge(g2s) %>%
@@ -63,5 +78,50 @@ run_timecourse_deseq <- function(experiment,
   # Label results
   res$cell_type <- ct
   res$firre_ko <- fko
+  
+  # Label the comparisons
+  res$comparison <- "intercept"
+  res[grep("timepoint_minutes_",res$result_name),"comparison"] <- "vs_zero"
+  res[res$result_name == "firre_induced_firre_induced_vs_control",
+        "comparison"] <- "static_firre_induction_vs_control"
+  res[res$result_name == "firre_ko_KO_vs_WT",
+        "comparison"] <- "KO_vs_WT"
+  res[grep(".firre_induced",res$result_name,
+             fixed = T),"comparison"] <- "dynamic_firre_induction_vs_control"
+  
   return(res)
+}
+
+get_dynamic_comparison_df <- function(res) {
+  
+  dyn_res <- res %>% 
+    filter(comparison == "dynamic_firre_induction_vs_control")
+  dyn_res$timepoint <- sapply(dyn_res$result_name,
+                              function(x) {
+                                x <- gsub("timepoint_minutes", "", x)
+                                gsub(".firre_inducedfirre_induced", "", x,
+                                     fixed = T)
+                              }) %>%
+    as.numeric()
+  # Add zeros for visualization
+  dyn_res_zeros <- dyn_res %>% dplyr::select(gene_id,
+                                             baseMean,
+                                             stat,
+                                             pvalue,
+                                             padj,
+                                             gene_name,
+                                             cell_type,
+                                             firre_ko,
+                                             comparison) %>%
+    distinct()
+  dyn_res_zeros$timepoint <- 0
+  dyn_res_zeros$log2FoldChange <- 0
+  dyn_res_zeros$lfcSE <- 0
+  dyn_res_zeros$result_name <- "zeros"
+  #Put in order for merging
+  dyn_res_zeros <- dyn_res_zeros %>% dplyr::select(colnames(dyn_res))
+  dyn_res <- bind_rows(dyn_res, dyn_res_zeros)
+  dyn_res$timepoint <- factor(dyn_res$timepoint, 
+                              levels = seq(0,360,30))
+  return(dyn_res)
 }

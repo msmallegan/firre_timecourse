@@ -59,3 +59,8 @@ theme_paperwhite <- function(
       validate = TRUE
     )
 }
+
+theme_set(theme_paperwhite())
+scale_colour_discrete <- function(...) {
+  scale_colour_manual(..., values = c("#424242","#a8404c","#024059","#71969F","#F2D6A2","#8B1D3B","#DD1822"))
+}

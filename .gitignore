@@ -34,4 +34,5 @@ work/*
 *qc*
 *align*
 *.svg
-
+*.bdg
+*.rds
