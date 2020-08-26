@@ -44,11 +44,14 @@ reference genome.
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-options(stringsAsFactors = FALSE)
+options(stringsAsFactors = FALSE,
+        dplyr.summarise.inform = FALSE,
+        tidyverse.quiet = TRUE)
 library(tidyverse)
 library(DESeq2)
 library(gplots)
 library(ggrepel)
+library(ggpubr)
 source("../util/_plot_theme.R")
 source("../util/_util.R")
 ```
@@ -91,7 +94,7 @@ genes <- genes[rownames(salmon_gene_counts)]
 # TODO: re-run with the long timepoints. Gaaah.
 samples <- read.csv("../../rnaseq/samplesheet.csv") %>%
   filter(cell_type != "pMEF",
-         date_sequenced != "Sep-18",
+         date_sequenced != "18-Sep",
          timepoint_minutes < 400,
          timecourse_length == "short") %>%
   mutate(firre_ko = factor(firre_ko, levels = c("WT", "KO")),
@@ -179,14 +182,18 @@ One alternative to explore is [impulseDE2](https://bioconductor.org/packages/rel
 
 ```{r pval_hist, message=FALSE}
 # First let's check out the distribution of p-values
-hist(resdf$pvalue, main = "p-value histogram")
+g <- ggplot(resdf, aes(x = pvalue)) 
+g + geom_histogram() + facet_grid(cell_type~firre_ko) +
+  theme_paperwhite() + 
+  ggtitle("p-value histogram")
 
 # One possibility is that we've got 
 # a bunch of pvalues with really low counts
 # At the upper end of the p-value scale
 g <- ggplot(resdf, aes(x = log10(baseMean), color = pvalue > 0.9))
 g + geom_density() + 
-  ggtitle("p-value > 0.9 baseMean distribution")
+  ggtitle("p-value > 0.9 baseMean distribution") + 
+  theme_paperwhite()
 # Looks like that is not the case. 
 # One other thing that we could do is plot some of the 
 # profiles of these genes that have pval close to 1 
@@ -261,21 +268,42 @@ is better at indentifying these types of trends rather than transiently
 changing genes. For completeness, I will analyze individual timepoints
 in a pairwise manner to get a list of genes that are changing transiently.
 
-It seems that our overlapping gene
+It seems that our overlapping genes also are toward the top of the
+range in terms of fold-change. Overall the fold-changes are quite small. 
+I suppose this is because we're on a relatively short time scale.
+It will be interesting to see what the effect size grows to in the longer
+timecourse.
 
 ```{r time_lfc_plot}
 # Here we'll retrieve the lfc values for just
 # the dynamic firre induced vs control comparison (the interaction term).
 sig_dyn <- resdf %>%
   get_dynamic_comparison_df() %>%
-  filter(padj < 0.05)
+  filter(padj < 0.05) %>%
+  group_by(gene_id, gene_name, cell_type, firre_ko) %>%
+  mutate(max_lfc = log2FoldChange[which.max(abs(log2FoldChange))],
+         max_abs_lfc = max(abs(log2FoldChange)))
 
+## We're having a lot of really small fold-changes here.
+# Let's calculate the max lfc and filter on that
+sig_max_lfc <- sig_dyn %>%
+  dplyr::select(gene_id, gene_name, cell_type, 
+                firre_ko, max_lfc, max_abs_lfc) %>%
+  distinct()
+
+g <- ggplot(sig_max_lfc, aes(x = max_abs_lfc))
+g + geom_histogram(bins = 40) + 
+  theme_paperwhite() + 
+  xlim(0,2) +
+  ggtitle("Max magnitude fold-change")
+
+sig_dyn <- sig_dyn %>% filter(max_abs_lfc > 0.5)
 # Let's label the two genes with the highest fold-changes in the
 # last time point.
 ltp <- sig_dyn %>% filter(timepoint == 330 | timepoint == 360) %>%
   arrange(-abs(log2FoldChange)) %>%
   group_by(cell_type, firre_ko) %>%
-  dplyr::slice(1:3)
+  dplyr::slice(1:4)
 
 g <- ggplot(sig_dyn, aes(x = timepoint, y = log2FoldChange, group = gene_name))
 g + geom_hline(yintercept = 0) +
@@ -287,152 +315,133 @@ g + geom_hline(yintercept = 0) +
                   aes(label = gene_name))
 ```
 
-```{r}
-# Let's try out some shrinkage
-dds1 <- readRDS("results/ESC_KO_dds.rds")
-resultsNames(dds1)
-res1 <- lfcShrink(dds1, coef = "timepoint_minutes30.firre_inducedfirre_induced",
-                  type = "apeglm", parallel = TRUE, BPPARAM=MulticoreParam(8))
+### Individual profile plots
+
+Here we'll plot the TPMs of each significant gene through time for all four
+experiments.
+
+Some of these genes may be changing due to the stochastic effects of the Dox
+response. In other words, they may not be Firre responders per se, but
+rather, in the Firre induced condition, the cascade of gene expression
+changes resulting from Dox could have taken a different path. Therefore,
+taking the overlap between conditions is a nice way to control for this.
+One alternative is to filter out any genes that are changing at all in response
+to Dox, but this may get rid of some genes that are true Firre responders,
+but are also responsive to Dox (i.e. in a different direction).
+
+```{r gene_profile_plots}
+plot_gene_profiles <- FALSE
+
+genes_overlapping_esc <- sig_dyn %>% 
+  dplyr::select(gene_id, gene_name, cell_type, firre_ko) %>%
+  unite("experiment", cell_type, firre_ko) %>%
+  mutate(sig = 1) %>%
+  distinct() %>%
+  pivot_wider(names_from = experiment, values_from = sig, values_fill = 0) %>%
+  dplyr::select(-gene_id) %>%
+  filter(ESC_KO == 1, ESC_WT == 1)
+
+
+if(plot_gene_profiles == TRUE) {
+  
+  dir.create("figures/gene_profile_plots", showWarnings = FALSE)
+  
+  genes_to_plot <- unique(genes_overlapping_esc$gene_id)
+  # genes_to_plot <- c("ENSMUSG00000035299.16", "ENSMUSG00000032679.12",
+  #                    "ENSMUSG00000064360.1")
+  
+  for(i in 1:length(genes_to_plot)) {
+    
+    goi <- genes_to_plot[i]
+    gene_name <- g2s$gene_name[g2s$gene_id == goi]
+    
+    gene_stats <- resdf %>% 
+      filter(gene_id %in% genes_to_plot) %>%
+      dplyr::select(gene_id, gene_name, cell_type, 
+                    firre_ko, padj, log2FoldChange) %>%
+      group_by(gene_id, gene_name, cell_type, firre_ko, padj) %>%
+      summarize(max_abs_l2fc = log2FoldChange[which.max(abs(log2FoldChange))]) %>%
+      mutate(padj = paste0("padj = ", signif(padj, digits = 3)))
+    
+    goi_stats <- gene_stats %>% filter(gene_id == goi)
+    
+    tpm_goi <- tpm %>% filter(gene_id == goi) %>%
+      pivot_longer(3:ncol(.), names_to = "sample_id",
+                   values_to = "tpm") %>%
+      merge(samples) %>%
+      unite("condition", cell_type, firre_ko, firre_induced, sep = ";",
+            remove = FALSE)
+    
+    res_goi <- resdf %>% filter(gene_id == goi)
+    
+    g_tpm <- ggplot(tpm_goi, aes(x = timepoint_minutes, y = tpm)) + 
+      geom_point(aes(color = firre_induced)) + 
+      geom_smooth(aes(group = condition, color = firre_induced), method = "loess", 
+                  formula = "y ~ x", se = FALSE) +
+      facet_grid(cell_type~firre_ko, scales = "free_y") +
+      ggtitle(gene_name) +
+      theme_paperwhite() + 
+      geom_text(data = goi_stats,  aes(x=Inf, y = Inf, 
+                                       label = padj), 
+                vjust=1.5, hjust=1.1) + 
+      theme(legend.title = element_blank(),
+            legend.position="bottom")
+    
+    
+    # Label the comparisons
+    
+    res_goi_dynamic <- res_goi %>% 
+      filter(comparison == "dynamic_firre_induction_vs_control") 
+    res_goi_dynamic$timepoint <- sapply(res_goi_dynamic$result_name,
+                                        function(x) {
+                                          x <- gsub("timepoint_minutes", "", x)
+                                          gsub(".firre_inducedfirre_induced", "", x,
+                                               fixed = T)
+                                        }) %>%
+      as.numeric()
+    res_goi_dynamic$timepoint <- factor(res_goi_dynamic$timepoint, 
+                                        levels = seq(30,360,30))
+    g_fc <- ggplot(res_goi_dynamic, aes(y = log2FoldChange, x = timepoint)) + 
+      geom_segment( aes(x= timepoint, xend= timepoint, y=0, yend=log2FoldChange)) +
+      geom_point() + 
+      geom_hline(yintercept = 0) +
+      facet_grid(cell_type~firre_ko) + 
+      theme_paperwhite() +
+      ggtitle("Dynamic Firre induction vs control")
+    
+    
+    res_goi_vs_zero <- res_goi %>% filter(comparison == "vs_zero")
+    res_goi_vs_zero$timepoint <- sapply(res_goi_vs_zero$result_name,
+                                        function(x) {
+                                          unlist(strsplit(x,"tes_"))[[2]]
+                                        })
+    res_goi_vs_zero$timepoint <- factor(res_goi_vs_zero$timepoint, 
+                                        levels = paste0(seq(30,360,30),"_vs_0"))
+    
+    g_fczero <- ggplot(res_goi_vs_zero, aes(x = timepoint, y = log2FoldChange)) + 
+      geom_hline(yintercept = 0) +
+      geom_segment(aes(x= timepoint, xend= timepoint, y=0, yend=log2FoldChange)) +
+      geom_point() +
+      facet_grid(cell_type~firre_ko) + 
+      theme_paperwhite() + 
+      ggtitle("Comparison to zero timepoint")
+    
+    res_static <- res_goi %>% 
+      filter(comparison == "static_firre_induction_vs_control") %>%
+      unite("experiment", cell_type, firre_ko, remove = F)
+    g_static <- ggplot(res_static, aes(x = experiment, y = log2FoldChange)) + 
+      geom_hline(yintercept = 0) +
+      geom_segment( aes(x= experiment, xend= experiment, y=0, yend=log2FoldChange)) +
+      geom_point() + 
+      theme_paperwhite() +
+      ggtitle("Static Firre induction vs control")
+    
+    
+    ## Assemble
+    ggarrange(g_tpm, g_fc, g_fczero, g_static)
+    ggsave(paste0("figures/gene_profile_plots/", gene_name, ".png"),
+           width = 12, height = 10)
+  }
+}
 ```
-
-
-
-
-
-
-
-```{r}
-
-
-
-resdf_wide <- resdf %>% dplyr::select(gene_id,
-                                      gene_name, cell_type,
-                                      result_name, log2FoldChange,
-                                      padj) %>%
-  pivot_wider(id_cols = c("gene_id", "gene_name", "result_name"),
-              names_from = "cell_type", values_from = c("log2FoldChange", "padj"))
-
-sig_both <- resdf_wide %>% filter(padj_mESC < 0.01,
-                                  padj_NPC < 0.01)
-sig_npc <- resdf_wide %>% filter(padj_NPC < 0.05)
-sig_esc <- resdf_wide %>% filter(padj_mESC < 0.05)
-length(unique(sig_npc$gene_name))
-length(unique(sig_esc$gene_name))
-# Let's make some sweet plots.
-goi <- "Firre"
-goi <- "Supv3l1"
-goi <- "Shf"
-goi <- "Adgrg1"
-goi <- "Lefty2"
-goi <- "Gm47652"
-goi <- "Il9r"
-goi <- "Shf"
-goi <- "Duox1"
-goi <- "Gfap"
-goi <- "Apod"
-goi <- "Gm13040"
-goi <- "Gm10039"
-
-res_goi <- resdf %>% filter(gene_name == goi)
-tpm_goi <- tpm %>% filter(gene_name == goi) %>%
-  pivot_longer(3:ncol(.), names_to = "sample_id",
-               values_to = "tpm") %>%
-  merge(samples) %>%
-  unite("condition", cell_type, firre_ko, firre_induced, sep = ";",
-        remove = FALSE)
-
-g <- ggplot(tpm_goi, aes(x = timepoint_minutes, y = tpm, 
-                         color = firre_induced,
-                         group = condition))
-g + geom_point() + 
-  geom_smooth(method = "loess", formula = "y ~ x", se = FALSE) +
-  facet_grid(cell_type~firre_ko, scales = "free_y") +
-  theme_paperwhite() +
-  scale_color_manual(values = c("#424242","#a8404c")) + 
-  ggtitle(goi)
-
-
-# Label the comparisons
-res_goi$comparison <- "intercept"
-res_goi[grep("timepoint_minutes_",res_goi$result_name),"comparison"] <- "vs_zero"
-res_goi[res_goi$result_name == "firre_induced_firre_induced_vs_control",
-        "comparison"] <- "static_firre_induction_vs_control"
-res_goi[res_goi$result_name == "firre_ko_KO_vs_WT",
-        "comparison"] <- "KO_vs_WT"
-res_goi[grep(".firre_induced",res_goi$result_name,
-             fixed = T),"comparison"] <- "dynamic_firre_induction_vs_control"
-
-res_goi_dynamic <- res_goi %>% 
-  filter(comparison == "dynamic_firre_induction_vs_control") 
-res_goi_dynamic$timepoint <- sapply(res_goi_dynamic$result_name,
-                                    function(x) {
-                                      x <- gsub("timepoint_minutes", "", x)
-                                      gsub(".firre_inducedfirre_induced", "", x,
-                                           fixed = T)
-                                    }) %>%
-  as.numeric()
-res_goi_dynamic$timepoint <- factor(res_goi_dynamic$timepoint, 
-                                    levels = seq(30,360,30))
-g <- ggplot(res_goi_dynamic, aes(y = log2FoldChange, x = timepoint))
-g + geom_segment( aes(x= timepoint, xend= timepoint, y=0, yend=log2FoldChange)) +
-  geom_point() + 
-  geom_hline(yintercept = 0) +
-  facet_grid(cell_type~.) + 
-  theme_paperwhite() +
-  ggtitle("Firre induction vs control")
-
-res_goi_vs_zero <- res_goi %>% filter(comparison == "vs_zero")
-res_goi_vs_zero$timepoint <- sapply(res_goi_vs_zero$result_name,
-                                    function(x) {
-                                      unlist(strsplit(x,"tes_"))[[2]]
-                                    })
-res_goi_vs_zero$timepoint <- factor(res_goi_vs_zero$timepoint, 
-                                    levels = paste0(seq(30,360,30),"_vs_0"))
-
-g <- ggplot(res_goi_vs_zero, aes(x = timepoint, y = log2FoldChange))
-g + geom_hline(yintercept = 0) +
-  geom_segment( aes(x= timepoint, xend= timepoint, y=0, yend=log2FoldChange)) +
-  geom_point() +
-  facet_grid(cell_type ~.) + 
-  theme_paperwhite() + 
-  ggtitle("Comparison to zero timepoint")
-
-
-# Responds to Firre in time
-# Is DE in response to Firre KO
-```
-
-```{r}
-# # Aside for Adgrg1
-# # https://storage.googleapis.com/gtex_analysis_v8/rna_seq_data/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_gene_tpm.gct.gz
-# gtex <- read.table("data/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_gene_tpm.gct",
-#                    sep = "\t",
-#                    header = T,
-#                    skip=2)
-# grep("FIRRE", gtex$Description)
-# grep("ADGRG1", gtex$Description)
-# gtex_goi <- gtex[c(55114,42360),]
-# gtex_goi <- gtex_goi %>%
-#   pivot_longer(3:ncol(.),names_to = "sample",
-#                values_to = "exp") %>%
-#   dplyr::select(-Name) %>%
-#   pivot_wider(names_from = Description, values_from = exp)
-# library(ggpubr)
-# gtex_goi$log10_firre <- log10(gtex_goi$FIRRE)
-# gtex_goi$log10_adgrg1 <- log10(gtex_goi$ADGRG1)
-# ggscatter(gtex_goi %>% filter(log10_firre > -3), x = "log10_firre", y = "log10_adgrg1") + 
-#   stat_cor()
-# g <- ggplot(gtex_goi %>% filter(), aes(x = log10(FIRRE), y = log10(ADGRG1)))
-# g + stat_density_2d(aes(fill = ..level..), geom = "polygon") +
-#   scale_fill_gradientn(colors = c("#FFEDA0", "#FEB24C", "#F03B20")) + 
-#   theme_paperwhite() + 
-#   stat_cor() + 
-#   ggtitle("Co-expression across GTEX samples",
-#           subtitle = "n = 17382")
-# write_csv(gtex_goi, "results/gtex_firre_adgrg1.csv")
-```
-
-
-
-
 
