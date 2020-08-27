@@ -93,11 +93,6 @@ if(!file.exists("results/deseq_dox_control_res.csv")) {
 }
 resdf <- read.csv("results/deseq_dox_control_res.csv")
 res_shrunkendf <- read.csv("results/deseq_dox_control_res_shrunken.csv")
-
-
-sig_res_shrunken <- res_shrunkendf %>%
-  filter(padj < 0.05) %>%
-  filter(cell_type == "ESC", firre_ko == "WT")
 ```
 
 ```{r}
@@ -119,8 +114,18 @@ sig_summary <- resdf %>%
   distinct() %>%
   summarize(pthresh_01 = length(which(pthresh_01 == TRUE)),
             pthresh_05 = length(which(pthresh_05 == TRUE)),
-            pthresh_10 = length(which(pthresh_10 == TRUE)))
+            pthresh_10 = length(which(pthresh_10 == TRUE))) %>%
+  pivot_longer(cols = 2:4, names_to = "pthreshold",
+               values_to = "num_DEG") %>%
+  mutate(pthreshold = gsub("pthresh_", "", pthreshold),
+         pthreshold = as.numeric(pthreshold)/100)
 knitr::kable(sig_summary)
+ggtexttable(sig_summary)
+
+g <- ggplot(sig_summary, aes(x = experiment, y = num_DEG, fill = factor(pthreshold)))
+g + geom_bar(stat = "identity", position = "dodge") + 
+  scale_fill_manual(values = c("#424242","#a8404c","#71969F")) +
+  ggtitle("DEG count: Dox only")
 ```
 
 ```{r}
@@ -179,10 +184,10 @@ g + geom_histogram(bins = 40) +
 # last time point.
 ltp <- sig_dyn %>% 
   # filter(timepoint == 330 | timepoint == 360) %>%
-  filter(timepoint == 330) %>%
-  arrange(-max_abs_lfc) %>%
+  filter(timepoint == 330 | timepoint == 360) %>%
+  arrange(-abs(log2FoldChange)) %>%
   group_by(cell_type, firre_ko) %>%
-  dplyr::slice(1:12)
+  dplyr::slice(1:3)
 
 
 res_shrunkendf <- res_shrunkendf %>%
@@ -190,19 +195,18 @@ res_shrunkendf <- res_shrunkendf %>%
          timepoint = gsub("_vs_0", "", timepoint),
          timepoint = as.numeric(timepoint))
 
-early_timepoint_genes <- res_shrunkendf %>% filter(gene_name %in% genes_overlapping$gene_name,
-                                                   !is.na(padj),
-                                                   timepoint < 180)
-g <- ggplot(res_shrunkendf %>% filter(gene_name %in% genes_overlapping$gene_name,
-                                      !is.na(padj)),
+# early_timepoint_genes <- res_shrunkendf %>% filter(gene_name %in% genes_overlapping$gene_name,
+#                                                    padj < 0.01,
+#                                                    timepoint < 180)
+g <- ggplot(res_shrunkendf %>% filter(gene_name %in% genes_overlapping$gene_name),
             aes(x = timepoint, y = log2FoldChange, group = gene_id))
 g + geom_hline(yintercept = 0) +
   geom_point(alpha = 0.7) + 
   geom_line(color = "#424242", alpha = 0.2) + 
   facet_wrap(cell_type~firre_ko, scales = "free_y") +
-  theme_paperwhite()
-  # geom_text_repel(data = res_shrunkendf %>% filter(gene_name %in% genes_overlapping$gene_name, timepoint == 210 | timepoint == 270),
-  #                 aes(label = gene_name))
+  theme_paperwhite() +
+  geom_text_repel(data = ltp,
+                  aes(label = gene_name))
 
 g <- ggplot(sig_dyn %>% filter(cell_type == "ESC", gene_name != "Rn7s1"),
             aes(x = timepoint, y = log2FoldChange, group = gene_name))
@@ -258,14 +262,13 @@ genes_overlapping <- res_shrunkendf %>%
   mutate(timepoint = gsub("timepoint_minutes_", "", result_name),
          timepoint = gsub("_vs_0", "", timepoint),
          timepoint = as.numeric(timepoint)) %>%
-  filter(timepoint < 180,
-         abs(log2FoldChange) > 0.3) %>%
+  filter(padj < 0.05) %>%
   dplyr::select(gene_id, gene_name, cell_type, firre_ko) %>%
   unite("experiment", cell_type, firre_ko) %>%
   mutate(sig = 1) %>%
   distinct() %>%
-  pivot_wider(names_from = experiment, values_from = sig, values_fill = 0)
-  # filter(ESC_KO == 1, ESC_WT == 1)
+  pivot_wider(names_from = experiment, values_from = sig, values_fill = 0) %>%
+  filter(ESC_KO == 1, ESC_WT == 1, NPC_KO == 1, NPC_WT == 1)
 
 paste(genes_overlapping$gene_name, collapse = " ")
 goi_gene_stats <- gene_stats %>% filter(gene_id %in% genes_overlapping$gene_name)
