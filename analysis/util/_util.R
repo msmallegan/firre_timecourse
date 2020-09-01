@@ -49,8 +49,20 @@ run_timecourse_deseq <- function(experiment,
   # Compile results
   res_names <- resultsNames(dds)
   res <- results(dds, 
-                 name = res_names[1],
+                 name = res_names[2],
                  independentFiltering=independent_filtering) 
+  
+  res_shrunken <- lfcShrink(dds = dds,
+                            coef = res_names[2],
+                            res = res,
+                            type = "apeglm",
+                            parallel = TRUE,
+                            BPPARAM=MulticoreParam(ncores)) %>% 
+    as.data.frame() %>%
+    rownames_to_column(var = "gene_id") %>%
+    merge(g2s) %>%
+    mutate(result_name = res_names[2]) 
+  
   if(save_res == TRUE) {
     saveRDS(res, paste0("results/",
                         ct, "_",
@@ -67,15 +79,32 @@ run_timecourse_deseq <- function(experiment,
   for(i in 2:length(res_names)) {
     tmp_res <- results(dds, 
                        name = res_names[i],
-                       independentFiltering=independent_filtering) %>% 
+                       independentFiltering=independent_filtering)
+    
+    tmp_res_shrunken <- suppressMessages(lfcShrink(dds = dds,
+                                                   coef = res_names[i],
+                                                   res = tmp_res,
+                                                   type = "apeglm",
+                                                   parallel = TRUE,
+                                                   BPPARAM=MulticoreParam(ncores))) %>%
       as.data.frame() %>%
       rownames_to_column(var = "gene_id") %>%
       merge(g2s) %>%
       mutate(result_name = res_names[i]) 
+    
+    tmp_res <- tmp_res %>% 
+      as.data.frame() %>%
+      rownames_to_column(var = "gene_id") %>%
+      merge(g2s) %>%
+      mutate(result_name = res_names[i]) 
+
+    res_shrunken <- bind_rows(res_shrunken, tmp_res_shrunken)
     res <- bind_rows(res, tmp_res)
   }
   
   # Label results
+  res_shrunken$cell_type <- ct
+  res_shrunken$firre_ko <- fko
   res$cell_type <- ct
   res$firre_ko <- fko
   
@@ -89,7 +118,9 @@ run_timecourse_deseq <- function(experiment,
   res[grep(".firre_induced",res$result_name,
              fixed = T),"comparison"] <- "dynamic_firre_induction_vs_control"
   
-  return(res)
+  combined_results <- list("res" = res, "res_shrunken" = res_shrunken)
+  
+  return(combined_results)
 }
 
 run_control_deseq <- function(experiment,

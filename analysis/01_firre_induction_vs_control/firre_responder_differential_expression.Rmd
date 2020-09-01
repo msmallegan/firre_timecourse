@@ -130,10 +130,17 @@ if(!file.exists("results/deseq_res.csv")) {
                       reduced_formula = reduced_formula,
                       independent_filtering = FALSE)
   
-  resdf <- bind_rows(deseq_res)
+  res_list <- lapply(deseq_res, "[[","res")
+  res_shrunken_list <- lapply(deseq_res, "[[","res_shrunken")
+  
+  resdf <- bind_rows(res_list)
   write_csv(resdf, "results/deseq_res.csv")
+  res_shrunkendf <- bind_rows(res_shrunken_list)
+  write_csv(res_shrunkendf, "results/deseq_res_shrunken.csv")
 }
+
 resdf <- read.csv("results/deseq_res.csv")
+res_shrunkendf <- read.csv("results/deseq_res_shrunken.csv")
 ```
 
 #### Independent filtering

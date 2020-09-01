@@ -1,0 +1,178 @@
+---
+title: "Firre responder functional analysis"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(stringsAsFactors = FALSE,
+        dplyr.summarise.inform = FALSE,
+        readr.show_progress = FALSE,
+        tidyverse.quiet = TRUE)
+library(tidyverse)
+# library(DESeq2)
+# library(gplots)
+# library(ggrepel)
+# library(ggpubr)
+source("../util/_plot_theme.R")
+source("../util/_util.R")
+```
+
+```{r}
+# Firre responder results
+res_shrunkendf <- read_csv(file.path("../01_firre_induction_vs_control",
+                                     "results/deseq_res_shrunken.csv"))
+res_shrunkendf[grep("timepoint_minutes_",res_shrunkendf$result_name),"comparison"] <- "vs_zero"
+res_shrunkendf[res_shrunkendf$result_name == "firre_induced_firre_induced_vs_control",
+    "comparison"] <- "static_firre_induction_vs_control"
+res_shrunkendf[res_shrunkendf$result_name == "firre_ko_KO_vs_WT",
+    "comparison"] <- "KO_vs_WT"
+res_shrunkendf[grep(".firre_induced",res_shrunkendf$result_name,
+         fixed = T),"comparison"] <- "dynamic_firre_induction_vs_control"
+
+# We'd like to organize this in a rank-ordered fashion per timepoint
+# in fact we'd like to get it into whatever format webgestalt would like
+# for GSEA.
+#
+# So we need a two column table with the gene_name and the rank one table 
+# per timepoint.
+
+res_dynamic <- res_shrunkendf %>% filter(comparison == "dynamic_firre_induction_vs_control")
+
+res_dynamic$timepoint <- sapply(res_dynamic$result_name,
+                                function(x) {
+                                  x <- gsub("timepoint_minutes", "", x)
+                                  gsub(".firre_inducedfirre_induced", "", x,
+                                       fixed = T)
+                                }) %>%
+  as.numeric()
+
+
+timepoints <- unique(res_dynamic$timepoint) 
+experiments <- c("ESC_KO","ESC_WT", "NPC_KO", "NPC_WT")
+dir.create("results/shrunken_lfc_rankings")
+
+
+for(j in 1:length(experiments)) {
+  dir.create(paste0("results/shrunken_lfc_rankings/", experiments[j]))
+  ct <- unlist(strsplit(experiments[j], "_"))[[1]]
+  fko <- unlist(strsplit(experiments[j], "_"))[[2]]
+  
+  res_exp <- res_dynamic %>% filter(cell_type == ct,
+                                    firre_ko == fko)
+  timepoints <- unique(res_exp$timepoint)
+  
+  for(i in 1:length(timepoints)) {
+    
+    tp <- res_exp %>% filter(timepoint == timepoints[i]) %>%
+      filter(!is.na(padj)) %>%
+      arrange(-log2FoldChange) %>%
+      dplyr::select(gene_id, log2FoldChange)
+    tp$gene_id <- sapply(tp$gene_id, function(x) {
+      unlist(strsplit(x, ".", fixed = T))[[1]]
+    })
+    write.table(tp, 
+                paste0("results/shrunken_lfc_rankings/", experiments[j],
+                       "/", experiments[j], "_slfc_", timepoints[i],".rnk"),
+                row.names = FALSE, col.names = FALSE, sep = "\t", quote = FALSE)
+  }
+}
+```
+
+```{r}
+library(WebGestaltR)
+dir.create("results/gsea_enrichment")
+gene_sets_all <- listGeneSet()
+gene_sets <- gene_sets_all$name[c(1,3,5,7:12,53,54,58:61)]
+gene_sets[1]
+gsea <- WebGestaltR(
+  enrichMethod = "GSEA",
+  organism = "mmusculus",
+  enrichDatabase = gene_sets[1],
+  interestGeneFile = "results/shrunken_lfc_rankings/ESC_KO/ESC_KO_slfc_30.rnk",
+  interestGeneType = "ensembl_gene_id",
+  sigMethod = "top",
+  isParallel = T,
+  nThreads = 8,
+  outputDirectory = "results/gsea_enrichment"
+)
+
+```
+
+
+```{r}
+library(GenomicRanges)
+genes <- rtracklayer::import("../util/gencode.vM25.annotation.genes.gtf")
+genes$score <- 0
+rtracklayer::export(genes, "results/universe_all_genes.bed")
+gene_proms <- promoters(genes)
+gene_proms$score <- 0
+rtracklayer::export(gene_proms, "results/universe_all_promoters.bed")
+
+
+resdf <- read.csv("../01_firre_induction_vs_control/results/deseq_res.csv")
+expressed_genes <- resdf %>% filter(!is.na(padj),
+                                    baseMean > 100)
+
+exp_genes <- genes[unique(expressed_genes$gene_id)]
+exp_genes$score <- 0
+rtracklayer::export(exp_genes, "results/universe_expressed_genes.bed")
+
+
+res_sig <- read.csv("../01_firre_induction_vs_control/results/firre_induced_genes.csv")
+overlapping <- res_sig %>% filter(ESC_KO_padj0.05 == 1,
+                                  ESC_WT_padj0.05 == 1)
+
+all_npc <- res_sig %>% filter(NPC_KO_padj0.05 == 1 | NPC_WT_padj0.05 == 1)
+
+res_res <- resdf %>% filter(gene_id %in% overlapping$gene_id) %>%
+  arrange(baseMean)
+min(res_res$baseMean)
+names(genes) <- genes$gene_id
+all_deg <- genes[res_sig$gene_id]
+all_deg$score <- 0
+rtracklayer::export(all_deg,"results/all_deg_genes.bed")
+
+all_deg_promoters <- promoters(all_deg)
+rtracklayer::export(all_deg_promoters, "results/all_deg_promoters.bed")
+
+overlapping_deg <- all_deg[overlapping$gene_id]
+rtracklayer::export(overlapping_deg, "results/esc_overlapping_deg_genes.bed")
+
+npc_deg <- all_deg[all_npc$gene_id]
+rtracklayer::export(npc_deg, "results/npc_deg_genes.bed")
+```
+
+```{r}
+library("LOLA")
+regionDB = loadRegionDB("data/LOLACore/mm10")
+
+regionSetA = readBed("results/all_deg_genes.bed")
+regionSetB <- readBed("results/esc_overlapping_deg_genes.bed")
+regionSetC <- readBed("results/all_deg_promoters.bed")
+userSets = GRangesList(regionSetA, regionSetB, regionSetC)
+genes_all <- readBed("results/universe_all_genes.bed")
+locResults = runLOLA(userSets, genes_all, regionDB, cores=6)
+
+promoters_all <- readBed("results/universe_all_promoters.bed")
+locResults = runLOLA(regionSetC, promoters_all, regionDB, cores=6)
+
+
+
+exp_genes <- readBed("results/universe_expressed_genes.bed")
+locResults = runLOLA(userSets, exp_genes, regionDB, cores=6)
+locResults$padj <- p.adjust(10^-locResults$pValueLog)
+incprint <- read.table("../archive/02_differential_exp/data/incprint_firre_interactors.txt")
+hmm <- locResults[which(tolower(locResults$antibody) %in% tolower(incprint$V1)),] %>%
+  filter(padj < 0.05)
+
+npc_deg_bed <- readBed("results/npc_deg_genes.bed")
+npc_lola_res <- runLOLA(npc_deg_bed, exp_genes, regionDB, cores=6)
+oneResult = locResults[2,]
+extractEnrichmentOverlaps(oneResult, regionSetA, regionDB)
+```
+
+
+
