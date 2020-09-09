@@ -20,6 +20,146 @@ source("../util/_plot_theme.R")
 source("../util/_util.R")
 ```
 
+## Shared TFs between Shf and Adgrg1
+
+```{r}
+# http://dbtoolkit.cistrome.org/?specie=mm10&distance=10k&factor=factor&keyword=chr2%3A122348891%3A122369167%3AXM_006499877%3AShf
+shf_tfs <- read.csv("data/chr2_122348891_122369167_XM_006499877_Shfmm1010k_factor_result.csv") %>%
+  group_by(Factor) %>%
+  summarize(shf_mean_rp_score = mean(RP_score),
+            shf_biosources = paste(Biosource, collapse = ";"))
+adgrg1_tfs <- read.csv("data/chr8_94974755_95014207_XM_006530695_Adgrg1mm1010k_factor_result.csv") %>%
+    group_by(Factor) %>%
+  summarize(adgrg1_mean_rp_score = mean(RP_score),
+            adgrg1_biosources = paste(Biosource, collapse = ";"))
+
+combined_tfs <- merge(shf_tfs, adgrg1_tfs)
+
+incprint <- read.table("../archive/02_differential_exp/data/incprint_firre_interactors.txt")
+combined_tfs$firre_binder <- FALSE
+combined_tfs[which(tolower(combined_tfs$Factor) %in% tolower(incprint$V1)), "firre_binder"] <- TRUE
+
+g <- ggplot(combined_tfs, aes(x = shf_mean_rp_score, y = adgrg1_mean_rp_score,
+                              color = firre_binder))
+g + geom_point() + 
+  theme_paperwhite() 
+
+
+combined_tfs$es_expressed <- FALSE
+combined_tfs[which(tolower(combined_tfs$Factor) %in% tolower(es_expressed_factors$gene_name)), "es_expressed"] <- TRUE
+
+g <- ggplot(combined_tfs %>% filter(es_expressed == TRUE), 
+            aes(x = shf_mean_rp_score, y = adgrg1_mean_rp_score,
+                              color = firre_binder))
+g + geom_point() + 
+  theme_paperwhite()
+
+combined_tf_matrix <- combined_tfs %>%
+  filter(es_expressed == TRUE) %>%
+  dplyr::select(Factor, shf_mean_rp_score, adgrg1_mean_rp_score) %>%
+  column_to_rownames("Factor") %>%
+  as.matrix()
+
+library(pheatmap)
+pheatmap(combined_tf_matrix)  
+
+sig_tfs <- res_sig  %>% filter(tolower(gene_name) %in% tolower(combined_tfs$Factor))
+```
+
+### Cistrome GO
+
+```{r}
+# CISTROME Giggle results for peaks overlapping 
+# ESC firre responders responding in both WT and KO
+fr_tfs <- read.csv("data/esc_firre_responding_promoters.bed_result.csv") %>%
+  group_by(Factor) %>%
+  summarize(mean_giggle_score = mean(GIGGLE_score))
+
+# fr_tfs_shf <- fr_tfs %>% filter(tolower(Factor) %in% tolower(combined_tfs$Factor))
+fr_tfs$shf_adgrg_regulator <- FALSE
+fr_tfs[tolower(fr_tfs$Factor) %in% tolower(combined_tfs$Factor), "shf_adgrg_regulator"] <- TRUE
+
+fr_tfs$es_expressed <- FALSE
+fr_tfs[tolower(fr_tfs$Factor) %in% tolower(es_expressed_factors$gene_name),"es_expressed"] <- TRUE
+table(fr_tfs$shf_adgrg_regulator)
+
+fr_tfs$firre_binder <- FALSE
+fr_tfs[tolower(fr_tfs$Factor) %in% tolower(incprint$V1), "firre_binder"] <- TRUE
+table(fr_tfs$firre_binder)
+fr_tfs <- fr_tfs %>% arrange(mean_giggle_score)
+fr_tfs$Factor <- factor(fr_tfs$Factor, levels = fr_tfs$Factor)
+
+
+sig_tfs <- res_sig  %>% filter(tolower(gene_name) %in% tolower(fr_tfs$Factor))
+g <- ggplot(fr_tfs %>% filter(es_expressed == TRUE), aes(x = Factor, y = mean_giggle_score, color = shf_adgrg_regulator))
+g + geom_point() + 
+  theme_paperwhite() + 
+  coord_flip() + 
+  geom_segment(aes(xend = Factor, yend = 40))
+
+fr_tfs_expressed <- fr_tfs %>% filter(es_expressed == TRUE)
+cat(paste(fr_tfs_expressed$Factor, collapse = "\n"))
+```
+
+
+```{r}
+# Expressed transcription factors.
+genes <- rtracklayer::import(file.path("../util/",
+                                       "gencode.vM25.annotation.genes.gtf"))
+names(genes) <- genes$gene_id
+
+g2s <- genes %>% as.data.frame() %>%
+  dplyr::select(gene_id, gene_name)
+
+samples <- read.csv("../../rnaseq/samplesheet.csv") %>%
+  filter(cell_type != "pMEF",
+         date_sequenced != "18-Sep",
+         timepoint_minutes < 400,
+         timecourse_length == "short") %>%
+  mutate(firre_ko = factor(firre_ko, levels = c("WT", "KO")),
+         timepoint_minutes = factor(timepoint_minutes, 
+                                    levels = c(seq(0,360,30))),
+         firre_induced = factor(firre_induced, 
+                                levels = c("control", "firre_induced")))
+
+tpm <- read.csv("../../rnaseq/results/salmon/salmon_merged_gene_tpm.csv") %>%
+  merge(g2s) %>%
+  dplyr::select(gene_id, gene_name, everything()) %>%
+  pivot_longer(cols = 3:ncol(.), names_to = "sample_id", values_to = "tpm") 
+
+tpm <- merge(tpm, samples)
+
+
+tpm_by_condition <- tpm %>% 
+  group_by(gene_id, gene_name, cell_type, firre_ko, firre_induced) %>%
+  summarize(mean_tpm = mean(tpm, na.rm = T))
+tpm_by_conditionw <- tpm_by_condition %>%
+  unite("condition", cell_type, firre_ko, firre_induced) %>%
+  pivot_wider(id_cols = c(gene_id, gene_name), names_from = condition, 
+              names_prefix = "tpm", values_from = mean_tpm)
+write_csv(tpm_by_conditionw, "results/tpm_by_condition.csv")
+
+cistrome_factors <- read.table("data/cistrome_mouse_factors.txt")
+
+factors_tpm <- tpm_by_conditionw[tolower(tpm_by_conditionw$gene_name) %in% tolower(cistrome_factors$V1),]
+
+es_expressed_factors <- factors_tpm %>% 
+  filter(tpmESC_KO_firre_induced > 1,
+         tpmESC_WT_firre_induced > 1)
+write_csv(es_expressed_factors, "results/esc_expressed_factors.csv")
+
+# How many Firre interactors are also TFs?
+incprint <- read.table("../archive/02_differential_exp/data/incprint_firre_interactors.txt")
+
+es_fi_factors <- es_expressed_factors %>% filter(tolower(gene_name) %in% tolower(incprint$V1))
+cat(paste0(es_fi_factors$gene_name, collapse = "\n"))
+
+
+
+```
+
+
+
 ```{r}
 # Firre responder results
 res_shrunkendf <- read_csv(file.path("../01_firre_induction_vs_control",
@@ -101,6 +241,39 @@ gsea <- WebGestaltR(
 
 ```
 
+```{r}
+# What are the ESC firre responder regions of interest to look for TF enrichement?
+genes <- rtracklayer::import("../util/gencode.vM25.annotation.genes.gtf")
+names(genes) <- genes$gene_id
+res_sig <- read.csv("../01_firre_induction_vs_control/results/firre_induced_genes.csv")
+
+
+
+overlapping <- res_sig %>% filter(ESC_KO_padj0.05 == 1,
+                                  ESC_WT_padj0.05 == 1)
+
+cat(paste(overlapping$gene_name, collapse = "\n"))
+
+
+# Firre responder gene regions
+fr_genes <- genes[overlapping$gene_id] %>%
+  as.data.frame() %>%
+  dplyr::select(seqnames, start, end)
+write.table(fr_genes, 
+            "results/esc_firre_responding_genes.bed",
+            sep = "\t", quote = FALSE, col.names = F, row.names = F)  
+
+fr_promoters <- genes[overlapping$gene_id] %>%
+  promoters(upstream = 5000, downstream = 5000) %>%
+  as.data.frame() %>%
+  dplyr::select(seqnames, start, end)
+write.table(fr_promoters, 
+            "results/esc_firre_responding_promoters5kb.bed",
+            sep = "\t", quote = FALSE, col.names = F, row.names = F)  
+
+```
+
+
 
 ```{r}
 library(GenomicRanges)
@@ -124,6 +297,14 @@ rtracklayer::export(exp_genes, "results/universe_expressed_genes.bed")
 res_sig <- read.csv("../01_firre_induction_vs_control/results/firre_induced_genes.csv")
 overlapping <- res_sig %>% filter(ESC_KO_padj0.05 == 1,
                                   ESC_WT_padj0.05 == 1)
+
+names(gene_proms) <- gene_proms$gene_id
+esc_firre_responding_promoters <- gene_proms[overlapping$gene_id] %>%
+  as.data.frame() %>%
+  dplyr::select(seqnames, start, end)
+write.table(esc_firre_responding_promoters, 
+            "results/esc_firre_responding_promoters.bed",
+            sep = "\t", quote = FALSE, col.names = F, row.names = F)
 
 all_npc <- res_sig %>% filter(NPC_KO_padj0.05 == 1 | NPC_WT_padj0.05 == 1)
 
