@@ -1,0 +1,131 @@
+---
+title: "Untitled"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(GenomicRanges)
+```
+
+```{r}
+# cp /scratch/Shares/public/singularity/tfea-3.0.img /scratch/Shares/rinn/Michael/firre_timecourse/analysis/04_tfea/bin
+
+
+```
+
+Let's generate a ranked list for the 30 minute timepoint for Firre vs control
+
+```{r}
+# Define promoter regions
+genes <- rtracklayer::import(file.path("../util/",
+                                       "gencode.vM25.annotation.genes.gtf"))
+names(genes) <- genes$gene_id
+proms <- promoters(genes, upstream = 1500, downstream = 1500)
+
+
+res_shrunkendf <- read_csv(file.path("../01_firre_induction_vs_control",
+                                     "results/deseq_res_shrunken.csv"))
+dynamic_res <- res_shrunkendf %>%
+  filter(grepl(".firre_inducedfirre_induced", result_name))
+unique(dynamic_res$result_name)
+dynamic_res$timepoint <- gsub("timepoint_minutes", "", dynamic_res$result_name)
+dynamic_res$timepoint <- gsub(".firre_inducedfirre_induced", "", dynamic_res$timepoint)
+dynamic_res$timepoint <- as.numeric(dynamic_res$timepoint)
+
+dynamic_res <- dynamic_res %>%
+  unite(experiment, cell_type, firre_ko, remove = F)
+experiments <- unique(dynamic_res$experiment)
+
+dir.create("results/firre_induction_vs_control_rankings")
+dir.create("results/tfea_results")
+
+for(j in 1:length(experiments)) {
+  exp_res <- dynamic_res %>%
+    filter(experiment == experiments[j])
+  timepoints <- unique(exp_res$timepoint)
+  for(i in 1:length(timepoints)) {
+    
+    tp_order <- exp_res %>%
+      filter(timepoint == timepoints[i],
+             !is.na(padj)) %>%
+      arrange(-log2FoldChange)
+    tp_promoters <- proms[tp_order$gene_id] %>%
+      as.data.frame() %>%
+      dplyr::select(seqnames, start, end)
+    
+    if(any(tp_promoters$start < 0)) {
+      warning(paste("Promoter start < 0 in ", experiments[j], " tp: ", timepoints[i]))
+      tp_promoters[which(tp_promoters$start < 0), "start"] <- 1
+    }
+    
+    cat("#chrom	start	stop \n",file=paste0("results/firre_induction_vs_control_rankings/",
+                                           experiments[j],"_tp",timepoints[i],".bed"))
+    write.table(tp_promoters, paste0("results/firre_induction_vs_control_rankings/",
+                                     experiments[j],"_tp",timepoints[i],".bed"),
+                row.names = FALSE, col.names = FALSE, sep = "\t",
+                append = TRUE, quote = FALSE)
+    dir.create(paste0("results/tfea_results/", 
+                      experiments[j],"_tp",timepoints[i]))
+    
+    create_sbatch_script(experiments[j], timepoints[i])
+  }
+}
+
+
+
+```
+
+```{r}
+# Create tfea batch jobs
+dir.create("bin/tfea_sbatch")
+create_sbatch_script <- function(experiment, timepoint) {
+  
+line <- paste0("#!/bin/bash
+#SBATCH -p short
+#SBATCH --job-name=tfea_", experiment, "_", timepoint, "
+#SBATCH --mail-type=NONE
+#SBATCH --mail-user=michael.smallegan@colorado.edu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --mem=6gb
+#SBATCH --time=12:00:00
+#SBATCH --output=", experiment, "_", timepoint, "_tfea.out
+#SBATCH --error=", experiment, "_", timepoint, "_tfea.err
+
+module load singularity/3.1.1
+
+BASE_DIR='/scratch/Shares/rinn/Michael/firre_timecourse/analysis/04_tfea'
+
+singularity exec \\
+--bind $BASE_DIR/results/firre_induction_vs_control_rankings:/mnt/rankings \\
+--bind $BASE_DIR/results/tfea_results/", experiment, "_tp", timepoint,":/mnt/output \\
+--bind $BASE_DIR/data/motif_databases/MOUSE/:/mnt/mouse_meme \\
+--bind /scratch/Shares/rinn/genomes/Mus_musculus/Gencode/M25:/mnt/genome \\
+	$BASE_DIR/bin/tfea.sif TFEA \\
+--output /mnt/output \\
+--ranked_file /mnt/rankings/", experiment, "_tp", timepoint, ".bed \\
+--label1 firre_induced --label2 dox_control \\
+--genomefasta /mnt/genome/GRCm38.p6.genome.fa \\
+--fimo_motifs /mnt/mouse_meme/HOCOMOCOv11_full_MOUSE_mono_meme_format.meme")
+writeLines(line, 
+           con = paste0("bin/tfea_sbatch/", experiment,"_tp",timepoint, ".sbatch"))
+
+
+}
+
+```
+
+```{r}
+# Create sumit script
+cat(paste0("#!/bin/bash \n",
+              paste(paste0("sbatch ", list.files("bin/tfea_sbatch/", pattern = ".sbatch")),
+              collapse = "\n")),
+    file = "bin/tfea_sbatch/submit.sh")
+```
+
+
+

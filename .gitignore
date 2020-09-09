@@ -36,3 +36,5 @@ work/*
 *.svg
 *.bdg
 *.rds
+*bin*
+*data*
