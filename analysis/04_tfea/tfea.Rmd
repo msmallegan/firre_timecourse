@@ -9,6 +9,9 @@ editor_options:
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(GenomicRanges)
+library(ggrepel)
+library(gganimate)
+source("../util/_plot_theme.R")
 ```
 
 ```{r}
@@ -126,6 +129,93 @@ cat(paste0("#!/bin/bash \n",
               collapse = "\n")),
     file = "bin/tfea_sbatch/submit.sh")
 ```
+
+```{r}
+# Read in results
+tfea_res_dirs <- list.dirs("results/tfea_results/", full.names = TRUE,
+                           recursive = FALSE)
+tfea_res_files <- paste0(tfea_res_dirs, "/results.txt")
+
+tfea_res <- read.table(tfea_res_files[1],
+                   col.names = c("TF", "e_score", "corrected_e_score", "events",
+                                 "GC", "FPKM", "padj", "corrected_padj"))
+tfea_res$condition <- gsub("/results.txt", "", 
+                       gsub("results/tfea_results//", "", 
+                            tfea_res_files[1]))
+
+for(i in 2:length(tfea_res_files)) {
+  tmp_res <- read.table(tfea_res_files[i],
+                   col.names = c("TF", "e_score", "corrected_e_score", "events",
+                                 "GC", "FPKM", "padj", "corrected_padj"))
+  tmp_res$condition <- gsub("/results.txt", "", 
+                       gsub("results/tfea_results//", "", 
+                            tfea_res_files[i]))
+  tfea_res <- bind_rows(tfea_res, tmp_res)
+}
+
+tfea_res <- tfea_res %>% separate(condition, into = c("cell_type",
+                                                      "firre_ko",
+                                                      "timepoint"), 
+                                  remove = FALSE)
+tfea_res$timepoint <- as.numeric(gsub("tp", "", tfea_res$timepoint))
+tfea_res$tf_name <- sapply(tfea_res$TF, function(x) {
+  unlist(strsplit(x, "_"))[[1]]
+})
+
+esc_ko_tfea_res <- tfea_res %>% filter(cell_type == "ESC", firre_ko == "KO")
+sig_esc_ko_tfs <- esc_ko_tfea_res %>% filter(corrected_padj < 0.1) %>%
+  dplyr::select(TF) %>%
+  distinct()
+esc_ko_tfea_res$sig <- esc_ko_tfea_res$TF %in% sig_esc_ko_tfs$TF
+table(esc_ko_tfea_res$sig)
+esc_ko_tfea_res$sig_timepoint <- esc_ko_tfea_res$corrected_padj < 0.1
+g <- ggplot(esc_ko_tfea_res %>% filter(sig == TRUE), aes(x = timepoint, 
+                                                         y = corrected_e_score, 
+                                                         group = TF,
+                                 color = sig_timepoint))
+g + geom_point() + geom_line()
+
+g <- ggplot(esc_ko_tfea_res %>% filter(timepoint == 30),
+            aes(x = events, y = corrected_e_score, label = TF))
+g + geom_point() + geom_text_repel(data = esc_ko_tfea_res %>% filter(timepoint == 30,
+                                                                     sig_timepoint == TRUE))
+
+g <- ggplot(esc_ko_tfea_res %>% filter(timepoint == 330),
+            aes(x = log10(events), y = corrected_e_score, label = TF))
+g + geom_point() + geom_text_repel(data = esc_ko_tfea_res %>% filter(timepoint == 330,
+                                                                     sig_timepoint == TRUE))
+
+
+library(gganimate)
+library(ggrepel)
+p <- ggplot(esc_ko_tfea_res,
+            aes(x = log10(events), y = corrected_e_score, label = tf_name)) + 
+  geom_point(data = esc_ko_tfea_res %>% filter(sig == FALSE),
+             alpha = 0.1) + 
+    geom_point(data = esc_ko_tfea_res %>% filter(sig == TRUE),
+             color = "#a8404c") + 
+  geom_text_repel(data = esc_ko_tfea_res %>% filter(sig_timepoint == TRUE),
+            nudge_x = 0.1, nudge_y = 0.01) +
+  theme_paperwhite() +
+  labs(title = 'ESC KO: {closest_state} min') +
+  transition_states(timepoint, transition_length = 10, state_length = 30) +
+  ease_aes('linear')
+animate(p, renderer = gifski_renderer(),
+        nframes = 200)
+# anim_save("esc_ko_tfea_ma.gif")
+
+# ggplot(gapminder, aes(gdpPercap, lifeExp, size = pop, colour = country)) +
+#   geom_point(alpha = 0.7, show.legend = FALSE) +
+#   scale_colour_manual(values = country_colors) +
+#   scale_size(range = c(2, 12)) +
+#   scale_x_log10() +
+#   facet_wrap(~continent) +
+#   # Here comes the gganimate specific bits
+#   labs(title = 'Year: {frame_time}', x = 'GDP per capita', y = 'life expectancy') +
+#   transition_time(year) +
+#   ease_aes('linear')
+```
+
 
 
 
