@@ -489,4 +489,73 @@ if(plot_gene_profiles == TRUE) {
 ```
 
 
+### Heatmap
+
+```{r}
+# Let's just plot those that are shared in ESC
+esc_fr <- firre_responders_df %>%
+  filter(ESC_KO_padj0.05 == 1,
+         ESC_WT_padj0.05 == 1)
+esc_fr_lfc <- resdf %>% 
+  filter(gene_id %in% esc_fr$gene_id,
+         cell_type =="ESC",
+         grepl(".firre_inducedfirre_induced", result_name))
+esc_fr_lfc$timepoint <- gsub("timepoint_minutes", "tp_", esc_fr_lfc$result_name)
+unique(esc_fr_lfc$timepoint)
+esc_fr_lfc$timepoint <- gsub(".firre_inducedfirre_induced", "", esc_fr_lfc$timepoint)
+esc_fr_lfc$timepoint <- factor(esc_fr_lfc$timepoint, levels =
+                                         paste0("tp_", seq(30,330,30)))
+
+esc_fr_matrix_ko <- esc_fr_lfc %>%
+  as.data.frame() %>%
+  filter(firre_ko == "KO") %>%
+  dplyr::select(gene_name, log2FoldChange, timepoint) %>%
+  pivot_wider(names_from = timepoint, values_from = log2FoldChange) %>%
+  column_to_rownames("gene_name") %>%
+  as.matrix()
+
+esc_fr_matrix_wt <- esc_fr_lfc %>%
+  as.data.frame() %>%
+  filter(firre_ko == "WT") %>%
+  dplyr::select(gene_name, log2FoldChange, timepoint) %>%
+  pivot_wider(names_from = timepoint, values_from = log2FoldChange) %>%
+  column_to_rownames("gene_name") %>%
+  as.matrix()
+
+
+fcscaled_ko <- esc_fr_matrix_ko %>%
+  t() %>%
+  scale(center = FALSE) %>%
+  t()
+library(stats)
+fcsmoothed_ko <- apply(fcscaled_ko,1,smooth) %>% t()
+rownames(fcsmoothed_ko) <- rownames(esc_fr_matrix_ko)
+library(pheatmap)
+pdf("firre_responders_esc_ko.pdf", height = 10, width = 7)
+pheatmap(fcsmoothed_ko, cluster_cols = FALSE, 
+         breaks = seq(-2,2,length.out = 100),
+         cutree_rows = 10,
+         color = rev(pals::brewer.rdbu(100)),
+         border_color = NA)
+dev.off()
+
+fcscaled_wt <- esc_fr_matrix_wt %>%
+  t() %>%
+  scale(center = FALSE) %>%
+  t()
+
+fcsmoothed_wt <- apply(fcscaled_wt,1,smooth) %>% t()
+rownames(fcsmoothed_wt) <- rownames(esc_fr_matrix_wt)
+pdf("firre_responders_esc_wt.pdf", height = 10, width = 7)
+pheatmap(fcsmoothed_wt, cluster_cols = FALSE, 
+         breaks = seq(-2,2,length.out = 100),
+         cutree_rows = 10,
+         color = rev(pals::brewer.rdbu(100)),
+         border_color = NA)
+dev.off()
+
+```
+
+
+
 
