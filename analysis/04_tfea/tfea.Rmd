@@ -15,8 +15,39 @@ source("../util/_plot_theme.R")
 ```
 
 ```{r}
-# cp /scratch/Shares/public/singularity/tfea-3.0.img /scratch/Shares/rinn/Michael/firre_timecourse/analysis/04_tfea/bin
+create_sbatch_script <- function(experiment, timepoint, rankings_dir, output_dir,
+                                 script_dir) {
+  
+line <- paste0("#!/bin/bash
+#SBATCH -p short
+#SBATCH --job-name=tfea_", experiment, "_", timepoint, "
+#SBATCH --mail-type=NONE
+#SBATCH --mail-user=michael.smallegan@colorado.edu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --mem=6gb
+#SBATCH --time=4:00:00
+#SBATCH --output=", experiment, "_", timepoint, "_tfea.out
+#SBATCH --error=", experiment, "_", timepoint, "_tfea.err
 
+module load singularity/3.1.1
+
+BASE_DIR='/scratch/Shares/rinn/Michael/firre_timecourse/analysis/04_tfea'
+
+singularity exec \\
+--bind $BASE_DIR/", rankings_dir,":/mnt/rankings \\
+--bind $BASE_DIR/", output_dir, experiment, "_tp", timepoint,":/mnt/output \\
+--bind $BASE_DIR/data/motif_databases/MOUSE/:/mnt/mouse_meme \\
+--bind /scratch/Shares/rinn/genomes/Mus_musculus/Gencode/M25:/mnt/genome \\
+	$BASE_DIR/bin/tfea.sif TFEA \\
+--output /mnt/output \\
+--ranked_file /mnt/rankings/", experiment, "_tp", timepoint, ".bed \\
+--label1 lb1 --label2 lb2 \\
+--genomefasta /mnt/genome/GRCm38.p6.genome.fa \\
+--fimo_motifs /mnt/mouse_meme/HOCOMOCOv11_full_MOUSE_mono_meme_format.meme")
+writeLines(line, 
+           con = paste0(script_dir, experiment,"_tp",timepoint, ".sbatch"))
+}
 
 ```
 
@@ -74,61 +105,83 @@ for(j in 1:length(experiments)) {
     dir.create(paste0("results/tfea_results/", 
                       experiments[j],"_tp",timepoints[i]))
     
-    create_sbatch_script(experiments[j], timepoints[i])
+    create_sbatch_script(experiments[j], timepoints[i], 
+                         "results/firre_induction_vs_control_rankings",
+                         "results/tfea_results/",
+                         "bin/tfea_sbatch/")
   }
 }
 
-
-
-```
-
-```{r}
-# Create tfea batch jobs
-dir.create("bin/tfea_sbatch")
-create_sbatch_script <- function(experiment, timepoint) {
-  
-line <- paste0("#!/bin/bash
-#SBATCH -p short
-#SBATCH --job-name=tfea_", experiment, "_", timepoint, "
-#SBATCH --mail-type=NONE
-#SBATCH --mail-user=michael.smallegan@colorado.edu
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --mem=6gb
-#SBATCH --time=12:00:00
-#SBATCH --output=", experiment, "_", timepoint, "_tfea.out
-#SBATCH --error=", experiment, "_", timepoint, "_tfea.err
-
-module load singularity/3.1.1
-
-BASE_DIR='/scratch/Shares/rinn/Michael/firre_timecourse/analysis/04_tfea'
-
-singularity exec \\
---bind $BASE_DIR/results/firre_induction_vs_control_rankings:/mnt/rankings \\
---bind $BASE_DIR/results/tfea_results/", experiment, "_tp", timepoint,":/mnt/output \\
---bind $BASE_DIR/data/motif_databases/MOUSE/:/mnt/mouse_meme \\
---bind /scratch/Shares/rinn/genomes/Mus_musculus/Gencode/M25:/mnt/genome \\
-	$BASE_DIR/bin/tfea.sif TFEA \\
---output /mnt/output \\
---ranked_file /mnt/rankings/", experiment, "_tp", timepoint, ".bed \\
---label1 firre_induced --label2 dox_control \\
---genomefasta /mnt/genome/GRCm38.p6.genome.fa \\
---fimo_motifs /mnt/mouse_meme/HOCOMOCOv11_full_MOUSE_mono_meme_format.meme")
-writeLines(line, 
-           con = paste0("bin/tfea_sbatch/", experiment,"_tp",timepoint, ".sbatch"))
-
-
-}
-
-```
-
-```{r}
 # Create sumit script
 cat(paste0("#!/bin/bash \n",
               paste(paste0("sbatch ", list.files("bin/tfea_sbatch/", pattern = ".sbatch")),
               collapse = "\n")),
     file = "bin/tfea_sbatch/submit.sh")
 ```
+
+Dox control prep for TFEA
+
+```{r}
+res_shrunkendf <- read.csv(file.path("../02_doxycycline_responders/",
+                                     "results/deseq_dox_control_res_shrunken.csv"))
+unique(res_shrunkendf$result_name)
+
+res_shrunkendf$timepoint <- gsub("timepoint_minutes_", "", res_shrunkendf$result_name)
+res_shrunkendf$timepoint <- gsub("_vs_0", "", res_shrunkendf$timepoint)
+res_shrunkendf$timepoint <- as.numeric(res_shrunkendf$timepoint)
+
+res_shrunkendf <- res_shrunkendf %>%
+  unite(experiment, cell_type, firre_ko, remove = F)
+experiments <- unique(res_shrunkendf$experiment)
+
+dir.create("results/dox_vs_zero_rankings")
+dir.create("results/dox_tfea_results")
+dir.create("bin/dox_tfea_sbatch")
+
+for(j in 1:length(experiments)) {
+  exp_res <- res_shrunkendf %>%
+    filter(experiment == experiments[j])
+  timepoints <- unique(exp_res$timepoint)
+  for(i in 1:length(timepoints)) {
+    
+    tp_order <- exp_res %>%
+      filter(timepoint == timepoints[i],
+             !is.na(padj)) %>%
+      arrange(-log2FoldChange)
+    tp_promoters <- proms[tp_order$gene_id] %>%
+      as.data.frame() %>%
+      dplyr::select(seqnames, start, end)
+    
+    if(any(tp_promoters$start < 0)) {
+      warning(paste("Promoter start < 0 in ", experiments[j], " tp: ", timepoints[i]))
+      tp_promoters[which(tp_promoters$start < 0), "start"] <- 1
+    }
+    
+    cat("#chrom	start	stop \n",file=paste0("results/dox_vs_zero_rankings/",
+                                           experiments[j],"_tp",timepoints[i],".bed"))
+    write.table(tp_promoters, paste0("results/dox_vs_zero_rankings/",
+                                     experiments[j],"_tp",timepoints[i],".bed"),
+                row.names = FALSE, col.names = FALSE, sep = "\t",
+                append = TRUE, quote = FALSE)
+    dir.create(paste0("results/dox_tfea_results/", 
+                      experiments[j],"_tp",timepoints[i]))
+    
+    create_sbatch_script(experiments[j], timepoints[i],
+                           "results/dox_vs_zero_rankings/",
+                         "results/dox_tfea_results/",
+                         "bin/dox_tfea_sbatch/")
+  }
+}
+
+# Create submit script
+cat(paste0("#!/bin/bash \n",
+              paste(paste0("sbatch ", list.files("bin/dox_tfea_sbatch/", pattern = ".sbatch")),
+              collapse = "\n")),
+    file = "bin/dox_tfea_sbatch/submit.sh")
+```
+
+
+## Firre response TFEA results
 
 ```{r}
 # Read in results
@@ -162,58 +215,62 @@ tfea_res$tf_name <- sapply(tfea_res$TF, function(x) {
   unlist(strsplit(x, "_"))[[1]]
 })
 
-esc_ko_tfea_res <- tfea_res %>% filter(cell_type == "ESC", firre_ko == "KO")
-sig_esc_ko_tfs <- esc_ko_tfea_res %>% filter(corrected_padj < 0.1) %>%
-  dplyr::select(TF) %>%
-  distinct()
-esc_ko_tfea_res$sig <- esc_ko_tfea_res$TF %in% sig_esc_ko_tfs$TF
-table(esc_ko_tfea_res$sig)
-esc_ko_tfea_res$sig_timepoint <- esc_ko_tfea_res$corrected_padj < 0.1
-g <- ggplot(esc_ko_tfea_res %>% filter(sig == TRUE), aes(x = timepoint, 
-                                                         y = corrected_e_score, 
-                                                         group = TF,
-                                 color = sig_timepoint))
-g + geom_point() + geom_line()
 
-g <- ggplot(esc_ko_tfea_res %>% filter(timepoint == 30),
-            aes(x = events, y = corrected_e_score, label = TF))
-g + geom_point() + geom_text_repel(data = esc_ko_tfea_res %>% filter(timepoint == 30,
-                                                                     sig_timepoint == TRUE))
+tfea_res <- tfea_res %>%
+  group_by(cell_type, firre_ko, TF) %>%
+  mutate(sig = any(corrected_padj <= 0.1)) %>%
+  ungroup() %>%
+  mutate(sig_timepoint = corrected_padj <= 0.1)
 
-g <- ggplot(esc_ko_tfea_res %>% filter(timepoint == 330),
-            aes(x = log10(events), y = corrected_e_score, label = TF))
-g + geom_point() + geom_text_repel(data = esc_ko_tfea_res %>% filter(timepoint == 330,
-                                                                     sig_timepoint == TRUE))
+esc_tfea <- tfea_res %>% filter(cell_type == "ESC")
 
-
-library(gganimate)
-library(ggrepel)
-p <- ggplot(esc_ko_tfea_res,
-            aes(x = log10(events), y = corrected_e_score, label = tf_name)) + 
-  geom_point(data = esc_ko_tfea_res %>% filter(sig == FALSE),
+p <- ggplot(esc_tfea,
+            aes(x = log10(events), y = corrected_e_score, label = tf_name, 
+                group = TF)) + 
+  geom_hline(yintercept = 0) +
+  geom_text_repel(data = esc_tfea %>% filter(sig_timepoint == TRUE),
+                  nudge_x = 0.1, nudge_y = 0.01, segment.alpha = 0) +
+  geom_point(data = esc_tfea %>% filter(sig == FALSE),
              alpha = 0.1) + 
-    geom_point(data = esc_ko_tfea_res %>% filter(sig == TRUE),
-             color = "#a8404c") + 
-  geom_text_repel(data = esc_ko_tfea_res %>% filter(sig_timepoint == TRUE),
-            nudge_x = 0.1, nudge_y = 0.01) +
+  geom_point(data = esc_tfea %>% filter(sig == TRUE),
+             aes(color = sig_timepoint)) + 
+  scale_color_manual(values = c("#424242","#a8404c")) +
   theme_paperwhite() +
-  labs(title = 'ESC KO: {closest_state} min') +
+  facet_grid(~firre_ko) +
+  theme(legend.position = "none") +
+  labs(title = 'ESC: {closest_state} min') +
   transition_states(timepoint, transition_length = 10, state_length = 30) +
-  ease_aes('linear')
+  ease_aes('cubic-in-out') +
+  enter_grow() +
+  exit_shrink()
 animate(p, renderer = gifski_renderer(),
         nframes = 200)
-# anim_save("esc_ko_tfea_ma.gif")
+anim_save("figures/firre_response_ESC_TFEA.gif")
 
-# ggplot(gapminder, aes(gdpPercap, lifeExp, size = pop, colour = country)) +
-#   geom_point(alpha = 0.7, show.legend = FALSE) +
-#   scale_colour_manual(values = country_colors) +
-#   scale_size(range = c(2, 12)) +
-#   scale_x_log10() +
-#   facet_wrap(~continent) +
-#   # Here comes the gganimate specific bits
-#   labs(title = 'Year: {frame_time}', x = 'GDP per capita', y = 'life expectancy') +
-#   transition_time(year) +
-#   ease_aes('linear')
+npc_tfea <- tfea_res %>% filter(cell_type == "NPC")
+
+p <- ggplot(npc_tfea,
+            aes(x = log10(events), y = corrected_e_score, label = tf_name, 
+                group = TF)) + 
+  geom_hline(yintercept = 0) +
+  geom_text_repel(data = npc_tfea %>% filter(sig_timepoint == TRUE),
+                  nudge_x = 0.1, nudge_y = 0.01, segment.alpha = 0) +
+  geom_point(data = npc_tfea %>% filter(sig == FALSE),
+             alpha = 0.1) + 
+  geom_point(data = npc_tfea %>% filter(sig == TRUE),
+             aes(color = sig_timepoint)) + 
+  scale_color_manual(values = c("#424242","#a8404c")) +
+  theme_paperwhite() +
+  facet_grid(~firre_ko) +
+  theme(legend.position = "none") +
+  labs(title = 'NPC: {closest_state} min') +
+  transition_states(timepoint, transition_length = 10, state_length = 30) +
+  ease_aes('cubic-in-out') +
+  enter_grow() +
+  exit_shrink()
+animate(p, renderer = gifski_renderer(),
+        nframes = 200)
+anim_save("figures/firre_response_NPC_TFEA.gif")
 ```
 
 
