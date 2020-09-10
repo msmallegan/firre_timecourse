@@ -273,6 +273,102 @@ animate(p, renderer = gifski_renderer(),
 anim_save("figures/firre_response_NPC_TFEA.gif")
 ```
 
+# Dox TFEA results
+
+```{r}
+# Read in results
+tfea_res_dirs <- list.dirs("results/dox_tfea_results/", full.names = TRUE,
+                           recursive = FALSE)
+tfea_res_files <- paste0(tfea_res_dirs, "/results.txt")
+
+tfea_res <- read.table(tfea_res_files[1],
+                   col.names = c("TF", "e_score", "corrected_e_score", "events",
+                                 "GC", "FPKM", "padj", "corrected_padj"))
+tfea_res$condition <- gsub("/results.txt", "", 
+                       gsub("results/dox_tfea_results//", "", 
+                            tfea_res_files[1]))
+
+for(i in 2:length(tfea_res_files)) {
+  tmp_res <- read.table(tfea_res_files[i],
+                   col.names = c("TF", "e_score", "corrected_e_score", "events",
+                                 "GC", "FPKM", "padj", "corrected_padj"))
+  tmp_res$condition <- gsub("/results.txt", "", 
+                       gsub("results/dox_tfea_results//", "", 
+                            tfea_res_files[i]))
+  tfea_res <- bind_rows(tfea_res, tmp_res)
+}
+unique(tfea_res$condition)
+tfea_res <- tfea_res %>% separate(condition, into = c("cell_type",
+                                                      "firre_ko",
+                                                      "timepoint"), 
+                                  remove = FALSE)
+tfea_res$timepoint <- as.numeric(gsub("tp", "", tfea_res$timepoint))
+tfea_res$tf_name <- sapply(tfea_res$TF, function(x) {
+  unlist(strsplit(x, "_"))[[1]]
+})
+
+tfea_res <- tfea_res %>%
+  group_by(cell_type, firre_ko, TF) %>%
+  mutate(sig = any(corrected_padj <= 0.1)) %>%
+  ungroup() %>%
+  mutate(sig_timepoint = corrected_padj <= 0.1)
+
+esc_tfea <- tfea_res %>% filter(cell_type == "ESC")
+
+p <- ggplot(esc_tfea,
+            aes(x = log10(events), y = corrected_e_score, label = tf_name, 
+                group = TF)) + 
+  geom_hline(yintercept = 0) +
+  geom_text_repel(data = esc_tfea %>% filter(sig_timepoint == TRUE),
+                  nudge_x = 0.1, nudge_y = 0.01, segment.alpha = 0) +
+  geom_point(data = esc_tfea %>% filter(sig == FALSE),
+             alpha = 0.1) + 
+  geom_point(data = esc_tfea %>% filter(sig == TRUE),
+             aes(color = sig_timepoint)) + 
+  scale_color_manual(values = c("#424242","#a8404c")) +
+  theme_paperwhite() +
+  facet_grid(~firre_ko) +
+  theme(legend.position = "none") +
+  labs(title = 'ESC KO: {closest_state} min') +
+  transition_states(timepoint, transition_length = 10, state_length = 30) +
+  ease_aes('cubic-in-out') +
+  enter_grow() +
+  exit_shrink()
+animate(p, renderer = gifski_renderer(),
+        nframes = 200)
+anim_save("figures/dox_response_ESC_TFEA.gif")
+
+npc_tfea <- tfea_res %>% filter(cell_type == "NPC")
+
+p <- ggplot(npc_tfea,
+            aes(x = log10(events), y = corrected_e_score, label = tf_name, 
+                group = TF)) + 
+  geom_hline(yintercept = 0) +
+  geom_text_repel(data = npc_tfea %>% filter(sig_timepoint == TRUE),
+                  nudge_x = 0.1, nudge_y = 0.01, segment.alpha = 0) +
+  geom_point(data = npc_tfea %>% filter(sig == FALSE),
+             alpha = 0.1) + 
+  geom_point(data = npc_tfea %>% filter(sig == TRUE),
+             aes(color = sig_timepoint)) + 
+  scale_color_manual(values = c("#424242","#a8404c")) +
+  theme_paperwhite() +
+  facet_grid(~firre_ko) +
+  theme(legend.position = "none") +
+  labs(title = 'NPC: {closest_state} min') +
+  transition_states(timepoint, transition_length = 10, state_length = 30) +
+  ease_aes('cubic-in-out') +
+  enter_grow() +
+  exit_shrink()
+animate(p, renderer = gifski_renderer(),
+        nframes = 200)
+anim_save("figures/dox_response_NPC_TFEA.gif")
+```
+
+```{r}
+# Firre RNA motif matches.
+# http://meme-suite.org/opal-jobs/appFIMO_5.1.11599672217854574890346/fimo.html
+```
+
 
 
 
