@@ -93,13 +93,18 @@ exp1_tpm_matrix <- tpm %>% dplyr::select(-gene_name) %>%
   as.matrix()
 exp1_tpm_matrix <- exp1_tpm_matrix[,as.character(exp1_samples$sample_id)]
 
-exp1_tpm_scaled <- t(scale(t(exp1_tpm_matrix)))
+exp1_tpm_subset <- exp1_tpm_matrix[sample(5000),]
 
-exp1_subset <- exp1_tpm_scaled[!is.na(rowSums(exp1_tpm_scaled)),]
-exp1_subset <- exp1_tpm_scaled[sample(5000),]
-summary(rowSums(exp1_tpm_scaled, na.rm = T))
-summary(rowSums(exp1_tpm_matrix))
-exp1_tpm_umap <- umap(exp1_subset, scale = "none")
+# exp1_subset <- exp1_tpm_scaled[!is.na(rowSums(exp1_tpm_scaled)),]
+# exp1_subset <- exp1_tpm_scaled[sample(5000),]
+# summary(rowSums(exp1_tpm_scaled, na.rm = T))
+# summary(rowSums(exp1_tpm_matrix))
+umap_config <- umap.defaults
+umap_config$n_neighbors <- 500
+umap_config$min_dist <- 0.7
+exp1_tpm_umap <- umap(exp1_tpm_subset, scale = "Z",
+                      config = umap_config)
+
 # saveRDS(exp1_tpm_umap, "results/exp_tpm_umap.rds")
 
 exp1_tpm_umap_layout <- exp1_tpm_umap$layout %>%
@@ -108,9 +113,19 @@ exp1_tpm_umap_layout <- exp1_tpm_umap$layout %>%
   merge(g2s)
 names(exp1_tpm_umap_layout)[2:3] <- c("umap_x", "umap_y")
 
-exp1df <- merge(exp1, exp1_tpm_umap_layout)
+g <- ggplot(exp1_tpm_umap_layout, aes(x = umap_x, y = umap_y))
+g + geom_point()
+
+
+exp1_subset <- exp1 %>% filter(gene_id %in% rownames(exp1_tpm_subset))
+exp1df <- merge(exp1_subset, exp1_tpm_umap_layout)
 
 exp1df <- exp1df %>% arrange(abs(log2FoldChange))
+p <- ggplot(exp1df %>% filter(timepoint == 30), 
+            aes(x = umap_x, y = umap_y, color = log2FoldChange, group = gene_id)) + 
+  geom_point() + 
+  scale_color_gradient2(mid = "gray80", limits = c(-0.5, 0.5), oob = squish) 
+
 p <- ggplot(exp1df, 
             aes(x = umap_x, y = umap_y, color = log2FoldChange, group = gene_id)) + 
   geom_point() + 
