@@ -38,3 +38,4 @@ work/*
 *.rds
 *bin*
 *data*
+*.txt
