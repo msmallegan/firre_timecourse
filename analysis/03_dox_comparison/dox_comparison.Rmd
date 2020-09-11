@@ -1,0 +1,90 @@
+---
+title: "Untitled"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggrepel)
+source("../util/_plot_theme.R")
+```
+
+```{r}
+genes <- rtracklayer::import(file.path("../util/",
+                                       "gencode.vM25.annotation.genes.gtf"))
+names(genes) <- genes$gene_id
+
+g2s <- genes %>% as.data.frame() %>%
+  dplyr::select(gene_id, gene_name)
+
+# Read in the firre responder results.
+fr_res <- read_csv(file.path("../01_firre_induction_vs_control/results",
+                             "deseq_res_shrunken.csv")) %>%
+  unite(experiment, cell_type, firre_ko, remove = F) %>% 
+  arrange(experiment)
+dox_res <- read_csv(file.path("../02_doxycycline_responders/results",
+                              "deseq_dox_control_res_shrunken.csv")) %>%
+  unite(experiment, cell_type, firre_ko, remove = F) %>%
+  arrange(experiment)
+
+experiments <- unique(fr_res$experiment)
+
+# Separate into experiments
+fr_res_list <- fr_res %>% 
+  group_by(experiment) %>%
+  group_split()
+names(fr_res_list) <- experiments
+
+dox_res_list <- dox_res %>% 
+  group_by(experiment) %>%
+  group_split()
+names(dox_res_list) <- experiments
+
+merged_res <- list()
+for(i in 1:length(experiments)) {
+  fr_exp <- fr_res_list[[i]] %>%
+    group_by(gene_id, padj, experiment) %>%
+    summarize(max_log2FC = log2FoldChange[which.max(abs(log2FoldChange))]) %>%
+    as.data.frame() %>%
+    mutate(experiment = paste0("fr_", experiment))
+  
+  dox_exp <- dox_res_list[[i]] %>%
+    group_by(gene_id, padj, experiment) %>%
+    summarize(max_log2FC = log2FoldChange[which.max(abs(log2FoldChange))]) %>%
+    as.data.frame() %>%
+    mutate(experiment = paste0("dox_", experiment))
+  
+  exp <- bind_rows(fr_exp, dox_exp) %>%
+    pivot_wider(id_cols = gene_id, names_from = experiment, 
+                values_from = c(padj, max_log2FC))
+  merged_res[[i]] <- exp
+}
+merged_res_df <- merged_res %>%
+  purrr::reduce(left_join, by = "gene_id")
+
+merged_res_df <- merge(merged_res_df, g2s)
+g <- ggplot(merged_res_df, aes(x = max_log2FC_dox_ESC_KO, 
+                               y = max_log2FC_fr_ESC_KO,
+                               label = gene_name))
+g + geom_point() + 
+  geom_text_repel(data = merged_res_df %>% filter(max_log2FC_dox_ESC_KO > 2,
+                                                  max_log2FC_fr_ESC_KO > 2))
+
+g <- ggplot(merged_res_df, aes(x = max_log2FC_dox_ESC_WT, 
+                               y = max_log2FC_fr_ESC_WT,
+                               label = gene_name))
+g + geom_point() + 
+  geom_text_repel(data = merged_res_df %>% filter(max_log2FC_dox_ESC_WT > 2,
+                                                  max_log2FC_fr_ESC_WT > 2))
+
+g <- ggplot(merged_res_df, aes(x = max_log2FC_dox_NPC_KO, 
+                               y = max_log2FC_fr_NPC_KO,
+                               label = gene_name))
+g + geom_point() + 
+  geom_text_repel(data = merged_res_df %>% filter(max_log2FC_dox_NPC_KO > 2,
+                                                  max_log2FC_fr_NPC_KO > 2))
+```
+
