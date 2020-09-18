@@ -88,3 +88,57 @@ g + geom_point() +
                                                   max_log2FC_fr_NPC_KO > 2))
 ```
 
+```{r}
+# Assign cutoffs 
+padj_threshold <- 0.05
+merged_res_df <- merged_res_df %>%
+  mutate(sig_fr_ESC_KO = padj_fr_ESC_KO < padj_threshold,
+         sig_fr_ESC_WT = padj_fr_ESC_WT < padj_threshold,
+         sig_fr_NPC_KO = padj_fr_NPC_KO < padj_threshold,
+         sig_fr_NPC_WT = padj_fr_NPC_WT < padj_threshold,
+         sig_dox_ESC_KO = padj_dox_ESC_KO < padj_threshold,
+         sig_dox_ESC_WT = padj_dox_ESC_WT < padj_threshold,
+         sig_dox_NPC_KO = padj_dox_NPC_KO < padj_threshold,
+         sig_dox_NPC_WT = padj_dox_NPC_WT < padj_threshold)
+
+sig_df <- merged_res_df %>% dplyr::select(gene_id, gene_name,
+                                          contains("sig")) %>%
+  filter(sig_fr_ESC_KO == TRUE & sig_dox_ESC_KO == FALSE |
+           sig_fr_ESC_WT == TRUE & sig_dox_ESC_WT == FALSE |
+           sig_fr_NPC_KO == TRUE & sig_dox_NPC_KO == FALSE |
+           sig_fr_NPC_WT == TRUE & sig_dox_NPC_WT == FALSE)
+
+sig_matrix <- sig_df %>% dplyr::select(-gene_name) %>%
+  column_to_rownames("gene_id") %>%
+  as.matrix()
+sig_matrix[is.na(sig_matrix)] <- FALSE
+sig_matrix[sig_matrix == TRUE] <- 1
+sig_matrix[sig_matrix == FALSE] <- 0
+
+pheatmap::pheatmap(sig_matrix)
+
+sig_fr_df <- sig_matrix %>%
+  as.data.frame() %>%
+  rownames_to_column("gene_id") %>%
+  merge(g2s)
+
+sig_genes_ESC_KO <- sig_fr_df %>% filter(sig_fr_ESC_KO == 1,
+                                         sig_dox_ESC_KO == 0) %>%
+  dplyr::select(gene_id, gene_name, sig_fr_ESC_KO, sig_dox_ESC_KO)
+sig_genes_ESC_WT <- sig_fr_df %>% filter(sig_fr_ESC_WT == 1,
+                                         sig_dox_ESC_WT == 0) %>%
+  dplyr::select(gene_id, gene_name, sig_fr_ESC_WT, sig_dox_ESC_WT)
+sig_genes_NPC_KO <- sig_fr_df %>% filter(sig_fr_NPC_KO == 1,
+                                         sig_dox_NPC_KO == 0) %>%
+  dplyr::select(gene_id, gene_name, sig_fr_NPC_KO, sig_dox_NPC_KO)
+sig_genes_NPC_WT <- sig_fr_df %>% filter(sig_fr_NPC_WT == 1,
+                                         sig_dox_NPC_WT == 0) %>%
+  dplyr::select(gene_id, gene_name, sig_fr_NPC_WT, sig_dox_NPC_WT)
+
+
+length(which(sig_genes_ESC_KO$gene_id %in% sig_genes_ESC_WT$gene_id))
+cat(sig_genes_ESC_KO$gene_name[which(sig_genes_ESC_KO$gene_id %in% sig_genes_ESC_WT$gene_id)],
+       sep = "\n")
+```
+
+

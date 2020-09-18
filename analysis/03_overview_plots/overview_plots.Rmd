@@ -40,19 +40,63 @@ experiments <- unique(dynamic_res$experiment)
 
 exp1 <- dynamic_res %>% filter(experiment == experiments[1]) %>%
    filter(!is.na(padj))
-exp1_matrix <- exp1 %>% 
+
+# Now let's add in the Dox response for the same experiment.
+dox_res <- read_csv(file.path("../02_doxycycline_responders/results",
+                              "deseq_dox_control_res_shrunken.csv")) %>%
+  unite(experiment, cell_type, firre_ko, remove = F) %>%
+  arrange(experiment)
+dox_res$timepoint <- gsub("timepoint_minutes_", "", dox_res$result_name)
+dox_res$timepoint <- gsub("_vs_0", "", dox_res$timepoint)
+dox_res$timepoint <- as.numeric(dox_res$timepoint)
+unique(dox_res$timepoint)
+
+dox_exp1 <- dox_res %>% filter(experiment == experiments[1]) %>%
   filter(!is.na(padj)) %>%
   dplyr::select(gene_id, log2FoldChange, timepoint) %>%
-  pivot_wider(names_from = timepoint, values_from = log2FoldChange) %>%
+  pivot_wider(names_from = timepoint, values_from = log2FoldChange)
+names(dox_exp1)[2:12] <- paste0("dox_", names(dox_exp1)[2:12])
+
+fr_exp1 <- exp1 %>% 
+  filter(!is.na(padj)) %>%
+  dplyr::select(gene_id, log2FoldChange, timepoint) %>%
+  pivot_wider(names_from = timepoint, values_from = log2FoldChange) 
+names(fr_exp1)[2:12] <- paste0("fr_", names(fr_exp1)[2:12])
+
+dox_sig <- dox_res %>% filter(experiment == experiments[1]) %>% 
+  filter(padj < 0.1)
+fr_sig <- dynamic_res %>% filter(experiment == experiments[1]) %>%
+  filter(padj < 0.1)
+
+combined_sig <- unique(c(dox_sig$gene_id, fr_sig$gene_id))
+
+fr_exp1 <- fr_exp1[fr_exp1$gene_id %in% combined_sig,]
+dox_exp1 <- dox_exp1[dox_exp1$gene_id %in% combined_sig,]
+exp1 <- merge(fr_exp1, dox_exp1) %>%
   column_to_rownames("gene_id") %>%
   as.matrix()
 
-exp1_umap <- umap(exp1_matrix)
+pca <- prcomp(exp1)
+
+
+umap_config <- umap.defaults
+umap_config$n_neighbors <- 100
+umap_config$min_dist <- 0.1
+umap_config$metric <- "pearson"
+exp1_umap <- umap(exp1, config = umap_config)
 exp1_umap_layout <- exp1_umap$layout %>%
   as.data.frame() %>%
   rownames_to_column("gene_id") %>%
   merge(g2s)
 names(exp1_umap_layout)[2:3] <- c("umap_x", "umap_y")
+
+exp1_umap_layout$pc1 <- pca$x[,1]
+exp1_umap_layout$pc2 <- pca$x[,2]
+g <- ggplot(exp1_umap_layout, aes(x = umap_x, y = umap_y, label = gene_name))
+g + geom_point()
+
+g <- ggplot(exp1_umap_layout, aes(x = pc1, y = pc2, label = gene_name))
+g + geom_point()
 
 unique(exp1df$timepoint)
 exp1df <- merge(exp1, exp1_umap_layout)
