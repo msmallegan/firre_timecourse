@@ -52,4 +52,10 @@ for(i in 1:length(dest)) {
 }
 
 
+# Retrieve blacklist
+system(paste0("cd /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/; ",
+              "wget https://github.com/Boyle-Lab/Blacklist/raw/master/lists/mm10-blacklist.v2.bed.gz; ",
+              "gunzip mm10-blacklist.v2.bed.gz"))
+
+
 
