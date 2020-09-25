@@ -1,0 +1,109 @@
+---
+title: 'Firre induction: long timecourse'
+author: "Michael Smallegan"
+date: "9/24/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(stringsAsFactors = FALSE,
+        dplyr.summarise.inform = FALSE,
+        tidyverse.quiet = TRUE)
+library(tidyverse)
+library(DESeq2)
+source("../util/_plot_theme.R")
+source("../util/_util.R")
+```
+
+
+```{r}
+genes <- rtracklayer::import(file.path("../util/",
+                                       "gencode.vM25.annotation.genes.gtf"))
+names(genes) <- genes$gene_id
+
+g2s <- genes %>% as.data.frame() %>%
+  dplyr::select(gene_id, gene_name)
+
+tx2gene <- read.csv("../../rnaseq/results/salmon/tx2gene.csv")
+
+### COUNTS
+tpm <- read.csv("../../rnaseq/results/salmon/salmon_merged_gene_tpm.csv") %>%
+  merge(g2s) %>%
+  dplyr::select(gene_id, gene_name, everything())
+
+salmon_gene_counts <- read.csv(file.path("../../rnaseq/results/salmon/",
+                                         "salmon_merged_gene_counts.csv")) %>%
+  column_to_rownames("gene_id") %>%
+  as.matrix()
+mode(salmon_gene_counts) <- "integer"
+
+# Put in order
+genes <- genes[rownames(salmon_gene_counts)]
+
+### SAMPLE INFO
+samples <- read.csv("../../rnaseq/samplesheet.csv") %>%
+  filter(cell_type != "pMEF",
+         timecourse_length == "long") %>%
+  mutate(firre_ko = factor(firre_ko, levels = c("WT", "KO")),
+         timepoint_minutes = factor(timepoint_minutes,
+                                    levels = c(0, 720, 1440, 2880, 5760)),
+         firre_induced = factor(firre_induced, 
+                                levels = c("control", "firre_induced")))
+rownames(samples) <- samples$sample_id
+
+
+
+```
+
+```{r deseq2}
+# Since this takes a while to run, we'll cache this part
+if(!file.exists("results/deseq_res.csv")) {
+  
+  ## FULL MODEL
+  design_formula <- formula(paste0("~ timepoint_minutes + firre_induced + ",
+                                   "firre_induced*timepoint_minutes"))
+  ## REDUCED MODEL
+  reduced_formula <- formula("~ timepoint_minutes + firre_induced")
+  
+  ## EXPERIMENTS
+  # We're going to make 4 comparisons
+  experiments <- c("ESC_KO","ESC_WT")
+  
+  ## RUN DESEQ2
+  deseq_res <- lapply(experiments, run_timecourse_deseq,
+                      counts = salmon_gene_counts, 
+                      samples = samples,
+                      genes = genes,
+                      design_formula = design_formula,
+                      reduced_formula = reduced_formula,
+                      independent_filtering = TRUE)
+  
+  res_list <- lapply(deseq_res, "[[","res")
+  res_shrunken_list <- lapply(deseq_res, "[[","res_shrunken")
+  
+  resdf <- bind_rows(res_list)
+  write_csv(resdf, "results/deseq_res.csv")
+  res_shrunkendf <- bind_rows(res_shrunken_list)
+  write_csv(res_shrunkendf, "results/deseq_res_shrunken.csv")
+}
+
+resdf <- read.csv("results/deseq_res.csv")
+res_shrunkendf <- read.csv("results/deseq_res_shrunken.csv")
+```
+
+```{r}
+g <- ggplot(resdf, aes(x = pvalue)) 
+g + geom_histogram() + facet_grid(cell_type~firre_ko) +
+  theme_paperwhite() + 
+  ggtitle("p-value histogram")
+```
+
+```{r}
+
+```
+
+
+
