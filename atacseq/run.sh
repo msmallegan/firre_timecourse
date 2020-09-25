@@ -15,7 +15,7 @@ echo "You've requested $SLURM_CPUS_ON_NODE core."
 
 module load singularity/3.1.1
 
-nextflow run nf-core/atacseq -r 1.2.1 \
+nextflow run nf-core/atacseq -r 1.2.0 \
 -resume \
 -profile singularity \
 --input atacseq_design.csv \
