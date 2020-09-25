@@ -47,6 +47,117 @@ ltc_esc_sig_genes <- ltc_res %>% filter(firre_ko == "KO", padj < 0.01) %>%
   unique()
 ```
 
+
+```{r}
+# Let's make a scatter plot of the fold-changes
+stc_res_max_lfc <- stc_res %>% 
+  filter(grepl("firre_inducedfirre_induced", result_name),
+         cell_type == "ESC", firre_ko == "KO") %>%
+  group_by(gene_id, gene_name) %>%
+  summarize(stc_max_lfc = log2FoldChange[which.max(abs(log2FoldChange))],
+            stc_padj = unique(padj))
+
+ltc_res_max_lfc <- ltc_res %>% 
+  filter(grepl("firre_inducedfirre_induced", result_name),
+         cell_type == "ESC", firre_ko == "KO") %>%
+  group_by(gene_id, gene_name) %>%
+  summarize(ltc_max_lfc = log2FoldChange[which.max(abs(log2FoldChange))],
+            ltc_padj = unique(padj))
+
+esc_ko_lfc <- firre_wtvsko_esc %>%
+  dplyr::select(gene_id, gene_name, log2FoldChange, padj)
+names(esc_ko_lfc)[3:4] <- c("esc_ko_lfc", "esc_ko_padj")
+esc_ko_vs_induction <- esc_ko_lfc %>% 
+  merge(stc_res_max_lfc) %>%
+  merge(ltc_res_max_lfc)
+esc_ko_vs_induction <- esc_ko_vs_induction %>% 
+  filter(!is.na(esc_ko_padj),
+         !is.na(stc_padj),
+         !is.na(ltc_padj))
+library(ggpubr)
+library(ggrepel)
+g <- ggplot(esc_ko_vs_induction %>% filter(esc_ko_padj < 0.01,
+                                           ltc_padj < 0.01), aes(x= esc_ko_lfc, y = ltc_max_lfc,
+                                                                    label = gene_name))
+g + geom_point() + stat_cor() + 
+  geom_point(data = esc_ko_vs_induction %>% filter(gene_name =="Firre"), color = "red") +
+  geom_text_repel(data = esc_ko_vs_induction %>% filter(esc_ko_lfc <0,
+                                                        ltc_max_lfc > 1,
+                                                        ltc_padj < 0.01,
+                                                        esc_ko_padj < 0.01),
+                  aes(label = gene_name))
+
+
+g <- ggplot(esc_ko_vs_induction %>% filter(esc_ko_padj < 0.01,
+                                           stc_padj < 0.01), aes(x= esc_ko_lfc, y = stc_max_lfc,
+                                                                    label = gene_name))
+g + geom_point() + stat_cor() + 
+  geom_point(data = esc_ko_vs_induction %>% filter(gene_name =="Firre"), color = "red") +
+  geom_text_repel(data = esc_ko_vs_induction %>% filter(esc_ko_lfc >0,
+                                                        stc_max_lfc < 0.0,
+                                                        stc_padj < 0.01,
+                                                        esc_ko_padj < 0.01),
+                  aes(label = gene_name)) +
+  xlim(-1,1) +
+  ylim(-1,2)
+  
+```
+
+
+```{r}
+library(limma)
+
+firre_wtvsko_esc <- firre_wtvsko_esc %>% arrange(-log2FoldChange)
+ltc_sig_index <- which(firre_wtvsko_esc$gene_id %in% stc_esc_sig_genes)
+cameraPR(firre_wtvsko_esc$log2FoldChange, list(set1=ltc_sig_index))
+y <- matrix(rnorm(1000*6),1000,6)
+design <- cbind(Intercept=1,Group=c(0,0,0,1,1,1))
+
+# First set of 20 genes are genuinely differentially expressed
+index1 <- 1:20
+y[index1,4:6] <- y[index1,4:6]+1
+
+# Second set of 20 genes are not DE
+index2 <- 21:40
+ 
+camera(y, index1, design)
+camera(y, index2, design)
+
+camera(y, list(set1=index1,set2=index2), design, inter.gene.cor=NA)
+camera(y, list(set1=index1,set2=index2), design, inter.gene.cor=0.01)
+
+# Pre-ranked version
+fit <- eBayes(lmFit(y, design))
+hmm <- fit$t
+cameraPR(fit$t[,2], list(set1=index1,set2=index2))
+barcodeplot()
+?barcodeplot
+stat <- rnorm(100)
+sel <- 1:10
+sel2 <- 11:20
+stat[sel] <- stat[sel]+1
+stat[sel2] <- stat[sel2]-1
+# One directional
+barcodeplot(stat, index = sel)
+
+# Two directional
+barcodeplot(stat, index = sel, index2 = sel2)
+# Second set can be indicated by negative weights
+barcodeplot(stat, index = c(sel,sel2), gene.weights = c(rep(1,10), rep(-1,10)))
+# Two directional with unequal weights
+w <- rep(0,100)
+w[sel] <- runif(10)
+w[sel2] <- -runif(10)
+barcodeplot(stat, gene.weights = w, weights.label = "logFC")
+# One directional with unequal weights
+w <- rep(0,100)
+w[sel2] <- -runif(10)
+barcodeplot(stat, gene.weights = w, weights.label = "logFC", col.bars = "dodgerblue")
+?camera
+
+```
+
+
 ```{r}
 # Let's just look at esc
 esc_genes <- unique(c(firre_wtvsko_esc_sig_genes, stc_esc_sig_genes, ltc_esc_sig_genes))
