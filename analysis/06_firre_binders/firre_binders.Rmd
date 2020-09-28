@@ -23,6 +23,7 @@ incprint <- read_excel("data/41467_2019_13235_MOESM4_ESM.xlsx") %>%
   dplyr::select(`Protein name`, `Ensembl Gene ID`) %>%
   rename("Protein name" = "gene_name",
          "Ensembl Gene ID"  = "gene_id")
+write_csv(incprint, "results/firre_binders.csv")
 samples <- read.csv("../../rnaseq/rnaseq_samplesheet.csv")
 tpm <- read_csv("../../rnaseq/results/salmon/salmon_merged_gene_tpm.csv")
 genes <- rtracklayer::import("../util/gencode.vM25.annotation.genes.gtf")
@@ -175,6 +176,8 @@ fb_deg <- fb_degw %>% filter(padj_KO < 0.05, padj_WT < 0.05,
                              log2FoldChange_KO > 1,
                              log2FoldChange_WT > 1)
 fb_deg$gene_name
+
+write_csv(fb_degw, "results/firre_binders_DEG_ESC_vs_NPC.csv")
 ```
 
 ```{r}
@@ -208,7 +211,24 @@ g + geom_point()
 
 fb_deg_wtvsko_esc <- fb_wtvsko_w %>% filter(padj_ESC < 0.01)
 fb_deg_wtvsko_npc <- fb_wtvsko_w %>% filter(padj_NPC < 0.01)
+
+write_csv(fb_wtvsko_w, "results/firre_binders_DEG_WT_vs_KO.csv")
 ```
+
+```{r}
+tfea_res <- read_csv("../04_tfea/results/firre_induction_tfea_res.csv")
+fb_tfea_res <- tfea_res %>% filter(tolower(tf_name) %in% tolower(incprint$gene_name))
+cat(paste(incprint$gene_name, collapse = "\n"))
+si <- read.table("data/string_associated_with_firre_binders.txt")
+
+fb_tfea_res <- tfea_res %>% filter(tolower(tf_name) %in% tolower(si$V1))
+
+tfs_in_tfea <- data.frame("tf_name"= unique(tfea_res$tf_name))
+
+system("cd data; wget https://stringdb-static.org/download/protein.links.v11.0/10090.protein.links.v11.0.txt.gz; gunzip 10090.protein.links.v11.0.txt.gz")
+system("cd data; gunzip 10090.protein.links.v11.0.txt.gz")
+```
+
 
 
 
