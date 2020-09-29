@@ -285,9 +285,6 @@ firre_responders_df <- resdf %>%
   arrange(-ESC_KO_padj0.05, -ESC_WT_padj0.05,
                 -NPC_KO_padj0.05, -NPC_WT_padj0.05)
 write_csv(firre_responders_df, "results/firre_induced_genes.csv")
-  
-  
-
 
 write_csv(sigdf, "results/deg_firre_induced_vs_control.csv")
 

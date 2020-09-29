@@ -12,6 +12,9 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(readxl)
 library(DESeq2)
+library(pheatmap)
+library(ggrepel)
+source("../util/_plot_theme.R")
 ```
 
 ## Which Firre binders are expressed in these cells?
@@ -24,6 +27,8 @@ incprint <- read_excel("data/41467_2019_13235_MOESM4_ESM.xlsx") %>%
   rename("Protein name" = "gene_name",
          "Ensembl Gene ID"  = "gene_id")
 write_csv(incprint, "results/firre_binders.csv")
+
+cat(paste(incprint$gene_name, collapse = "\n"))
 samples <- read.csv("../../rnaseq/rnaseq_samplesheet.csv")
 tpm <- read_csv("../../rnaseq/results/salmon/salmon_merged_gene_tpm.csv")
 genes <- rtracklayer::import("../util/gencode.vM25.annotation.genes.gtf")
@@ -121,7 +126,8 @@ wt_resdf <- wt_res %>% as.data.frame() %>%
   rownames_to_column("gene_id") %>% 
   merge(g2s) %>%
   arrange(padj)
-
+write_csv(wt_resdf, "results/wt_ESC_vs_NPC_res.csv")
+write_csv(ko_resdf, "results/ko_ESC_vs_NPC_res.csv")
 ```
 
 
@@ -167,8 +173,13 @@ fb_degw <- fb_deg %>%
               names_from = firre_ko, values_from = c(log2FoldChange, padj))
 
 g <- ggplot(fb_degw, aes(x = log2FoldChange_WT, y = log2FoldChange_KO, 
-                         color = padj_WT < 0.01))
-g + geom_point()
+                         color = padj_WT < 0.01, label = gene_name))
+g + geom_hline(yintercept = 0) +
+  geom_vline(xintercept = 0) +
+  geom_point() + 
+  geom_text_repel(data = fb_degw %>% filter(log2FoldChange_WT > 1.5 | log2FoldChange_WT < -2)) + 
+  ggtitle("ESC vs NPC: Firre binders") + 
+  theme_paperwhite()
 
 # They seem to be perfectly correlated across WT and KO,
 # so let's make a cutoff an decide which ones are DEG
@@ -198,15 +209,25 @@ fb_wtvsko_w <- fb_wtvsko %>%
               names_from = cell_type, values_from = c(log2FoldChange, padj))
 
 g <- ggplot(fb_wtvsko_w, aes(x = log2FoldChange_ESC, y = log2FoldChange_NPC))
-g + geom_point()
+g +  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = 0) +
+  geom_point()
 
 g <- ggplot(fb_wtvsko_w, aes(x = log2FoldChange_ESC, y = log2FoldChange_NPC,
-                             color = padj_ESC < 0.05))
-g + geom_point()
+                             color = padj_ESC < 0.05, label = gene_name))
+g +geom_hline(yintercept = 0) +
+  geom_vline(xintercept = 0) + 
+  geom_point() + 
+  geom_text_repel(data = fb_wtvsko_w %>% filter(padj_ESC < 0.05)) +
+  ggtitle("Zero TP Firre WT vs KO: ESC sig")
 
 g <- ggplot(fb_wtvsko_w, aes(x = log2FoldChange_ESC, y = log2FoldChange_NPC,
-                             color = padj_NPC < 0.05))
-g + geom_point()
+                             color = padj_NPC < 0.05, label = gene_name))
+g + geom_hline(yintercept = 0) +
+  geom_vline(xintercept = 0) +
+  geom_point() +
+  geom_text_repel(data = fb_wtvsko_w %>% filter(padj_NPC < 0.05)) +
+  ggtitle("Zero TP Firre WT vs KO: NPC sig")
 
 
 fb_deg_wtvsko_esc <- fb_wtvsko_w %>% filter(padj_ESC < 0.01)
