@@ -74,7 +74,7 @@ run_timecourse_deseq <- function(experiment,
     as.data.frame() %>%
     rownames_to_column(var = "gene_id") %>%
     merge(g2s) %>%
-    mutate(result_name = res_names[1]) 
+    mutate(result_name = res_names[2]) 
   
   for(i in 2:length(res_names)) {
     tmp_res <- results(dds, 
