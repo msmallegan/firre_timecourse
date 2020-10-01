@@ -8,11 +8,11 @@ editor_options:
 ---
 
 ```{r setup, include=FALSE}
+options(stringsAsFactors = F)
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(DESeq2)
 source("../util/_plot_theme.R")
-
 ```
 
 ```{r}
@@ -88,6 +88,60 @@ res <- results(dds, name = res_names[2]) %>%
 write_csv(res, "results/atac_timecourse_de.csv")
 
 sig_res <- res %>% filter(padj < 0.1)
+```
+
+
+```{r}
+# Let's check out what's happening near genes that are changing in response to 
+# Firre. 
+fr <- read_csv("../01_firre_induction_vs_control/results/deseq_res.csv")
+unique(fr$comparison)
+fr_sig <- fr %>% filter(padj < 0.05, cell_type == "ESC") %>%
+  group_by(gene_id, gene_name, firre_ko) %>%
+  summarize(max_fc = log2FoldChange[which.max(abs(log2FoldChange))]) %>%
+  pivot_wider(names_from = firre_ko, values_from = max_fc)
+
+ 
+
+atac_fr_sig <- atac_consensus[atac_consensus$Nearest.PromoterID %in% fr_sig$gene_id,]
+names(atac_fr_sig)[1] <- "interval_id"
+
+fr_res <- res %>% filter(res$interval_id %in% atac_fr_sig$interval_id)
+
+fr_res <- merge(fr_res, atac_fr_sig %>% 
+                  dplyr::select(interval_id, Nearest.PromoterID, Distance.to.TSS, Chr, Start, End))
+names(fr_res)[9] <- "gene_id"
+
+fr_res <- merge(fr_res, fr_sig)
+fr_res$abs_dist_tss <- abs(fr_res$Distance.to.TSS)
+fr_res <- fr_res %>% unite(ucsc_coord, Chr, Start, remove = FALSE, sep = ":") %>%
+  unite(ucsc_coord, ucsc_coord, End, sep = "-", remove = FALSE)
+```
+
+```{r}
+# Prepare for UCSC
+consensus_bed <- read.table("../../atacseq/results/bwa/mergedLibrary/macs/broadPeak/consensus/consensus_peaks.mLb.clN.bed")
+consensus_bed <- consensus_bed %>% filter(V1 %in% c(paste0("chr",1:19), "chrM", "chrX", "chrY"))
+write.table(consensus_bed, "results/consensus_peaks.mLb.clN.bed", 
+            quote = FALSE, row.names = FALSE, col.names = FALSE, sep = "\t")
+unique(consensus_bed$V1)
+
+# Prepare trackhub trackDB
+atac_bigwigs <- list.files("../../atacseq/results/bwa/mergedLibrary/bigwig/",
+                           pattern = "*.bigWig")
+atac_bigwig_name <- gsub("_R1.mLb.clN.bigWig", "", atac_bigwigs)
+atac_bigwig_name <- gsub("ESC_", "", atac_bigwig_name)
+
+lines <- list()
+for(i in 1:length(atac_bigwigs)) {
+  write(paste0("track  ", atac_bigwig_name[[i]], "
+bigDataUrl https://biof-trackhub.colorado.edu/rinnlab/micahel/firre_timecourse/firre_atacseq/", atac_bigwigs[[i]], "
+shortLabel ",atac_bigwig_name[[i]] , "
+longLabel ", atac_bigwig_name[[i]], "
+type bigWig
+visibility full\n\n"), "results/atacseq_trackDb.txt", append = T)
+}
+
 ```
 
 
