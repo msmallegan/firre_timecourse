@@ -371,6 +371,84 @@ anim_save("figures/dox_response_NPC_TFEA.gif")
 # http://meme-suite.org/opal-jobs/appFIMO_5.1.11599672217854574890346/fimo.html
 ```
 
+```{r}
+create_sbatch_script <- function(experiment, rankings_dir, output_dir,
+                                 script_dir) {
+  
+line <- paste0("#!/bin/bash
+#SBATCH -p short
+#SBATCH --job-name=tfea_", experiment, "
+#SBATCH --mail-type=NONE
+#SBATCH --mail-user=michael.smallegan@colorado.edu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --mem=6gb
+#SBATCH --time=4:00:00
+#SBATCH --output=", experiment, "_tfea.out
+#SBATCH --error=", experiment, "_tfea.err
+
+module load singularity/3.1.1
+
+BASE_DIR='/scratch/Shares/rinn/Michael/firre_timecourse/analysis/04_tfea'
+
+singularity exec \\
+--bind $BASE_DIR/", rankings_dir,":/mnt/rankings \\
+--bind $BASE_DIR/", output_dir, experiment,":/mnt/output \\
+--bind $BASE_DIR/data/motif_databases/MOUSE/:/mnt/mouse_meme \\
+--bind /scratch/Shares/rinn/genomes/Mus_musculus/Gencode/M25:/mnt/genome \\
+	$BASE_DIR/bin/tfea.sif TFEA \\
+--output /mnt/output \\
+--ranked_file /mnt/rankings/", experiment, ".bed \\
+--label1 lb1 --label2 lb2 \\
+--genomefasta /mnt/genome/GRCm38.p6.genome.fa \\
+--fimo_motifs /mnt/mouse_meme/HOCOMOCOv11_full_MOUSE_mono_meme_format.meme")
+writeLines(line, 
+           con = paste0(script_dir, experiment, ".sbatch"))
+}
+```
+
+```{r}
+# Now I'm going to do the same for the ATAC-seq differential regions
+wt_atac_de_intervals <- read_csv("../07_atacseq/results/wt_atac_de_intervals_shrunken.csv")
+ko_atac_de_intervals <- read_csv("../07_atacseq/results/ko_atac_de_intervals_shrunken.csv")
+
+atac_results <- list("WT" = wt_atac_de_intervals, "KO" = ko_atac_de_intervals)
+dir.create("results/atac_de_intervals")
+dir.create("results/atac_tfea_results")
+dir.create("bin/atac_tfea_sbatch")
+
+for(j in 1:length(atac_results)) {
+  atac_res <- atac_results[[j]]
+  res_name <- names(atac_results)[[j]]
+  interval_order <- atac_res %>%
+    filter(!is.na(padj)) %>%
+    arrange(-log2FoldChange) %>%
+    dplyr::select(Chr, Start, End)
+  
+  
+  cat("#chrom	start	stop \n",file=paste0("results/atac_de_intervals/",
+                                         res_name , ".bed"))
+  write.table(interval_order, paste0("results/atac_de_intervals/",
+                                     res_name,".bed"),
+              row.names = FALSE, col.names = FALSE, sep = "\t",
+              append = TRUE, quote = FALSE)
+  dir.create(paste0("results/atac_tfea_results/", 
+                    res_name))
+  
+  create_sbatch_script(res_name, 
+                       "results/atac_de_intervals/",
+                       "results/atac_tfea_results/",
+                       "bin/atac_tfea_sbatch/")
+  
+}
+
+# Create submit script
+cat(paste0("#!/bin/bash \n",
+              paste(paste0("sbatch ", list.files("bin/atac_tfea_sbatch/", pattern = ".sbatch")),
+              collapse = "\n")),
+    file = "bin/atac_tfea_sbatch/submit.sh")
+
+```
 
 
 

@@ -51,43 +51,104 @@ samples$timepoint_minutes <- factor(samples$timepoint_minutes,
 rownames(samples) <- samples$sample_name
 
 stopifnot(all(colnames(counts) == rownames(samples)))
+wt_samples <- samples %>% filter(firre_ko == "WT")
+ko_samples <- samples %>% filter(firre_ko == "KO")
 
 
+wt_counts <- counts[,rownames(wt_samples)]
+ko_counts <- counts[,rownames(ko_samples)]
 ```
 
 ```{r}
-## FULL MODEL
-design_formula <- formula(paste0("~ timepoint_minutes + firre_induced + firre_ko +",
-                                   "firre_induced*timepoint_minutes"))
-## REDUCED MODEL
-reduced_formula <- formula("~ timepoint_minutes + firre_induced + firre_ko")
+# ## FULL MODEL
+# design_formula <- formula(paste0("~ timepoint_minutes + firre_induced + firre_ko +",
+#                                    "firre_induced*timepoint_minutes"))
+# ## REDUCED MODEL
+# reduced_formula <- formula("~ timepoint_minutes + firre_induced + firre_ko")
 
-dds <- DESeqDataSetFromMatrix(countData = round(counts), 
-                               colData = samples, 
-                               design = design_formula)
+wt_dds <- DESeqDataSetFromMatrix(countData = round(wt_counts), 
+                               colData = wt_samples, 
+                               design = ~ firre_induced)
 
-dds <- DESeq(dds, test="LRT", 
-             reduced = reduced_formula)
+wt_dds <- DESeq(wt_dds)
+(res_names <- resultsNames(wt_dds))
 
-(res_names <- resultsNames(dds))
+wt_res <- results(wt_dds, name = res_names[2]) %>% 
+    as.data.frame() %>%
+    rownames_to_column(var = "interval_id") %>%
+    mutate(result_name = res_names[2]) 
+names(atac_consensus)[1] <- "interval_id"
+wt_res <- merge(wt_res, atac_consensus %>% 
+                  dplyr::select(interval_id, Nearest.PromoterID, Distance.to.TSS, Chr, Start, End)) %>% 
+  unite(ucsc_coord, Chr, Start, remove = FALSE, sep = ":") %>%
+  unite(ucsc_coord, ucsc_coord, End, sep = "-", remove = FALSE)
 
-res <- results(dds, name = res_names[2]) %>% 
+wt_res_shrunken <- lfcShrink(dds = wt_dds,
+                            coef = res_names[2],
+                            type = "apeglm") %>% 
     as.data.frame() %>%
     rownames_to_column(var = "interval_id") %>%
     mutate(result_name = res_names[2]) 
 
- for(i in 3:length(res_names)) {
-    tmp_res <- results(dds, 
-                       name = res_names[i]) %>%
-      as.data.frame() %>%
-      rownames_to_column(var = "interval_id") %>%
-      mutate(result_name = res_names[i]) 
-    res <- bind_rows(res, tmp_res)
- }
+wt_res_shrunken <- wt_res_shrunken %>%
+  merge(atac_consensus %>% 
+                  dplyr::select(interval_id, Nearest.PromoterID, Distance.to.TSS, Chr, Start, End)) %>% 
+  unite(ucsc_coord, Chr, Start, remove = FALSE, sep = ":") %>%
+  unite(ucsc_coord, ucsc_coord, End, sep = "-", remove = FALSE)
 
-write_csv(res, "results/atac_timecourse_de.csv")
+wt_res_sig <- wt_res %>% filter(padj < 0.05)
+names(wt_res_sig)[9] <- "gene_id"
 
-sig_res <- res %>% filter(padj < 0.1)
+write_csv(wt_res_shrunken, "results/wt_atac_de_intervals_shrunken.csv")
+write_csv(wt_res, "results/wt_atac_de_intervals.csv")
+
+
+ko_dds <- DESeqDataSetFromMatrix(countData = round(ko_counts), 
+                               colData = ko_samples, 
+                               design = ~ firre_induced)
+
+ko_dds <- DESeq(ko_dds)
+(res_names <- resultsNames(ko_dds))
+
+ko_res <- results(ko_dds, name = res_names[2]) %>% 
+    as.data.frame() %>%
+    rownames_to_column(var = "interval_id") %>%
+    mutate(result_name = res_names[2]) 
+names(atac_consensus)[1] <- "interval_id"
+ko_res <- merge(ko_res, atac_consensus %>% 
+                  dplyr::select(interval_id, Nearest.PromoterID, Distance.to.TSS, Chr, Start, End)) %>% 
+  unite(ucsc_coord, Chr, Start, remove = FALSE, sep = ":") %>%
+  unite(ucsc_coord, ucsc_coord, End, sep = "-", remove = FALSE)
+
+ko_res_sig <- ko_res %>% filter(padj < 0.05)
+names(ko_res_sig)[9] <- "gene_id"
+
+ko_res_shrunken <- lfcShrink(dds = ko_dds,
+                            coef = res_names[2],
+                            type = "apeglm") %>% 
+    as.data.frame() %>%
+    rownames_to_column(var = "interval_id") %>%
+    mutate(result_name = res_names[2]) 
+
+ko_res_shrunken <- ko_res_shrunken %>%
+  merge(atac_consensus %>% 
+                  dplyr::select(interval_id, Nearest.PromoterID, Distance.to.TSS, Chr, Start, End)) %>% 
+  unite(ucsc_coord, Chr, Start, remove = FALSE, sep = ":") %>%
+  unite(ucsc_coord, ucsc_coord, End, sep = "-", remove = FALSE)
+
+
+write_csv(ko_res_shrunken, "results/ko_atac_de_intervals_shrunken.csv")
+write_csv(ko_res, "results/ko_atac_de_intervals.csv")
+
+
+
+# write_csv(wt_res, "results/wt_atac_timecourse_de.csv")
+# 
+# sig_res <- res %>% filter(padj < 0.1)
+
+ko_wt_overlapping <- ko_res_sig[which(ko_res_sig$interval_id %in% wt_res_sig$interval_id),]
+
+
 ```
 
 
@@ -96,17 +157,17 @@ sig_res <- res %>% filter(padj < 0.1)
 # Firre. 
 fr <- read_csv("../01_firre_induction_vs_control/results/deseq_res.csv")
 unique(fr$comparison)
-fr_sig <- fr %>% filter(padj < 0.05, cell_type == "ESC") %>%
+fr <- fr %>% filter(cell_type == "ESC") %>%
   group_by(gene_id, gene_name, firre_ko) %>%
   summarize(max_fc = log2FoldChange[which.max(abs(log2FoldChange))]) %>%
   pivot_wider(names_from = firre_ko, values_from = max_fc)
 
- 
+wt_res_sig_fr <- merge(wt_res_sig, fr, all.x = T)
 
 atac_fr_sig <- atac_consensus[atac_consensus$Nearest.PromoterID %in% fr_sig$gene_id,]
 names(atac_fr_sig)[1] <- "interval_id"
 
-fr_res <- res %>% filter(res$interval_id %in% atac_fr_sig$interval_id)
+fr_res <- wt_res %>% filter(wt_res$interval_id %in% atac_fr_sig$interval_id)
 
 fr_res <- merge(fr_res, atac_fr_sig %>% 
                   dplyr::select(interval_id, Nearest.PromoterID, Distance.to.TSS, Chr, Start, End))
@@ -115,7 +176,8 @@ names(fr_res)[9] <- "gene_id"
 fr_res <- merge(fr_res, fr_sig)
 fr_res$abs_dist_tss <- abs(fr_res$Distance.to.TSS)
 fr_res <- fr_res %>% unite(ucsc_coord, Chr, Start, remove = FALSE, sep = ":") %>%
-  unite(ucsc_coord, ucsc_coord, End, sep = "-", remove = FALSE)
+  unite(ucsc_coord, ucsc_coord, End, sep = "-", remove = FALSE) %>%
+  filter(padj < 0.05)
 ```
 
 ```{r}
