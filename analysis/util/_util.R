@@ -269,3 +269,6 @@ get_dynamic_comparison_df <- function(res) {
                               levels = seq(0,360,30))
   return(dyn_res)
 }
+
+
+

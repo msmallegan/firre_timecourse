@@ -1,0 +1,271 @@
+---
+title: "Vs zero"
+author: "Michael Smallegan"
+date: "10/1/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(stringsAsFactors = FALSE,
+        dplyr.summarise.inform = FALSE,
+        tidyverse.quiet = TRUE)
+library(tidyverse)
+library(DESeq2)
+library(gplots)
+library(ggrepel)
+library(ggpubr)
+source("../util/_plot_theme.R")
+source("../util/_util.R")
+library(BiocParallel)
+register(MulticoreParam(12))
+```
+
+```{r import}
+### ANNOTATIONS
+if(!file.exists("../util/gencode.vM25.annotation.genes.gtf")) {
+  gencode <- rtracklayer::import(file.path("../../../../genomes/Mus_musculus/",
+                                           "Gencode/M25/",
+                                           "gencode.vM25.annotation.gtf"))
+  genes <- gencode[gencode$type == "gene"]
+  rtracklayer::export(genes, 
+                      "../util/gencode.vM25.annotation.genes.gtf")
+}
+genes <- rtracklayer::import(file.path("../util/",
+                                       "gencode.vM25.annotation.genes.gtf"))
+names(genes) <- genes$gene_id
+
+g2s <- genes %>% as.data.frame() %>%
+  dplyr::select(gene_id, gene_name)
+
+tx2gene <- read.csv("../../rnaseq/results/salmon/tx2gene.csv")
+
+### COUNTS
+tpm <- read.csv("../../rnaseq/results/salmon/salmon_merged_gene_tpm.csv") %>%
+  merge(g2s) %>%
+  dplyr::select(gene_id, gene_name, everything())
+
+salmon_gene_counts <- read.csv(file.path("../../rnaseq/results/salmon/",
+                                         "salmon_merged_gene_counts.csv")) %>%
+  column_to_rownames("gene_id") %>%
+  as.matrix()
+mode(salmon_gene_counts) <- "integer"
+
+# Put in order
+genes <- genes[rownames(salmon_gene_counts)]
+
+### SAMPLE INFO
+# Somehow the long timepoints didn't make it into this run.
+# TODO: re-run with the long timepoints. Gaaah.
+samples <- read.csv("../../rnaseq/rnaseq_samplesheet.csv") %>%
+  filter(cell_type != "pMEF",
+         date_sequenced != "18-Sep") %>%
+  mutate(firre_ko = factor(firre_ko, levels = c("WT", "KO")),
+         timepoint_minutes = factor(timepoint_minutes, 
+                                    levels = c(seq(0,360,30), 720, 1440, 2880, 5760)),
+         firre_induced = factor(firre_induced, 
+                                levels = c("control", "firre_induced")))
+rownames(samples) <- samples$sample_id
+```
+
+```{r}
+timepoints <- c(seq(30,330,30), 720, 1440, 2880, 5760)
+vs_zero_timepoints <- rep(list(c("timepoint_minutes", "0")),length(timepoints))
+for(i in 1:length(vs_zero_timepoints)) {
+  vs_zero_timepoints[[i]] <- c(vs_zero_timepoints[[i]],timepoints[[i]])
+}
+vs_prev_timepoints <- rep(list(c("timepoint_minutes")), length(timepoints))
+timepoints <- c(seq(0,330,30), 720, 1440, 2880, 5760)
+for(i in 1:length(vs_prev_timepoints)) {
+  vs_prev_timepoints[[i]] <- c(vs_prev_timepoints[[i]],timepoints[[i]])
+  vs_prev_timepoints[[i]] <- c(vs_prev_timepoints[[i]],timepoints[[i+1]])
+}
+contrasts_list <- c(vs_zero_timepoints, vs_prev_timepoints)
+
+names(contrasts_list) <- sapply(contrasts_list, function(x) {
+  paste(x[[1]], x[[2]], "vs", x[[3]], sep = "_")
+})
+
+
+```
+
+
+```{r}
+
+
+
+run_vs_zero_deseq <- function(experiment,
+                              counts, samples, genes,
+                              contrasts_list,
+                              ncores = 12,
+                              save_dds = FALSE,
+                              save_res = FALSE) {
+  
+  ct <- unlist(strsplit(experiment, "_"))[[1]]
+  fko <- unlist(strsplit(experiment, "_"))[[2]]
+  fi <- unlist(strsplit(experiment, "_"))[[3]]
+  if(fi == "fi") {
+    fi <- "firre_induced"
+  } else {
+    fi <- "control"
+  }
+  
+  samples <- samples %>% filter(cell_type == ct,
+                                firre_ko == fko,
+                                firre_induced == fi)
+  
+  counts <- counts[,samples$sample_id]
+  mode(counts) <- "integer"
+  
+  # Reorder gencode genes
+  genes <- genes[rownames(counts)]
+  
+  # Check ordering
+  stopifnot(all(rownames(samples) == colnames(counts)))
+  stopifnot(all(names(genes) == rownames(counts)))
+  
+  dds <- DESeqDataSetFromMatrix(countData = counts, 
+                                colData = samples, 
+                                design = ~ timepoint_minutes,
+                                rowData = genes)
+  
+  # Filter low counts
+  dds <- dds[rowSums(counts(dds)) >= 10,]
+  
+  
+  dds <- DESeq(dds,
+               parallel=TRUE,
+               BPPARAM=MulticoreParam(ncores))
+  
+  if(save_dds == TRUE) {
+    saveRDS(dds, paste0("results/",
+                        ct, "_",
+                        fko, "_dds.rds"))
+  }
+  
+  
+  res_list_unshrunken <- mapply(
+    FUN = results,
+    contrast = contrasts_list,
+    MoreArgs = list(
+      object = dds),
+    SIMPLIFY = FALSE,
+    USE.NAMES = FALSE)
+  
+  
+  
+  res_list_shrunken <- mapply(
+    FUN = lfcShrink,
+    res = res_list_unshrunken,
+    contrast = contrasts_list,
+    MoreArgs = list(
+      dds = dds,
+      type = "ashr",
+      parallel = TRUE),
+    SIMPLIFY = FALSE,
+    USE.NAMES = TRUE)
+  
+  # Convert to data.frame
+  for(i in 1:length(res_list_unshrunken)) {
+    res_list_unshrunken[[i]] <- res_list_unshrunken[[i]] %>%
+      as.data.frame() %>%
+      rownames_to_column("gene_id") %>%
+      merge(g2s) %>%
+      mutate(result_name = names(contrasts_list)[[i]])
+  }
+  res_unshrunken <- bind_rows(res_list_unshrunken)
+  
+  for(i in 1:length(res_list_shrunken)) {
+    res_list_shrunken[[i]] <- res_list_shrunken[[i]] %>%
+      as.data.frame() %>%
+      rownames_to_column("gene_id") %>%
+      merge(g2s) %>%
+      mutate(result_name = names(contrasts_list)[[i]])
+  }
+  res_shrunken <- bind_rows(res_list_shrunken)
+  
+  # Label results
+  res_shrunken$cell_type <- ct
+  res_shrunken$firre_ko <- fko
+  res_shrunken$firre_induced <- fi
+  res_unshrunken$cell_type <- ct
+  res_unshrunken$firre_ko <- fko
+  res_unshrunken$firre_induced <- fi
+  
+  combined_results <- list("res" = res, "res_shrunken" = res_shrunken)
+  
+  return(combined_results)
+}
+
+
+```
+
+
+```{r}
+if(!file.exists("results/deseq_res.csv")) {
+  
+  
+  ## EXPERIMENTS
+  # We're going to make 4 comparisons
+  experiments <- c("ESC_KO_fi","ESC_WT_fi",
+                   "ESC_KO_dox","ESC_WT_dox")
+  
+  ## RUN DESEQ2
+  deseq_res <- lapply(experiments, run_vs_zero_deseq,
+                      counts = salmon_gene_counts, 
+                      samples = samples,
+                      genes = genes,
+                      contrasts_list = contrasts_list)
+  
+  res_list <- lapply(deseq_res, "[[","res")
+  res_shrunken_list <- lapply(deseq_res, "[[","res_shrunken")
+  
+  resdf <- bind_rows(res_list)
+  write_csv(resdf, "results/deseq_res.csv")
+  res_shrunkendf <- bind_rows(res_shrunken_list)
+  write_csv(res_shrunkendf, "results/deseq_res_shrunken.csv")
+}
+```
+
+```{r}
+resdf <- read_csv("results/deseq_res.csv")
+res_shrunkendf <- read_csv("results/deseq_res_shrunken.csv")
+
+res_shrunkendf$comparison <- sapply(res_shrunkendf$result_name, function(x) {
+  if(grepl("_0_vs_", x)) {
+    "vs_zero"
+  } else { "vs_prev" }
+})
+
+vs_zero_res <- res_shrunkendf %>%
+  filter(comparison == "vs_zero")
+
+vs_zero_res$timepoint_vs_zero <- sapply(vs_zero_res$result_name, function(x) {
+  unlist(strsplit(x, "_"))[[5]] %>% as.numeric()
+})
+
+
+gene_res <- vs_zero_res %>% 
+  group_by(gene_id, gene_name, cell_type,
+                                        firre_ko, firre_induced) %>%
+  mutate(n_sig = length(which(padj < 0.05)),
+         sig_tps = paste(timepoint_vs_zero[which(padj < 0.05)], collapse = ";"))
+
+sixty_sig_tp <- gene_res %>% filter(n_sig == 1, sig_tps == "60") %>%
+  arrange(sig_tps)
+
+sixty_only_genes <- unique(sixty_sig_tp$gene_id)
+ex_gene <- "ENSMUSG00000040599.13"
+
+sixty_sig_tp$tp <- factor(sixty_sig_tp$timepoint_vs_zero, 
+                          levels = c(seq(0,360,30), 720, 1440, 2880, 5760))
+g <- ggplot(sixty_sig_tp %>% filter(gene_id == ex_gene), 
+            aes(x = tp, y = log2FoldChange))
+g + geom_point()
+
+```
+
+
+

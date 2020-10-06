@@ -153,6 +153,13 @@ ko_wt_overlapping <- ko_res_sig[which(ko_res_sig$interval_id %in% wt_res_sig$int
 
 
 ```{r}
+ko_res_shrunken <- read_csv("results/ko_atac_de_intervals_shrunken.csv") %>%
+  filter(padj < 0.1)
+names(ko_res_shrunken)[8] <- "gene_id"
+wt_res_shrunken <- read_csv("results/wt_atac_de_intervals_shrunken.csv") %>%
+  filter(padj < 0.1)
+names(wt_res_shrunken)[8] <- "gene_id"
+
 # Let's check out what's happening near genes that are changing in response to 
 # Firre. 
 fr <- read_csv("../01_firre_induction_vs_control/results/deseq_res.csv")
@@ -162,7 +169,8 @@ fr <- fr %>% filter(cell_type == "ESC") %>%
   summarize(max_fc = log2FoldChange[which.max(abs(log2FoldChange))]) %>%
   pivot_wider(names_from = firre_ko, values_from = max_fc)
 
-wt_res_sig_fr <- merge(wt_res_sig, fr, all.x = T)
+wt_res_sig_fr <- merge(wt_res_shrunken, fr, all.x = T)
+ko_res_sig_fr <- merge(ko_res_shrunken, fr, all.x = T)
 
 atac_fr_sig <- atac_consensus[atac_consensus$Nearest.PromoterID %in% fr_sig$gene_id,]
 names(atac_fr_sig)[1] <- "interval_id"
@@ -205,6 +213,29 @@ visibility full\n\n"), "results/atacseq_trackDb.txt", append = T)
 }
 
 ```
+
+```{r}
+# lm 
+ko_fi_samples <- samples %>% filter(firre_ko == "KO", firre_induced == "firre_induced")
+ko_fi_samples$timepoint_minutes <- as.numeric(ko_fi_samples$timepoint_minutes)
+ko_fi_samples <- ko_fi_samples %>% arrange(timepoint_minutes)
+ko_fi_counts <- counts[,ko_fi_samples$sample_name]
+library(broom)
+
+ko_fi_lm_df <- tidy(lm(seq(0,150,30)~ko_fi_counts[1,]))
+ko_fi_lm_df$interval_id <- rownames(ko_fi_counts)[1]
+for(i in 51425:nrow(ko_fi_counts)) {
+  if((i %% 10000) == 0) print(i)
+  tmp_df <- tidy(lm(seq(0,150,30)~ko_fi_counts[i,]))
+  tmp_df$interval_id <- rownames(ko_fi_counts)[i]
+  ko_fi_lm_df <- bind_rows(ko_fi_lm_df, tmp_df)
+}
+
+
+
+
+```
+
 
 
 

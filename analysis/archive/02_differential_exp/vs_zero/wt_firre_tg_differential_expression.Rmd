@@ -52,16 +52,55 @@ output:
 ---
 
 ```{r setup, message=FALSE, warning=FALSE}
-source("_setup.R")
-source("helper_functions.R")
-library(tidyverse); library(tximport); library(bcbioRNASeq); library(pals)
-library(lemon); library(scales); library(ggrepel); library(colorspace)
+
+# source("_setup.R")
+# source("helper_functions.R")
+# library(tidyverse); library(tximport); library(bcbioRNASeq); library(pals)
+# library(lemon); library(scales); library(ggrepel); library(colorspace)
 ```
 
 ```{r}
+contrasts_list <- list(
+       c(factor = "timepoint",
+        numerator = "30",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "60",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "90",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "120",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "150",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "180",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "210",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "240",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "270",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "300",
+        denominator = "0"),
+        c(factor = "timepoint",
+        numerator = "330",
+        denominator = "0"))
+```
+
+
+```{r}
 # Genes flagged in dox response analysis.
-flagged <- read.csv("results/dox_responders_firre_wt_mesc.csv")
-flagged <- unique(flagged$gene_name)
+# flagged <- read.csv("results/dox_responders_firre_wt_mesc.csv")
+# flagged <- unique(flagged$gene_name)
 ```
 
 

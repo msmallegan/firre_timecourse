@@ -383,7 +383,7 @@ line <- paste0("#!/bin/bash
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --mem=6gb
-#SBATCH --time=4:00:00
+#SBATCH --time=6:00:00
 #SBATCH --output=", experiment, "_tfea.out
 #SBATCH --error=", experiment, "_tfea.err
 
@@ -412,7 +412,14 @@ writeLines(line,
 wt_atac_de_intervals <- read_csv("../07_atacseq/results/wt_atac_de_intervals_shrunken.csv")
 ko_atac_de_intervals <- read_csv("../07_atacseq/results/ko_atac_de_intervals_shrunken.csv")
 
-atac_results <- list("WT" = wt_atac_de_intervals, "KO" = ko_atac_de_intervals)
+wt_atac_de_intervals_sig_only <- wt_atac_de_intervals %>%
+  filter(padj < 0.1)
+ko_atac_de_intervals_sig_only <- ko_atac_de_intervals %>%
+  filter(padj < 0.1)
+
+atac_results <- list("WT" = wt_atac_de_intervals, "KO" = ko_atac_de_intervals,
+                     "WT_sig_only" = wt_atac_de_intervals_sig_only,
+                     "KO_sig_only" = ko_atac_de_intervals_sig_only)
 dir.create("results/atac_de_intervals")
 dir.create("results/atac_tfea_results")
 dir.create("bin/atac_tfea_sbatch")
@@ -449,6 +456,97 @@ cat(paste0("#!/bin/bash \n",
     file = "bin/atac_tfea_sbatch/submit.sh")
 
 ```
+
+```{r}
+# Read in ATAC results
+atac_res_dirs <- list.dirs("results/atac_tfea_results/", full.names = TRUE,
+                           recursive = FALSE)
+atac_res_files <- paste0(atac_res_dirs, "/results.txt")
+
+atac_res <- read.table(atac_res_files[1],
+                   col.names = c("TF", "e_score", "corrected_e_score", "events",
+                                 "GC", "FPKM", "padj", "corrected_padj"))
+atac_res$condition <- gsub("/results.txt", "", 
+                       gsub("results/atac_tfea_results//", "", 
+                            atac_res_files[1]))
+
+for(i in 2:length(atac_res_files)) {
+  tmp_res <- read.table(atac_res_files[i],
+                   col.names = c("TF", "e_score", "corrected_e_score", "events",
+                                 "GC", "FPKM", "padj", "corrected_padj"))
+  tmp_res$condition <- gsub("/results.txt", "", 
+                       gsub("results/atac_tfea_results//", "", 
+                            atac_res_files[i]))
+  atac_res <- bind_rows(atac_res, tmp_res)
+}
+unique(atac_res$condition)
+
+atac_res$tf_name <- sapply(atac_res$TF, function(x) {
+  unlist(strsplit(x, "_"))[[1]]
+})
+
+atac_res_wt_sig_only <- atac_res %>% filter(condition == "WT_sig_only")
+
+g <- ggplot(atac_res_wt_sig_only, aes(x = log10(events), y = corrected_e_score, 
+                                      label = tf_name, 
+                group = TF, color = padj < 0.1))
+g + geom_point()
+
+atac_res_ko_sig_only <- atac_res %>% filter(condition == "KO_sig_only")
+
+g <- ggplot(atac_res_ko_sig_only, 
+            aes(x = log10(events), y = corrected_e_score, 
+                                      label = tf_name, 
+                group = TF, color = padj < 0.1))
+g + geom_point()
+
+atac_res <- atac_res %>% mutate(sig = corrected_padj <= 0.1)
+
+
+wt_atac <- atac_res %>% filter(condition == "WT")
+
+p <- ggplot(wt_atac,
+            aes(x = log10(events), y = corrected_e_score, label = tf_name, 
+                group = TF, color = sig))
+p + geom_hline(yintercept = 0) + geom_point() +
+    geom_text_repel(data = wt_atac %>% filter(corrected_e_score > 0.3),
+                  nudge_x = 0.1, nudge_y = 0.01, segment.alpha = 0) +
+    geom_text_repel(data = wt_atac %>% filter(corrected_e_score < -0.1, padj < 0.1),
+                  nudge_x = 0.1, nudge_y = 0.01, segment.alpha = 0) +
+  ggtitle("WT ATAC-seq TFEA")
+  
+ko_atac <- atac_res %>% filter(condition == "KO")
+
+p <- ggplot(ko_atac,
+            aes(x = log10(events), y = corrected_e_score, label = tf_name, 
+                group = TF, color = sig))
+p + geom_hline(yintercept = 0) + geom_point() +
+    geom_text_repel(data = ko_atac %>% filter(corrected_e_score > 0.1, padj < 0.1),
+                  nudge_x = 0.1, nudge_y = 0.01, segment.alpha = 0)  +
+  geom_text_repel(data = ko_atac %>% filter(corrected_e_score < -0.1, padj < 0.1),
+                  nudge_x = 0.1, nudge_y = 0.01, segment.alpha = 0) +
+  ggtitle("KO ATAC-seq TFEA")
+  
+sig_wt_atac <- atac_res %>% filter(condition == "WT", corrected_padj < 0.1) 
+sig_ko_atac <- atac_res %>% filter(condition == "KO", corrected_padj < 0.1)   
+overlapping_atac_wt <- sig_wt_atac[sig_wt_atac$TF %in% sig_ko_atac$TF, ]
+overlapping_atac_ko <- sig_ko_atac[sig_ko_atac$TF %in% sig_wt_atac$TF, ]
+
+overlapping_atac <- bind_rows(overlapping_atac_wt, overlapping_atac_ko) %>%
+  dplyr::select(TF, condition, tf_name, corrected_e_score, events, corrected_padj) %>%
+  pivot_wider(id_cols = c(TF, tf_name), names_from = condition,
+              values_from = c(corrected_e_score, events, corrected_padj))
+
+g <- ggplot(overlapping_atac, aes(x = corrected_e_score_WT, 
+                                  y = corrected_e_score_KO,
+                                  label = tf_name))
+g + geom_hline(yintercept = 0) +
+  geom_vline(xintercept = 0) +
+  geom_point() + 
+  geom_text_repel(data = overlapping_atac) 
+
+```
+
 
 
 

@@ -92,7 +92,7 @@ genes <- genes[rownames(salmon_gene_counts)]
 ### SAMPLE INFO
 # Somehow the long timepoints didn't make it into this run.
 # TODO: re-run with the long timepoints. Gaaah.
-samples <- read.csv("../../rnaseq/samplesheet.csv") %>%
+samples <- read.csv("../../rnaseq/rnaseq_samplesheet.csv") %>%
   filter(cell_type != "pMEF",
          date_sequenced != "18-Sep",
          timepoint_minutes < 400,
@@ -247,7 +247,7 @@ in three conditions and this was one of the early responders as noted
 in previous analyses.
 
 ```{r sig_deg}
-pthresh <- 0.05
+pthresh <- 0.1
 
 sig_matrix <- resdf %>% 
   filter(padj < pthresh) %>%
@@ -484,6 +484,105 @@ if(plot_gene_profiles == TRUE) {
   }
 }
 ```
+
+## Long timecourse plots
+
+```{r}
+
+samples <- read.csv("../../rnaseq/rnaseq_samplesheet.csv") %>%
+  filter(cell_type != "pMEF",
+         date_sequenced != "2018-09") %>%
+  mutate(firre_ko = factor(firre_ko, levels = c("WT", "KO")),
+         timepoint_minutes = factor(timepoint_minutes, 
+                                    levels = c(seq(0,360,30), 720, 1440, 2880, 5760)),
+         firre_induced = factor(firre_induced, 
+                                levels = c("control", "firre_induced")))
+rownames(samples) <- samples$sample_id
+
+
+goi <- genes_to_plot[1]
+gene_name <- g2s$gene_name[g2s$gene_id == goi]
+gene_id <- goi
+
+gene_stats <- resdf %>% 
+  filter(gene_id %in% genes_to_plot) %>%
+  dplyr::select(gene_id, gene_name, cell_type, 
+                firre_ko, padj, log2FoldChange) %>%
+  group_by(gene_id, gene_name, cell_type, firre_ko, padj) %>%
+  summarize(max_abs_l2fc = log2FoldChange[which.max(abs(log2FoldChange))]) %>%
+  mutate(padj = paste0("padj = ", signif(padj, digits = 3)))
+goi_stats <- gene_stats %>% filter(gene_id == goi)
+
+tpm_goi <- tpm %>% filter(gene_id == goi) %>%
+      pivot_longer(3:ncol(.), names_to = "sample_id",
+                   values_to = "tpm") %>%
+      merge(samples) %>%
+      unite("condition", cell_type, firre_ko, firre_induced, sep = ";",
+            remove = FALSE)
+tpm_goi$timepoint_minutes
+
+g_tpm <- ggplot(tpm_goi, aes(x = timepoint_minutes, y = tpm)) + 
+      geom_point(aes(color = firre_induced)) + 
+      geom_smooth(aes(group = condition, color = firre_induced), method = "loess", 
+                  formula = "y ~ x", se = FALSE) +
+      facet_grid(cell_type~firre_ko, scales = "free_y") +
+      ggtitle(gene_name) +
+      theme_paperwhite() + 
+      geom_text(data = goi_stats,  aes(x=Inf, y = Inf, 
+                                       label = padj), 
+                vjust=1.5, hjust=1.1) + 
+      theme(legend.title = element_blank(),
+            legend.position="bottom")
+g_tpm
+```
+
+# Let's cluster profiles for ESC KO firre induced samples
+
+```{r}
+# It might me best to use rld counts for this, but for now we'll start with TPMs
+esc_ko_samples <- samples %>% 
+  filter(cell_type == "ESC", firre_ko == "KO",
+         firre_induced == "firre_induced")
+esc_ko_tpm <- tpm[,c("gene_id", esc_ko_samples$sample_id)] %>%
+   pivot_longer(2:ncol(.), names_to = "sample_id",
+                   values_to = "tpm") %>%
+      merge(esc_ko_samples) %>%
+      unite("condition", cell_type, firre_ko, firre_induced, sep = ";",
+            remove = FALSE)
+esc_ko_tpm <- esc_ko_tpm %>% group_by(gene_id, timepoint_minutes) %>%
+  summarize(mean_tpm = mean(tpm, na.rm = T))
+esc_ko_tpm_matrix <- esc_ko_tpm %>%
+  pivot_wider(id_cols = "gene_id", names_from = timepoint_minutes,
+              values_from = mean_tpm, names_prefix = "tp_") %>%
+  column_to_rownames("gene_id") %>%
+  as.matrix()
+esc_ko_tpm_matrix <- esc_ko_tpm_matrix[rowSums(esc_ko_tpm_matrix) > 1,]
+library(pheatmap)
+?sample
+pheatmap(esc_ko_tpm_matrix[sample(1:nrow(esc_ko_tpm_matrix), 8e3),], 
+         cluster_cols = FALSE,
+         show_rownames = FALSE, scale = "row",
+         kmeans_k = 30)
+
+esc_ko_tpm_scaled <- t(scale(t(esc_ko_tpm_matrix)))
+
+kclus <- kmeans(esc_ko_tpm_scaled, 
+                center = 30, nstart = 25)
+kclus_centers <- kclus$centers %>% as.data.frame() %>%
+  rownames_to_column("cluster") %>%
+  pivot_longer(cols = 2:ncol(.), names_to = "timepoint", values_to = "y")
+kclus_centers$timepoint <- factor(kclus_centers$timepoint, 
+              levels = paste0("tp_",c(seq(0,360,30), 720, 1440, 2880, 5760)))
+g <- ggplot(kclus_centers, aes(x = timepoint, y = y, group = cluster))
+g + geom_point() + geom_line() + facet_wrap(cluster~.)
+
+
+
+
+
+```
+
+
 
 
 ### Heatmap
