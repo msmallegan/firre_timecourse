@@ -92,70 +92,114 @@ esc_rlog_countsl <- esc_rlog_countsl %>%
 write_rds(esc_rlog_countsl, "results/esc_rlog_counts.RDS")
 ```
 
-```{r}
-# Functions to fit
-impulse_fun <- function(time, v_inter, v_final, t_rise, t_fall, rate) {
-  (1/(1 + exp(-1*rate*(time - t_rise)))) * (v_final + (v_inter -
-      v_final)*(1/(1 + exp(rate*(time - t_fall)))))
-}
 
-sigmoid_fun <- function(time, v_inter, t_rise, rate) {
-  return(v_inter*(1/(1 + exp(-1*rate*(time - t_rise)))))
-}
-
-library(compiler)
-cmp_impulse <- cmpfun(impulse_fun)
-cmp_sigmoid <- cmpfun(sigmoid_fun)
-
-fit_sigmoid_wrapper <- function(y, x) {
-  nls_multstart(y ~ cmp_sigmoid(x, v_inter, t_rise, rate),
-                     data = data.frame(x, y),
-                     iter = 500,
-                     start_lower = c(v_inter = 0, t_rise = 0, rate = 0.01),
-                     start_upper = c(v_inter = max(y), t_rise = 360, rate = 10),
-                     lower = c(v_inter = min(y), t_rise = 0, rate = 1e-3),
-                     supp_errors = "Y",
-                convergence_count = 100)
-}
-
-fit_impulse_wrapper <- function(y, x) {
-  nls_multstart(y ~ cmp_impulse(x, v_inter, v_final, t_rise, t_fall, rate), 
-                     data = data.frame(x, y),
-                     iter = 500,
-                     start_lower = c(v_inter = 0, v_final = 0, t_rise = 0, t_fall = 0, rate = 0.01),
-                     start_upper = c(v_inter = max(y), v_final = max(y), t_rise = 360, t_fall = 360, rate = 10),
-                     lower = c(v_inter = min(y), v_final = min(y), t_rise = 0, t_fall = 0, rate = 0),
-                     supp_errors = 'Y',
-                convergence_count = 100)
-}
-cmp_fit_sigmoid_wrapper <- cmpfun(fit_sigmoid_wrapper)
-cmp_fit_impulse_wrapper <- cmpfun(fit_impulse_wrapper)
-
-```
 
 ```{r}
+# By subtracting the zero timepoint rlog counts from all other timepoints,
+# it's effectively like the log2 fold change from zero, since rlog counts
+# are roughly the log2 counts
+# From the DEseq2 vignette: "[rlog] computes a variance stabilizing 
+# transformation which is roughly similar to putting the data on the 
+# log2 scale, while also dealing with the sampling variability of low counts.
 
-# One gene
-esc_rlog_countsl <- esc_rlog_countsl %>%
-  arrange(-abs(rlog_count))
-
-# Remove sample with a lot of outlier genes
-# JR2432
-esc_rlog_countsl <- esc_rlog_countsl %>% filter(sample_id != "JR2432")
+# For now, we'll also remove this sample (JR2432)
+# which has a lot of outlier genes
+# TODO: Figure out what's going on with this sample.
+esc_rlog_countsl <- esc_rlog_countsl %>% 
+  filter(sample_id != "JR2432")
 
 esc_rlog_counts_zero_centered <- esc_rlog_countsl %>%
   group_by(gene_id, gene_name, firre_ko, firre_induced) %>%
   mutate(rlog_count = rlog_count - mean(rlog_count[timepoint_minutes == 0])) %>%
-  ungroup() %>%
-  group_by(gene_id, gene_name, firre_ko, firre_induced, timepoint_minutes) %>%
-  summarize(abundance = mean(rlog_count)) %>%
-  arrange(-abs(abundance))
+  ungroup()
 
-# glist <- c("Firre", "Sox2", "Nanog", "Adgrg1", "Duox1", "Gfap")
-glist <- c("Id3")
+# Triage genes that are more or less not changing, so that we
+# don't have to compute the curve fitting for so many genes. 
+
+dynamic <- esc_rlog_counts_zero_centered %>%
+  group_by(gene_id, gene_name, firre_ko, firre_induced, timepoint_minutes) %>%
+  # Take the mean to deal with outliers
+  summarize(lfc = mean(rlog_count)) %>%
+  group_by(gene_id, gene_name) %>%
+  summarize(max_lfc = max(abs(lfc), na.rm = T)) %>%
+  # 0.08 is ~50th percentile and is a very small change
+  filter(max_lfc > stats::quantile(unchanging$max_lfc, 0.5))
+
+
+rlog_counts <- esc_rlog_counts_zero_centered %>%
+  filter(gene_id %in% dynamic$gene_id)
+
+# If each gene takes 5 seconds to curve fit, let's consider the best way to 
+# divide. I estimate a total of about 22 hours, so if we divide into 
+# about twenty batches, each should take an hour. That's about
+# 800 genes per batch
+n_batches <- 20
+batches <- rlog_counts %>% 
+  dplyr::select(gene_id) %>%
+  distinct() %>%
+  mutate(batch = sample(1:n_batches, nrow(.), replace=T))
+
+rlog_counts <- rlog_counts %>%
+  merge(batches)
+
+rlog_counts <- rlog_counts %>% 
+  nest_by(batch) %>%
+  pmap(~write_csv(x = .y, 
+                  path = paste0("results/rlog_counts/batch_", .x, ".csv")))
+
+
+```
+
+```{r}
+batches <- 1:n_batches
+
+create_sbatch_script <- function(batch) {
+
+line <- paste0("#!/bin/bash
+#SBATCH -p short
+#SBATCH --job-name=fit_timecourse_", batch, "
+#SBATCH --mail-type=NONE
+#SBATCH --mail-user=michael.smallegan@colorado.edu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --mem=30gb
+#SBATCH --time=4:00:00
+#SBATCH --output=fit_tc_", batch, ".out
+#SBATCH --error=fit_tc_", batch, ".err
+date
+Rscript fit_timecourse.R ", batch, "
+date
+")
+writeLines(line, 
+           con = paste0("bin/fit_tc_", batch, ".sbatch"))
+}
+
+sbatch_returns <- lapply(batches, create_sbatch_script)
+# Create submit script
+cat(paste0("#!/bin/bash \n",
+              paste(paste0("sbatch ", paste0("fit_tc_", batches, ".sbatch")),
+              collapse = "\n")),
+    file = "bin/submit.sh")
+# TODO: this is a really cheap and messy way to do caching
+if(!file.exists("results/curve_fits/batch_1.RDS")) {
+  system("source /etc/profile; cd bin; chmod u+x submit.sh; ./submit.sh")
+}
+
+```
+
+
+```{r}
+
+
+
+
+
+
+glist <- c("Firre", "Sox2", "Nanog", "Adgrg1", "Duox1", "Gfap")
+# glist <- c("Duox1")
 glist <- c("ENSMUSG00000116207.1")
 start_time <- Sys.time()
-one_gene <- esc_rlog_countsl %>%
+one_gene <- rlog_counts %>%
   filter(gene_name %in% glist) %>%
   dplyr::select(gene_id, gene_name, timepoint_minutes, rlog_count, firre_ko, firre_induced) %>%
   unite(condition, firre_ko, firre_induced) %>%
@@ -223,7 +267,7 @@ return(g)
 }
 one_gene$condition
 one_gene$sigmoid_fit[[1]]
-plot_timecourse_fits("Id3", one_gene)
+plot_timecourse_fits(glist[2], one_gene)
 # Lars2 outlier in sample JR2432
 # Also RN7sk in sample JR2432
 ```
@@ -234,13 +278,15 @@ plot_timecourse_fits("Id3", one_gene)
 one_tc <- esc_rlog_countsl %>%
   filter(firre_induced == "control", 
          firre_ko == "WT",
-         gene_name == "Adgrg1") %>%
+         gene_name == "Sox2") %>%
   arrange(timepoint_minutes)
 zero_tp_val <- mean(one_tc[one_tc$timepoint_minutes == 0,"rlog_count"])
 
 x <- as.numeric(as.character(one_tc$timepoint_minutes))
 y <- one_tc$rlog_count
+
 y <- y - zero_tp_val
+plot(y~x)
 
 # fit <- nls(y ~ SSlogis(x, Asym, xmid, scal), data = data.frame(x, y))
 # broom::tidy(fit)
@@ -277,7 +323,10 @@ fit_impulse <- nls_multstart(y ~ impulse_fun(x, v_inter, v_final, t_rise, t_fall
 fit_lm <- lm(y~x)
 AIC(fit_impulse, fit_sigmoid, fit_lm)
 
+
+fit_sigmoid
 plot(y~x)
+lines(x, sigmoid_fun(x,v_inter = -0.1, t_rise =180, rate = 0.9))
 lines(unique(x), 
       predict(fit_lm, newdata = data.frame(x = unique(x))), col = "red")
 lines(unique(x), 
