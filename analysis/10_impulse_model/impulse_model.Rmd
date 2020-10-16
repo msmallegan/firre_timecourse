@@ -1,0 +1,672 @@
+---
+title: "Impulse model"
+author: "Michael Smallegan"
+date: "10/14/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(stringsAsFactors = FALSE)
+library(tidyverse)
+library(DESeq2)
+# library(impulse)
+# library(reticulate)
+# library(tensorflow)
+# auto_config_tf()
+source("../util/_plot_theme.R")
+```
+
+Okay, for now, since I haven't actually seen any profiles that look quite like 
+the impulse model, I'll just fit the sigmoid model. 
+
+It makes sense to use the rlog counts sense they are normalized and the
+dispersion for low counts is taken care of. 
+
+We'll start with generating those counts.
+
+```{r}
+genes <- rtracklayer::import(file.path("../util/",
+                                       "gencode.vM25.annotation.genes.gtf"))
+names(genes) <- genes$gene_id
+
+g2s <- genes %>% as.data.frame() %>%
+  dplyr::select(gene_id, gene_name)
+
+salmon_gene_counts <- read.csv(file.path("../../rnaseq/results/salmon/",
+                                         "salmon_merged_gene_counts.csv")) %>%
+  column_to_rownames("gene_id") %>%
+  as.matrix()
+mode(salmon_gene_counts) <- "integer"
+
+
+samples <- read.csv("../../rnaseq/rnaseq_samplesheet.csv") %>%
+  filter(cell_type != "pMEF",
+         date_sequenced != "2018-09",
+         timepoint_minutes < 400,
+         timecourse_length == "short") %>%
+  mutate(firre_ko = factor(firre_ko, levels = c("WT", "KO")),
+         timepoint_minutes = factor(timepoint_minutes, 
+                                    levels = c(seq(0,360,30))),
+         firre_induced = factor(firre_induced, 
+                                levels = c("control", "firre_induced")))
+rownames(samples) <- samples$sample_id
+
+# Probably makes sense to do this separately for ESC and NPC
+esc_samples <- samples %>% 
+  filter(cell_type == "ESC")
+# Filter to just the data we're using
+esc_counts <- salmon_gene_counts[,esc_samples$sample_id]
+
+genes <- genes[rownames(esc_counts)]
+```
+
+```{r}
+stopifnot(all(rownames(esc_samples) == colnames(esc_counts)))
+stopifnot(all(names(genes) == rownames(esc_counts)))
+  
+dds <- DESeqDataSetFromMatrix(countData = esc_counts, 
+                              colData = esc_samples, 
+                              design = ~ firre_induced + firre_ko,
+                              rowData = genes)
+
+# Filter low counts
+dds <- dds[rowSums(counts(dds)) >= 10,]
+
+esc_rlog_counts <- rlog(dds, blind = FALSE)
+
+esc_rlog_countsl <- assay(esc_rlog_counts) %>%
+  as.data.frame() %>%
+  rownames_to_column("gene_id") %>%
+  pivot_longer(2:ncol(.), names_to = "sample_id", values_to = "rlog_count") 
+esc_rlog_countsl <- esc_rlog_countsl %>%
+  merge(esc_samples %>% dplyr::select(sample_id, cell_type, firre_ko, 
+                                      firre_induced, timepoint_minutes)) %>%
+  merge(g2s)
+esc_rlog_countsl$timepoint_minutes <- as.numeric(as.character(esc_rlog_countsl$timepoint_minutes))
+esc_rlog_countsl <- esc_rlog_countsl %>%
+  arrange(gene_id, timepoint_minutes)
+
+write_rds(esc_rlog_countsl, "results/esc_rlog_counts.RDS")
+```
+
+```{r}
+# Functions to fit
+impulse_fun <- function(time, v_inter, v_final, t_rise, t_fall, rate) {
+  (1/(1 + exp(-1*rate*(time - t_rise)))) * (v_final + (v_inter -
+      v_final)*(1/(1 + exp(rate*(time - t_fall)))))
+}
+
+sigmoid_fun <- function(time, v_inter, t_rise, rate) {
+  return(v_inter*(1/(1 + exp(-1*rate*(time - t_rise)))))
+}
+
+library(compiler)
+cmp_impulse <- cmpfun(impulse_fun)
+cmp_sigmoid <- cmpfun(sigmoid_fun)
+
+fit_sigmoid_wrapper <- function(y, x) {
+  nls_multstart(y ~ cmp_sigmoid(x, v_inter, t_rise, rate),
+                     data = data.frame(x, y),
+                     iter = 500,
+                     start_lower = c(v_inter = 0, t_rise = 0, rate = 0.01),
+                     start_upper = c(v_inter = max(y), t_rise = 360, rate = 10),
+                     lower = c(v_inter = min(y), t_rise = 0, rate = 0.01),
+                     supp_errors = "Y",
+                convergence_count = 100)
+}
+
+fit_impulse_wrapper <- function(y, x) {
+  nls_multstart(y ~ cmp_impulse(x, v_inter, v_final, t_rise, t_fall, rate), 
+                     data = data.frame(x, y),
+                     iter = 500,
+                     start_lower = c(v_inter = 0, v_final = 0, t_rise = 0, t_fall = 0, rate = 0.01),
+                     start_upper = c(v_inter = max(y), v_final = max(y), t_rise = 360, t_fall = 360, rate = 10),
+                     lower = c(v_inter = min(y), v_final = min(y), t_rise = 0, t_fall = 0, rate = 0),
+                     supp_errors = 'Y',
+                convergence_count = 100)
+}
+?nls_multstart
+cmp_fit_sigmoid_wrapper <- cmpfun(fit_sigmoid_wrapper)
+cmp_fit_impulse_wrapper <- cmpfun(fit_impulse_wrapper)
+
+```
+
+```{r}
+
+# One gene
+
+
+glist <- c("Firre", "Sox2", "Nanog", "Adgrg1", "Duox1")
+start_time <- Sys.time()
+one_gene <- esc_rlog_countsl %>%
+  filter(gene_name %in% glist) %>%
+  dplyr::select(gene_id, gene_name, timepoint_minutes, rlog_count, firre_ko, firre_induced) %>%
+  unite(condition, firre_ko, firre_induced) %>%
+  # Center zero timepoint at zero
+  group_by(gene_id, gene_name, condition) %>%
+  mutate(rlog_count = rlog_count - mean(rlog_count[timepoint_minutes == 0])) %>%
+  ungroup() %>%
+  nest(timecourse = c(timepoint_minutes, rlog_count)) %>%
+  mutate(lm_fit = map(timecourse, ~ lm(rlog_count ~ 0 + timepoint_minutes, data = .)),
+         sigmoid_fit = map(timecourse, ~ cmp_fit_sigmoid_wrapper(.$rlog_count, .$timepoint_minutes)),
+         impulse_fit = map(timecourse, ~ cmp_fit_impulse_wrapper(.$rlog_count, .$timepoint_minutes)),
+         lm_tidy = map(lm_fit, tidy),
+         sigmoid_tidy = map(sigmoid_fit, tidy),
+         impulse_tidy = map(impulse_fit, tidy),
+         lm_bic = map(lm_fit, BIC),
+         sigmoid_bic = map(sigmoid_fit, BIC),
+         impulse_bic = map(impulse_fit, BIC)) 
+stop_time <- Sys.time()
+stop_time - start_time
+
+
+choose_best_model <- function(bic_list) {
+  unlist(strsplit(names(bic_list)[which.min(bic_list)], "_"))[[1]]
+}
+
+one_gene$best_model <- apply(one_gene[,c("lm_bic","sigmoid_bic", "impulse_bic")],
+                            1, choose_best_model)
+
+plot_timecourse_fits <- function(gene, fit_df) {
+  
+
+
+og_augmented <- fit_df %>%
+  filter(gene_name == gene) %>%
+  mutate(lm_augmented = map(lm_fit, augment),
+         sigmoid_augmented = map(sigmoid_fit, augment),
+         impulse_augmented = map(impulse_fit, augment))%>%
+  unnest(c(lm_augmented, sigmoid_augmented, impulse_augmented), names_sep = "_") %>%
+  dplyr::select(gene_id, gene_name, condition, lm_augmented_timepoint_minutes,
+                lm_augmented_rlog_count, lm_augmented_.fitted, impulse_augmented_.fitted,
+                sigmoid_augmented_.fitted, best_model) %>%
+  pivot_longer(cols = c(lm_augmented_.fitted, 
+                        sigmoid_augmented_.fitted,
+                        impulse_augmented_.fitted),
+               names_to = "model", values_to = "fitted_counts") %>%
+  mutate(model = sub("\\_.*", "", model),
+         is_best = ifelse(model == best_model, "solid", "dashed")) 
+
+g <- ggplot(og_augmented, aes(x = lm_augmented_timepoint_minutes, 
+                          y = lm_augmented_rlog_count, 
+                          group = model, color = model, linetype = is_best)) + 
+  geom_hline(yintercept = 0, color = "#E0E2E1") +
+  geom_vline(xintercept = 0, color = "#E0E2E1") +
+  geom_line(aes(y = fitted_counts), size = 1.1, alpha = 0.9) + 
+  geom_point(color = "#424242") +
+  facet_wrap(~condition) +
+  scale_linetype_identity() + 
+  scale_color_manual(values = c("#5BBA62", "#a8404c", "#024059")) + 
+  ggtitle(paste(unique(og_augmented$gene_name), " | ", 
+                           unique(og_augmented$gene_id))) + 
+  xlab("t") +
+  ylab("Abundance")
+
+return(g)
+}
+
+plot_timecourse_fits("Sox2", one_gene)
+
+```
+
+
+
+```{r}
+one_tc <- esc_rlog_countsl %>%
+  filter(firre_induced == "control", 
+         firre_ko == "WT",
+         gene_name == "Adgrg1") %>%
+  arrange(timepoint_minutes)
+zero_tp_val <- mean(one_tc[one_tc$timepoint_minutes == 0,"rlog_count"])
+
+x <- as.numeric(as.character(one_tc$timepoint_minutes))
+y <- one_tc$rlog_count
+y <- y - zero_tp_val
+
+# fit <- nls(y ~ SSlogis(x, Asym, xmid, scal), data = data.frame(x, y))
+# broom::tidy(fit)
+plot(y~x)
+# lines(x, sigmoid_fun(x,v_inter = 0, t_rise = 0, rate = 0))
+# lines(unique(x), 
+#       predict(fit, newdata = data.frame(x = unique(x))), col = "red")
+
+# fit <- nls(y ~ impulse_fun(x, v_inter, v_final, t_rise, t_fall, rate), data = data.frame(x, y),
+#            start = list(v_inter = 0.7, v_final = 0.8, t_rise = 230, t_fall = 300, rate = 0.04),
+#            algorithm = "port")
+# plot(y~x)
+# lines(unique(x), 
+#       predict(fit, newdata = data.frame(x = unique(x))), col = "red")
+# lines(x, impulse_fun(x,v_inter = 0.7, v_final = 0.8, t_rise = 230, t_fall = 300, rate = 0.04))
+fit_sigmoid <- nls_multstart(y ~ sigmoid_fun(x, v_inter, t_rise, rate),
+                     data = data.frame(x, y),
+                     iter = 500,
+                     start_lower = c(v_inter = 0, t_rise = 0, rate = 0.01),
+                     start_upper = c(v_inter = max(y), t_rise = 360, rate = 10),
+                     lower = c(v_inter = min(y), t_rise = 0, rate = 0.01),
+                     supp_errors = "Y")
+
+
+
+fit_impulse <- nls_multstart(y ~ impulse_fun(x, v_inter, v_final, t_rise, t_fall, rate), 
+                     data = data.frame(x, y),
+                     iter = 500,
+                     start_lower = c(v_inter = 0, v_final = 0, t_rise = 0, t_fall = 0, rate = 0.01),
+                     start_upper = c(v_inter = max(y), v_final = max(y), t_rise = 360, t_fall = 360, rate = 10),
+                     lower = c(v_inter = min(y), v_final = min(y), t_rise = 0, t_fall = 0, rate = 0),
+                     supp_errors = 'Y')
+
+fit_lm <- lm(y~x)
+AIC(fit_impulse, fit_sigmoid, fit_lm)
+
+plot(y~x)
+lines(unique(x), 
+      predict(fit_lm, newdata = data.frame(x = unique(x))), col = "red")
+lines(unique(x), 
+      predict(fit_impulse, newdata = data.frame(x = unique(x))), col = "green")
+lines(unique(x), 
+      predict(fit_sigmoid, newdata = data.frame(x = unique(x))), col = "blue")
+
+
+BIC(fit_impulse, fit_sigmoid, fit_lm)
+tidy(fit_sigmoid)
+tidy(fit_impulse)
+tidy(fit_lm)
+```
+
+```{r}
+# Tidy example
+t = 1:100
+y1 = 22 + (53 - 22) * exp(-0.02 * t) %>% jitter(10)
+y2 = 24 + (60 - 22) * exp(-0.01 * t) %>% jitter(10)
+
+
+df <- tibble(t = t, y = y1, sensor = 'sensor1') %>% 
+  rbind(. , data.frame(t = t, y = y2, sensor = 'sensor2'))
+qplot(t, y, data = df, colour = sensor)
+
+augmented <- df %>% 
+  nest(-sensor) %>% 
+  mutate(
+    fit = map(data, ~ nls(y ~ a * t + b, data = .)),
+    augmented = map(fit, augment),
+  ) %>% 
+  unnest(augmented)
+
+qplot(t, y, data = augmented, geom = 'point', colour = sensor) +
+  geom_line(aes(y=.fitted))
+
+df %>% 
+  nest(-sensor) %>% 
+  mutate(
+    fit = map(data, ~ nls(y ~ a * t + b, data = .)),
+    tidied = map(fit, tidy),
+  ) %>% 
+  unnest(tidied) %>% 
+  select(sensor, term, estimate) %>% 
+  spread(term, estimate)
+
+glance(fit)
+```
+
+
+```{r}
+n_tcs = 20
+set.seed(1)
+timecourses <- simulate_timecourses(n = n_tcs)
+
+# plot of timecourses + parameters
+timecourses %>%
+  unnest_legacy(measurements) %>%
+  unite(label, true_model, tc_id) %>%
+  ggplot(aes(x = time)) +
+  geom_point(aes(y = abundance)) +
+  geom_path(aes(y = sim_fit)) +
+  facet_wrap(~ label)
+
+timecourse_parameters <- timecourses %>%
+  unnest_legacy(measurements) %>%
+  # separate by true model
+  nest_legacy(-true_model, .key = "measurements") %>%
+  crossing(tibble(model = c("sigmoid", "impulse")))
+
+models <- c("sigmoid", "impulse")
+measurements1 <- timecourse_parameters$measurements[[1]]
+measurements2 <- timecourse_parameters$measurements[[2]]
+measurements <- measurements1
+```
+
+```{r}
+# Using R
+sig_timepoints <- timecourse_parameters %>%
+  filter(true_model == "impulse")
+
+sig_timepoints$measurements[[1]]
+one_tp <- sig_timepoints$measurements[[1]] %>% 
+  filter(tc_id == 10)
+one_tp
+x <- one_tp$time
+y <- one_tp$abundance
+fit <- nls(y ~ SSlogis(x, Asym, xmid, scal), data = data.frame(x, y))
+summary(fit)
+plot(y~x)
+lines(x, 
+      predict(fit, newdata = data.frame(x = x)))
+
+library(broom)
+broom::tidy(fit)
+
+impulse_fun <- function(time, v_inter, v_final, t_rise, t_fall, rate) {
+  (1/(1 + exp(-1*rate*(time - t_rise)))) * (v_final + (v_inter -
+      v_final)*(1/(1 + exp(rate*(time - t_fall)))))
+}
+
+fit <- nls(y ~ impulse_fun(x, v_inter, v_final, t_rise, t_fall, rate), data = data.frame(x, y),
+           start = list(v_inter = 3.5, v_final = 0.5, t_rise = 5, t_fall = 55, rate = 2),
+           algorithm = "port")
+
+plot(y~x)
+lines(x, 
+      predict(fit, newdata = data.frame(x = x)))
+summary(fit)
+lines(x, impulse_fun(x,v_inter = 3.5, v_final = 0.5, t_rise = 5, t_fall = 55, rate = 0.2))
+
+sigmoid_fun <- function(time, v_inter, t_rise, rate) {
+  return(v_inter*(1/(1 + exp(-1*rate*(time - t_rise)))))
+}
+plot(y~x)
+summary(fit)
+fit <- nls(y ~ sigmoid_fun(x, v_inter, t_rise, rate), data = data.frame(x, y),
+           start = list(v_inter = -2, t_rise = 1, rate = 1),
+           algorithm = "port")
+plot(y~x)
+lines(x, 
+      predict(fit, newdata = data.frame(x = x)))
+lines(x, sigmoid_fun(x, v_inter = -3, t_rise = 2, rate = 1))
+
+?nls
+?nls
+library(nls.multstart)
+
+fit <- nls_multstart()
+```
+
+
+```{r}
+# Expand this out into code
+# huh <- estimate_timecourse_params_tf(measurements = measurements2,
+#                                      model = "sigmoid",
+#                                      n_initializations = 100)
+
+# use the v1 tensorflow api
+# tf_v1_compatibility()  
+library(tensorflow)
+tensorflow::use_compat(version = "v1")
+tf$compat$v1$disable_eager_execution()
+# tf$compat$v2$enable_v2_behavior()
+tf$executing_eagerly()
+
+# import probability module
+tfp <- reticulate::import("tensorflow_probability")
+
+
+model <- "impulse"
+n_initializations <- 100
+use_prior <- TRUE
+prior_pars <- c("v_sd" = 1.2, "rate_shape" = 2, "rate_scale" = 0.25,
+               "time_shape" = 2, "time_scale" = 15)
+verbose <- FALSE
+
+# initialization_pars <- c("v_sd" = stats::sd(timecourses$log2_fc),
+#                                "t_max" = max(timecourses$time))
+# Impulse first
+v_inter <- tf$Variable(
+  tf$random$normal(shape(n_initializations),
+                   mean = 0,
+                   stddev = prior_pars["v_sd"]),
+  name = "v_inter")
+t_rise <- tf$Variable(
+  tf$random$gamma(shape(n_initializations),
+                  alpha = prior_pars["time_shape"],
+                  beta = 1 / prior_pars["time_scale"]),
+  name = "t_rise")
+rate <- tf$Variable(
+  tf$random$gamma(shape(n_initializations),
+                  alpha = prior_pars["rate_shape"],
+                  beta = 1 / prior_pars["rate_scale"]),
+  name = "rate")
+
+parameters <- c("v_inter", "t_rise", "rate")
+
+# Impulse specific pars
+v_final <- tf$Variable(
+  tf$random$normal(shape(n_initializations),
+                   mean = 0,
+                   stddev = prior_pars["v_sd"]),
+  name = "v_final")
+t_diff <- tf$Variable(
+  tf$random$gamma(shape(n_initializations),
+                  alpha = prior_pars["time_shape"],
+                  beta = 1 / prior_pars["time_scale"]),
+  name = "t_diff")
+t_fall <- tf$add(t_rise, t_diff, name = "t_final")
+
+parameters <- c(parameters, "v_final", "t_fall")
+
+# Need to migrate to v2
+
+timepts <- tf$compat$v1$placeholder(tf$float32,
+                                    shape(NULL, n_initializations),
+                                    name = "time")
+expression <- tf$compat$v1$placeholder(tf$float32,
+                                       shape(NULL, n_initializations),
+                                       name = "measured_expression")
+
+# Impulse model
+# "(1/(1 + exp(-1*rate*(time - t_rise)))) * (v_final + (v_inter -
+# v_final)*(1/(1 + exp(rate*(time - t_fall)))))"
+
+rise_exp <- tf$exp(tf$multiply(-1, rate) * tf$subtract(timepts, t_rise),
+                   name = "rise_exponentiation")
+rise_sigmoid <- tf$divide(1, 1 + rise_exp, name = "rise_sigmoid")
+
+fall_exp <- tf$exp(tf$multiply(rate, tf$subtract(timepts, t_fall)),
+                   name = "fall_exponentiation")
+fall_sigmoid <- fall_sigmoid <- tf$divide(1, 1 + fall_exp,
+                                          name = "fall_sigmoid")
+offset_fall_sigmoid <- v_final +
+  (tf$subtract(v_inter, v_final) * fall_sigmoid)
+
+fit_expression <- tf$multiply(rise_sigmoid, offset_fall_sigmoid,
+                              name = "expression_fitted_values")
+
+# Shared priors
+v_prior <- tfp$distributions$Normal(loc = 0,
+                                    scale = prior_pars["v_sd"])
+rate_prior <- tfp$distributions$Gamma(
+  concentration = prior_pars["rate_shape"],
+  rate = 1 / prior_pars["rate_scale"])
+time_prior <- tfp$distributions$Gamma(
+  concentration = prior_pars["time_shape"],
+  rate = 1 / prior_pars["time_scale"])
+
+model_log_pr <- tf$add(tf$add(tf$add(tf$add(v_prior$log_prob(v_inter),
+                                                    rate_prior$log_prob(rate)),
+                                             time_prior$log_prob(t_rise)),
+                                      v_prior$log_prob(v_final)),
+                               time_prior$log_prob(t_diff))
+
+# General model formatting
+sum_of_squares <- (expression - fit_expression)^2
+mean_squared_error <- tf$reduce_mean(sum_of_squares,
+                                     axis = 0L,
+                                     name = "MSE")
+
+# optimizer <- tf$optimizers$Adam(learning_rate = 0.01)
+optimizer <- tf$compat$v1$train$AdamOptimizer(0.01)
+
+
+# minimize normal likelihood with priors
+
+norm_target <- tfp$distributions$Normal(loc = expression,
+                                        scale = 0.1)
+
+normal_logLik <- tf$reduce_sum(norm_target$log_prob(fit_expression),
+                               axis = 0L, name = "normal_logLik")
+logPr <- tf$subtract(0, tf$add(normal_logLik, model_log_pr))
+
+# minimize negative logLik + logPrior (max logLik)
+loss <- tf$reduce_sum(logPr, name = "reduce_logPr")
+
+
+# Train
+train <- optimizer$minimize(loss = loss, name = "train")
+
+all_timecourse_fits <- list()
+entry_number <- 0
+
+a_tc_id <- 5
+for (a_tc_id in unique(measurements$tc_id)) {
+  entry_number <- entry_number + 1
+  
+  if (verbose) {
+    print(paste0(a_tc_id, " timecourse running"))
+  }
+  
+  one_timecourse <- measurements %>%
+    dplyr::filter(tc_id == a_tc_id)
+  
+  # timecourse-specific data
+  
+  timecourse_dict <- dict(timepts = matrix(one_timecourse$time,
+                                           nrow = nrow(one_timecourse),
+                                           ncol = n_initializations),
+                          expression = matrix(one_timecourse$abundance,
+                                              nrow = nrow(one_timecourse),
+                                              ncol = n_initializations))
+  
+  sess <- tf$compat$v1$Session()
+  # initialize parameters
+  sess$run(tf$compat$v1$global_variables_initializer())
+  # keep track of initialization for error checking
+  initial_vals <- lapply(parameters,
+                         function(variable){
+                           tibble::tibble(
+                             variable = variable,
+                             init_id = 1:n_initializations,
+                             value = sess$run(eval(parse(text = variable)))
+                           )
+                         }) %>%
+    dplyr::bind_rows()
+  
+  # find an NLS maxima from each initialization
+  
+  past_loss <- 100000
+  continue <- TRUE
+  while (continue) {
+    # train
+    for (i in 1:1000) {
+      sess$run(train,
+               feed_dict = timecourse_dict)
+    }
+    
+    # loss (MSE) for individual parameter sets
+    current_losses <- if (use_prior) {
+      sess$run(logPr, feed_dict = timecourse_dict)
+    } else {
+      sess$run(mean_squared_error, feed_dict = timecourse_dict)
+    }
+    
+    if (sum(!is.nan(current_losses)) < pmin(10, n_initializations)) {
+      warning("reinitializing due to too few valid parameter sets\n")
+      # if too few parameter sets are valid, reinitialize all parameters
+      sess$run(tf$global_variables_initializer())
+      
+      # keep track of initialization for error checking
+      initial_vals <- lapply(parameters,
+                             function(variable){
+                               tibble::tibble(
+                                 variable = variable,
+                                 init_id = 1:n_initializations,
+                                 value = sess$run(
+                                   eval(parse(text = variable))
+                                 )
+                               )
+                             }) %>%
+        dplyr::bind_rows()
+      
+      past_loss <- 100000
+      next
+    } else {
+      valid_summed_loss <- sum(current_losses[!is.nan(current_losses)])
+      
+      if (verbose) {
+        print(valid_summed_loss)
+      }
+      
+      if (past_loss - valid_summed_loss > 0.0001) {
+        past_loss <- valid_summed_loss
+      } else{
+        continue <- FALSE
+      }
+    }
+  }
+  
+  # summarize valid (and invalid) parameter sets
+  
+  output <- list()
+  
+  # invalid parameter set initial parameters
+  
+  if (any(is.nan(current_losses))) {
+    output$invalid_timecourse_fits <- initial_vals %>%
+      dplyr::filter(init_id %in% which(is.nan(current_losses))) %>%
+      dplyr::mutate(tc_id = a_tc_id) %>%
+      dplyr::select(tc_id, init_id, variable, value)
+  } else {
+    output$invalid_timecourse_fits <- data.frame()
+  }
+  
+  # valid parameter set optimal parameters, fits, MSE
+  valid_parameter_sets <- which(!is.nan(current_losses))
+  
+  # fit parameters
+  
+  output$parameters <- lapply(
+    parameters,
+    function(variable){
+      tibble::tibble(variable = variable,
+                     init_id = 1:n_initializations,
+                     value = sess$run(eval(parse(text = variable))))
+    }) %>%
+    dplyr::bind_rows() %>%
+    dplyr::filter(init_id %in% valid_parameter_sets) %>%
+    dplyr::mutate(tc_id = a_tc_id) %>%
+    dplyr::select(tc_id, init_id, variable, value)
+  
+  output$loss <- if (use_prior) {
+    tibble::tibble(tc_id = a_tc_id,
+                   init_id = valid_parameter_sets,
+                   loss = current_losses[valid_parameter_sets],
+                   logLik = sess$run(
+                     normal_logLik,
+                     feed_dict = timecourse_dict)[valid_parameter_sets],
+                   logPriorPr = sess$run(
+                     model_log_pr,
+                     feed_dict = timecourse_dict)[valid_parameter_sets])
+  } else {
+    tibble::tibble(tc_id = a_tc_id,
+                   init_id = valid_parameter_sets,
+                   loss = current_losses[valid_parameter_sets])
+  }
+  
+  all_timecourse_fits[[entry_number]] <- output
+}
+
+final_fits <- all_timecourse_fits %>%
+  purrr::transpose() %>%
+  purrr::map(dplyr::bind_rows)
+```
+

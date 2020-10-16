@@ -17,7 +17,7 @@ theme_paperwhite <- function(
   text <- element_text(
     family = base_family,
     face = face,
-    colour = "black"
+    colour = "#78797B"
   )
   
   # Include the grid lines.
@@ -32,8 +32,8 @@ theme_paperwhite <- function(
     axis_ticks <- element_blank()
     panel_border <- element_blank()
   } else {
-    axis_ticks <- element_line(colour = "black")
-    panel_border <- element_rect(colour = "black", fill = NA)
+    axis_ticks <- element_line(colour = "#78797B")
+    panel_border <- element_rect(colour = "#78797B", fill = NA)
   }
   
   theme_linedraw(
