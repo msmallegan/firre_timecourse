@@ -113,7 +113,7 @@ fit_sigmoid_wrapper <- function(y, x) {
                      iter = 500,
                      start_lower = c(v_inter = 0, t_rise = 0, rate = 0.01),
                      start_upper = c(v_inter = max(y), t_rise = 360, rate = 10),
-                     lower = c(v_inter = min(y), t_rise = 0, rate = 0.01),
+                     lower = c(v_inter = min(y), t_rise = 0, rate = 1e-3),
                      supp_errors = "Y",
                 convergence_count = 100)
 }
@@ -128,7 +128,6 @@ fit_impulse_wrapper <- function(y, x) {
                      supp_errors = 'Y',
                 convergence_count = 100)
 }
-?nls_multstart
 cmp_fit_sigmoid_wrapper <- cmpfun(fit_sigmoid_wrapper)
 cmp_fit_impulse_wrapper <- cmpfun(fit_impulse_wrapper)
 
@@ -137,9 +136,24 @@ cmp_fit_impulse_wrapper <- cmpfun(fit_impulse_wrapper)
 ```{r}
 
 # One gene
+esc_rlog_countsl <- esc_rlog_countsl %>%
+  arrange(-abs(rlog_count))
 
+# Remove sample with a lot of outlier genes
+# JR2432
+esc_rlog_countsl <- esc_rlog_countsl %>% filter(sample_id != "JR2432")
 
-glist <- c("Firre", "Sox2", "Nanog", "Adgrg1", "Duox1")
+esc_rlog_counts_zero_centered <- esc_rlog_countsl %>%
+  group_by(gene_id, gene_name, firre_ko, firre_induced) %>%
+  mutate(rlog_count = rlog_count - mean(rlog_count[timepoint_minutes == 0])) %>%
+  ungroup() %>%
+  group_by(gene_id, gene_name, firre_ko, firre_induced, timepoint_minutes) %>%
+  summarize(abundance = mean(rlog_count)) %>%
+  arrange(-abs(abundance))
+
+# glist <- c("Firre", "Sox2", "Nanog", "Adgrg1", "Duox1", "Gfap")
+glist <- c("Id3")
+glist <- c("ENSMUSG00000116207.1")
 start_time <- Sys.time()
 one_gene <- esc_rlog_countsl %>%
   filter(gene_name %in% glist) %>%
@@ -207,9 +221,11 @@ g <- ggplot(og_augmented, aes(x = lm_augmented_timepoint_minutes,
 
 return(g)
 }
-
-plot_timecourse_fits("Sox2", one_gene)
-
+one_gene$condition
+one_gene$sigmoid_fit[[1]]
+plot_timecourse_fits("Id3", one_gene)
+# Lars2 outlier in sample JR2432
+# Also RN7sk in sample JR2432
 ```
 
 
