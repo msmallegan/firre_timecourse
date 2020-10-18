@@ -68,11 +68,13 @@ tpml <- tpm %>% pivot_longer(cols = 3:ncol(.), names_to = "sample_id",
 
 ```{r}
 timepoints <- seq(30,330,30)
+
+timepoints <- timepoints[-1]
 vs_zero_timepoints <- rep(list(c("timepoint_minutes")),length(timepoints))
 for(i in 1:length(vs_zero_timepoints)) {
   vs_zero_timepoints[[i]] <- c(vs_zero_timepoints[[i]],timepoints[[i]], "0")
 }
-timepoints <- seq(30,330,30)
+# timepoints <- seq(30,330,30)
 vs_prev_timepoints <- rep(list(c("timepoint_minutes")), length(timepoints)-1)
 
 for(i in 1:length(vs_prev_timepoints)) {

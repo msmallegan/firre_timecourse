@@ -12,6 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 options(stringsAsFactors = FALSE)
 library(tidyverse)
 library(DESeq2)
+library(broom)
 source("../util/_plot_theme.R")
 ```
 
@@ -86,6 +87,8 @@ esc_rlog_countsl <- esc_rlog_countsl %>%
   arrange(gene_id, timepoint_minutes)
 
 write_rds(esc_rlog_countsl, "results/esc_rlog_counts.RDS")
+esc_rlog_countsl <- read_rds("results/esc_rlog_counts.RDS")
+esc_rlog_countsl$timepoint_minutes <- as.numeric(as.character(esc_rlog_countsl$timepoint_minutes))
 ```
 
 
@@ -119,11 +122,12 @@ dynamic <- esc_rlog_counts_zero_centered %>%
   group_by(gene_id, gene_name) %>%
   summarize(max_lfc = max(abs(lfc), na.rm = T)) %>%
   # 0.08 is ~50th percentile and is a very small change
-  filter(max_lfc > stats::quantile(unchanging$max_lfc, 0.5))
+  filter(max_lfc > stats::quantile(.$max_lfc, 0.5))
 
 
 rlog_counts <- esc_rlog_counts_zero_centered %>%
   filter(gene_id %in% dynamic$gene_id)
+
 
 # If each gene takes 5 seconds to curve fit, let's consider the best way to 
 # divide. I estimate a total of about 22 hours, so if we divide into 
@@ -138,11 +142,11 @@ batches <- rlog_counts %>%
 rlog_counts <- rlog_counts %>%
   merge(batches)
 
-rlog_counts <- rlog_counts %>% 
+rlog_counts %>% 
   nest_by(batch) %>%
-  pmap(~write_csv(x = .y, 
-                  path = paste0("results/rlog_counts/batch_", .x, ".csv")))
-
+  pmap(~write_rds(x = .y, 
+                  path = paste0("results/rlog_counts/batch_", .x, ".rds"))) %>%
+  invisible()
 
 ```
 
@@ -170,21 +174,96 @@ writeLines(line,
            con = paste0("bin/fit_tc_", batch, ".sbatch"))
 }
 
-sbatch_returns <- lapply(batches, create_sbatch_script)
+lapply(batches, create_sbatch_script) %>% 
+  invisible()
 # Create submit script
 cat(paste0("#!/bin/bash \n",
               paste(paste0("sbatch ", paste0("fit_tc_", batches, ".sbatch")),
               collapse = "\n")),
     file = "bin/submit.sh")
 # TODO: this is a really cheap and messy way to do caching
-if(!file.exists("results/curve_fits/batch_1.RDS")) {
+if(!file.exists("results/curve_fits/batch_1.rds")) {
   system("source /etc/profile; cd bin; chmod u+x submit.sh; ./submit.sh")
 }
+```
+
+```{r}
+# Import results.
+curve_fits <- tibble(batch = 1:n_batches) %>%
+  mutate(curve_fits = map(batch, ~ read_rds(paste0("results/curve_fits/batch_", .x, ".rds")))) %>%
+  unnest(curve_fits)
+
+write_rds(curve_fits, "results/curve_fits.rds")
+curve_fits <- curve_fits %>%
+  
+curve_fits$
+batch1 <- readRDS("results/curve_fits/batch_1.rds")
+
+batch1 <- batch1 %>%
+  mutate(lm_tidy = map(lm_fit, tidy),
+         sigmoid_tidy = map(sigmoid_fit, tidy),
+         impulse_tidy = map(impulse_fit, tidy),
+         lm_bic = map(lm_fit, BIC),
+         sigmoid_bic = map(sigmoid_fit, BIC),
+         impulse_bic = map(impulse_fit, BIC))
+
+choose_best_model <- function(bic_list) {
+  unlist(strsplit(names(bic_list)[which.min(bic_list)], "_"))[[1]]
+}
+batch1$best_model <- apply(batch1[,c("lm_bic","sigmoid_bic", "impulse_bic")],
+                            1, choose_best_model)
+
+batch1_sigmoid <- batch1 %>%
+  unnest(sigmoid_tidy)
+# batch1 <- batch1 %>%
+#   unnest(impulse_tidy)
+plot_timecourse_fits("Klf4", batch1)
+
+unique(batch1_sigmoid$term)
+good_ones <- batch1_sigmoid %>%
+  filter(term == "rate") %>%
+  filter(p.value < 0.05)
+# Cool gene list
+# Slc29a3
+# Ahdc1
+# Fv1
 
 ```
 
 
 ```{r}
+
+
+goi <- c("Firre", "Sox2", "Gfap", "Adgrg1", "Duox1")
+goi <- "Firre"
+
+curve_fits <- rlog_counts  %>%
+  filter(gene_name %in% goi) %>%
+  dplyr::select(gene_id, gene_name, timepoint_minutes, 
+                rlog_count, firre_ko, firre_induced) %>%
+  unite(condition, firre_ko, firre_induced) %>%
+  # Center zero timepoint at zero
+  group_by(gene_id, gene_name, condition) %>%
+  ungroup() %>%
+  nest(timecourse = c(timepoint_minutes, rlog_count)) %>%
+  mutate(lm_fit = map(timecourse, ~ lm(rlog_count ~ 0 + timepoint_minutes, data = .)),
+         sigmoid_fit = map(timecourse, ~ cmp_fit_sigmoid_wrapper(.$rlog_count, .$timepoint_minutes)),
+         impulse_fit = map(timecourse, ~ cmp_fit_impulse_wrapper(.$rlog_count, .$timepoint_minutes))) 
+
+curve_fits <- curve_fits %>%
+  mutate(lm_tidy = map(lm_fit, tidy),
+         sigmoid_tidy = map(sigmoid_fit, tidy),
+         impulse_tidy = map(impulse_fit, tidy),
+         lm_bic = map(lm_fit, BIC),
+         sigmoid_bic = map(sigmoid_fit, BIC),
+         impulse_bic = map(impulse_fit, BIC))
+
+choose_best_model <- function(bic_list) {
+  unlist(strsplit(names(bic_list)[which.min(bic_list)], "_"))[[1]]
+}
+curve_fits$best_model <- apply(curve_fits[,c("lm_bic","sigmoid_bic", "impulse_bic")],
+                            1, choose_best_model)
+
 
 plot_timecourse_fits <- function(gene, fit_df) {
   
@@ -224,7 +303,34 @@ g <- ggplot(og_augmented, aes(x = lm_augmented_timepoint_minutes,
 return(g)
 }
 
-plot_timecourse_fits(glist[2], one_gene)
+plot_timecourse_fits("Firre", curve_fits)
 # Lars2 outlier in sample JR2432
 # Also RN7sk in sample JR2432
 ```
+
+```{r}
+one_tc <- esc_rlog_countsl %>%
+  filter(firre_induced == "firre_induced", 
+         firre_ko == "WT",
+         gene_name == "Firre") %>%
+  arrange(timepoint_minutes)
+zero_tp_val <- mean(one_tc[one_tc$timepoint_minutes == 0,"rlog_count"])
+x <- as.numeric(as.character(one_tc$timepoint_minutes))
+y <- one_tc$rlog_count
+y <- y - zero_tp_val
+plot(y~x)
+
+sigmoid_fit <- fit_sigmoid_wrapper(y, x)
+impulse_fit <- fit_impulse_wrapper(y, x)
+lm_fit <- lm(y~0+x)
+plot(y~x)
+# lines(x, sigmoid_fun(x,v_inter = -0.1, t_rise =180, rate = 0.9))
+lines(unique(x), 
+      predict(lm_fit, newdata = data.frame(x = unique(x))), col = "red")
+lines(unique(x), 
+      predict(impulse_fit, newdata = data.frame(x = unique(x))), col = "green")
+lines(unique(x), 
+      predict(sigmoid_fit, newdata = data.frame(x = unique(x))), col = "blue")
+
+```
+

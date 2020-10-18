@@ -58,40 +58,21 @@ cmp_fit_impulse_wrapper <- cmpfun(fit_impulse_wrapper)
 
 
 # Import the data for this batch
+rlog_counts <- read_rds(paste0("../results/rlog_counts/batch_", batch, ".rds"))
 
-rlog_counts <- read_csv(paste0("../results/rlog_counts/batch_", batch, ".csv"))
-
-
+# Run the curve fits for lm, sigmoid, and imulse
 cat("Beginning curve fits for", length(unique(rlog_counts$gene_id)), "genes\n")
 curve_fits <- rlog_counts %>%
   dplyr::select(gene_id, gene_name, timepoint_minutes, 
                 rlog_count, firre_ko, firre_induced) %>%
   unite(condition, firre_ko, firre_induced) %>%
-  # Center zero timepoint at zero
-  group_by(gene_id, gene_name, condition) %>%
-  mutate(rlog_count = rlog_count - mean(rlog_count[timepoint_minutes == 0])) %>%
-  ungroup() %>%
   nest(timecourse = c(timepoint_minutes, rlog_count)) %>%
   mutate(lm_fit = map(timecourse, ~ lm(rlog_count ~ 0 + timepoint_minutes, data = .)),
          sigmoid_fit = map(timecourse, ~ cmp_fit_sigmoid_wrapper(.$rlog_count, .$timepoint_minutes)),
-         impulse_fit = map(timecourse, ~ cmp_fit_impulse_wrapper(.$rlog_count, .$timepoint_minutes)),
-         lm_tidy = map(lm_fit, tidy),
-         sigmoid_tidy = map(sigmoid_fit, tidy),
-         impulse_tidy = map(impulse_fit, tidy),
-         lm_bic = map(lm_fit, BIC),
-         sigmoid_bic = map(sigmoid_fit, BIC),
-         impulse_bic = map(impulse_fit, BIC)) 
-
-# Annotate the best model by BIC 
-# TODO: may need a more sophisticated way of doing this than just the min.
-choose_best_model <- function(bic_list) {
-  unlist(strsplit(names(bic_list)[which.min(bic_list)], "_"))[[1]]
-}
-curve_fits$best_model <- apply(curve_fits[,c("lm_bic","sigmoid_bic", "impulse_bic")],
-                             1, choose_best_model)
+         impulse_fit = map(timecourse, ~ cmp_fit_impulse_wrapper(.$rlog_count, .$timepoint_minutes)))
 
 # Save object to use in main Rmarkdown script
 saveRDS(curve_fits, 
-        file = paste0("../results/curve_fits/batch_", batch, ".RDS"))
+        file = paste0("../results/curve_fits/batch_", batch, ".rds"))
 
 

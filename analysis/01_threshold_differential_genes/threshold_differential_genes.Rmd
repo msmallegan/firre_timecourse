@@ -1,0 +1,169 @@
+---
+title: "Threshold differential genes"
+author: "Michael Smallegan"
+date: "10/17/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(stringsAsFactors = FALSE,
+        dplyr.summarise.inform = FALSE,
+        tidyverse.quiet = TRUE)
+library(tidyverse)
+library(DESeq2)
+source("../util/_plot_theme.R")
+```
+
+```{r}
+counts <- read_csv("../../rnaseq/results/salmon/salmon_merged_gene_counts.csv",
+                   col_types = cols()) %>%
+  pivot_longer(cols = 2:ncol(.), names_to = "sample_id", values_to = "count") %>%
+  merge(read_csv("../../rnaseq/rnaseq_samplesheet.csv", col_types = cols()))
+
+timecourses <- counts %>%
+  dplyr::select(sample_id, gene_id, count, cell_type, firre_ko,
+                firre_induced, timepoint_minutes, 
+                timecourse_length, experiment_replicate) %>%
+  unite(experiment, cell_type, firre_ko, firre_induced,
+           timecourse_length, experiment_replicate, sep = "-") %>%
+  group_by(experiment) %>%
+  nest(timecourse = c(sample_id, gene_id, timepoint_minutes, count)) %>%
+  pmap(~ write_csv(.y, paste0("data/", .x, ".csv")))
+
+
+
+
+
+
+
+
+counts <- read_csv("../../rnaseq/results/salmon/salmon_merged_gene_counts.csv",
+                   col_types = cols()) %>%
+  column_to_rownames("gene_id") %>% 
+  as.matrix() 
+
+hmm <- rowSums(counts)
+
+length(which(hmm < 10))
+length(which(pn < 90))
+pn <- apply(counts, 1, percentage_nonzeros)
+hist(pn)
+percentage_nonzeros <- function(x) {
+  (length(which(x > 0))/length(x))*100
+}
+
+
+samples <- read_csv("../../rnaseq/rnaseq_samplesheet.csv", col_types = cols()) %>%
+  column_to_rownames("sample_id") %>%
+  arrange(cell_type, firre_ko, firre_induced, date_sequenced, timecourse_length,
+          timepoint_minutes)
+counts <- counts[,rownames(samples)]
+
+# Remove rows with all zero counts
+counts <- counts[rowSums(counts) > 0,]
+# Normalize counts to account for sequencing depth and RNA composition
+normalized <- log2(t(t(counts) / estimateSizeFactorsForMatrix(counts))+1)
+
+thresh <- sqrt(2*log(ncol(counts)))
+
+num_out_bounds <- function(x) {
+  m <- mean(x)
+  cqw <- diff(quantile(x, probs = c(0.4,0.6)))
+  if(cqw == 0) {
+    return(0)
+  }
+  ut <- m + cqw*thresh
+  lt <- m - cqw*thresh
+  ob <- length(which(x > ut | x < lt))
+  return(ob)
+}
+thresholded_rows <- apply(normalized, 1, num_out_bounds)
+hist(thresholded_rows)
+
+length(which(thresholded_rows > 0)) / length(thresholded_rows)
+
+```
+
+```{r}
+vs_zero <- read_csv("../08_vs_zero/results/vs_zero_deseq_res_shrunken.csv")
+vs_prev <- read_csv("../08_vs_zero/results/vs_prev_deseq_res_shrunken.csv")
+vs_prev$timepoint <- as.numeric(sapply(vs_prev$result_name, function(x) {
+  unlist(strsplit(x, "_"))[[3]] }))
+
+vs_zero_sig <- vs_zero %>% 
+  filter(padj < 0.1) %>%
+  group_by(gene_id, gene_name, cell_type, firre_ko, firre_induced) %>%
+  mutate(sig_count = n()) %>%
+  filter(sig_count > 1 | timepoint_vs_zero == 330) %>%
+  group_by(gene_id, gene_name, cell_type, firre_ko, firre_induced) %>%
+  mutate(consecutive = is_consecutive(timepoint_vs_zero)) %>%
+  filter(consecutive == TRUE | timepoint_vs_zero == 330)
+
+vs_prev_sig <- vs_prev %>% 
+  filter(padj < 0.1) %>%
+  group_by(gene_id, gene_name, cell_type, firre_ko, firre_induced) %>%
+  mutate(sig_count = n()) %>%
+  filter(sig_count > 1 | timepoint == 330) %>%
+  group_by(gene_id, gene_name, cell_type, firre_ko, firre_induced) %>%
+  mutate(consecutive = is_consecutive(timepoint))
+
+
+
+passing <- thresholded_rows[thresholded_rows > 0]
+passing_genes <- names(passing)
+sig_genes <- unique(c(vs_zero_sig$gene_id, vs_prev_sig$gene_id))
+
+all(sig_genes %in% passing_genes)
+length(which(!(sig_genes %in% passing_genes)))
+not_in_list <- sig_genes[!(sig_genes %in% passing_genes)]
+
+thresholded_rows[not_in_list]
+grepl("ENSMUSG00000085396.7", not_in_list)
+hmm <- normalized[not_in_list,]
+plot(hmm[4,])
+
+
+samples$sample_id <- rownames(samples)
+
+samples <- samples %>% unite(experiment, cell_type, firre_ko, firre_induced, timecourse_length, remove = F)
+huh <- hmm[1,]
+huh <- data.frame(sample_id = names(huh),
+              count = huh) %>% merge(samples)
+g <- ggplot(huh, aes(x = timepoint_minutes, y = count))
+g + geom_point() + facet_wrap(~experiment, scales = "free_x")
+
+
+hmm <- vs_zero_sig %>% filter(gene_id %in% not_in_list)
+
+
+nrow(samples)
+is_consecutive <- function(tps) {
+
+  if(length(tps) == 1) {
+    return(FALSE)
+  }
+  tps <- tps[order(tps)]
+  if(min(diff(tps)) == 30) {
+    return(TRUE)
+  } else {
+    return(FALSE)
+  }
+}
+
+```
+
+```{r}
+genes <- rtracklayer::import(file.path("../util/",
+                                       "gencode.vM25.annotation.genes.gtf"))
+names(genes) <- genes$gene_id
+
+g2s <- genes %>% as.data.frame() %>%
+  dplyr::select(gene_id, gene_name)
+g2s[g2s$gene_name == "Firre",]
+```
+
+
+

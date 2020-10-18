@@ -97,8 +97,7 @@ tc <- data.frame("result_name" = resultsNames(dds)[-1]) %>%
   mutate(shrunken = NA, l2fc = NA)
 
 
-
-  
-
 # Combine results
-# res <- bind_(st, tc)
+res <- bind_rows(st, tc)
+
+# TODO: write method of determining whether it's a significant gene.
