@@ -1,7 +1,20 @@
+#!/usr/bin/env Rscript
+args = commandArgs(trailingOnly=TRUE)
+
 options(stringsAsFactors = FALSE)
 library(tidyverse)
-f <- "../data/ESC-KO-control-long-1.csv"
-exp <- gsub(".csv", "",gsub("../data/","",f))
+library(DESeq2)
+
+if (length(args)==0) {
+  stop("At least one argument must be supplied (input file).n", call.=FALSE)
+} else if (length(args)==1) {
+  f <- args[1]
+} else {
+  stop("Too many args")
+}
+
+f <- paste0("../", f)
+exp <- gsub(".csv", "",gsub("../data//","",f))
 
 samples <- read_csv("../../../rnaseq/rnaseq_samplesheet.csv") %>%
   unite(experiment, cell_type, firre_ko, firre_induced, timecourse_length, 
@@ -99,5 +112,63 @@ tc <- data.frame("result_name" = resultsNames(dds)[-1]) %>%
 
 # Combine results
 res <- bind_rows(st, tc)
+write_csv(res, paste0("../results/", exp, ".csv"))
 
-# TODO: write method of determining whether it's a significant gene.
+
+# Get significantly DEG genes
+pval_thresh <- 0.05
+
+is_consecutive <- function(tps) {
+  if(length(tps) == 1) {
+    return(FALSE)
+  }
+  tps <- tps[order(tps)]
+  idx <- which(t %in% tps)
+  # Will take only two consecutive timepoints
+  if(min(diff(idx)) == 1) {
+    return(TRUE)
+  } else {
+    return(FALSE)
+  }
+}
+
+
+vs_zero <- res %>% filter(grepl("vs_0", result_name),
+                          padj < pval_thresh,
+                          shrunken == "shrunken") %>%
+  mutate(timepoint = as.numeric(str_split(result_name, "_", simplify = TRUE)[, 2])) %>%
+  group_by(gene_id) %>%
+  mutate(sig_count = n()) %>%
+  filter(sig_count > 1 | timepoint == max(t)) %>%
+  group_by(gene_id) %>%
+  mutate(consecutive = is_consecutive(timepoint)) %>%
+  filter(consecutive == TRUE | timepoint == max(t)) %>%
+  mutate(sig = TRUE,
+         result_name = gsub("timepoint_", "t_", result_name)) %>%
+  dplyr::select(gene_id, result_name, sig)
+
+vs_prev <- res %>% filter(result_name != "lrt_tc", 
+                          !grepl("vs_0", result_name),
+                          padj < pval_thresh,
+                          shrunken == "shrunken") %>%
+  mutate(timepoint = as.numeric(str_split(result_name, "_", simplify = TRUE)[, 2])) %>%
+  group_by(gene_id) %>%
+  mutate(sig_count = n()) %>%
+  filter(sig_count > 1) %>%
+  mutate(consecutive = is_consecutive(timepoint)) %>%
+  filter(consecutive == TRUE) %>%
+  mutate(sig = TRUE,
+         result_name = gsub("timepoint_", "t_", result_name)) %>%
+  dplyr::select(gene_id, result_name, sig)
+
+tc <- res %>% filter(result_name == "lrt_tc",
+                     padj < pval_thresh) %>%
+  mutate(sig = TRUE) %>%
+  dplyr::select(gene_id, result_name, sig)
+
+sig_matrix <- bind_rows(vs_zero, vs_prev, tc) 
+write_csv(sig_matrix, paste0("../results/", exp, "_sig_matrix.csv"))
+
+res <- res %>% filter(gene_id %in% unique(sig_matrix$gene_id))
+write_csv(sig_matrix, paste0("../results/", exp, "_sig.csv"))
+

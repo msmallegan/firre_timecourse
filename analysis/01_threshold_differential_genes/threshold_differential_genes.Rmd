@@ -33,11 +33,101 @@ timecourses <- counts %>%
   nest(timecourse = c(sample_id, gene_id, timepoint_minutes, count)) %>%
   pmap(~ write_csv(.y, paste0("data/", .x, ".csv")))
 
+```
+
+# Run DEseq2 for LRT, vs zero, vs prev
+
+Note, this doesn't work for pMEF's because we only have one replicate.
+
+```{r}
+create_sbatch_script <- function(f) {
+exp <- gsub(".csv", "", gsub("data//","",f))
+line <- paste0("#!/bin/bash
+#SBATCH -p short
+#SBATCH --job-name=timecourse_deseq_", exp, "
+#SBATCH --mail-type=NONE
+#SBATCH --mail-user=michael.smallegan@colorado.edu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --mem=30gb
+#SBATCH --time=2:00:00
+#SBATCH --output=deseq_", exp, ".out
+#SBATCH --error=deseq_", exp, ".err
+date
+Rscript timecourse_deseq.R ", f, "
+date
+")
+
+
+writeLines(line, 
+           con = paste0("bin/tc_deseq_", exp, ".sbatch"))
+}
+
+exp_files <- list.files("data/", pattern = ".csv", full.names = T)
+lapply(exp_files, create_sbatch_script) %>% 
+  invisible()
+exps <- gsub(".csv", "", gsub("data//","",exp_files))
+# Create submit script
+cat(paste0("#!/bin/bash \n",
+              paste(paste0("sbatch ", paste0("tc_deseq_", exps, ".sbatch")),
+              collapse = "\n")),
+    file = "bin/submit.sh")
+# TODO: this is a really cheap and messy way to do caching
+if(!file.exists("results/ESC-KO-control-long-1_sig_matrix.csv")) {
+  system("source /etc/profile; cd bin; chmod u+x submit.sh; ./submit.sh")
+}
+```
+
+
+# Compile results
+
+```{r}
+sig_files <- list.files("results/", pattern = "_sig_matrix.csv", full.names = T)
+experiment_names <- sapply(sig_files, function(x) {
+  x <- gsub("firre_induced", "fi", x)
+  unlist(strsplit(unlist(strsplit(x, "//"))[[2]], "_"))[[1]]
+})
+sig_res <- lapply(sig_files, read_csv)
+for(i in 1:length(sig_res)) {
+  sig_res[[i]]$experiment <- experiment_names[[i]]
+}
+
+sig_res <- bind_rows(sig_res) %>%
+  dplyr::select(gene_id, experiment) %>%
+  distinct()
+
+sig_res_matrix <- sig_res %>%
+  mutate(sig = 1L) %>%
+  pivot_wider(names_from = experiment, values_from = sig, values_fill = 0L) %>%
+  as.data.frame()
+
+sig_short <- sig_res_matrix[,c(1,grep("short", names(sig_res_matrix)))]
+upset(sig_short, nsets = 9)
+
+sig_long <- sig_res_matrix[,c(1,grep("long", names(sig_res_matrix)))]
+upset(sig_long, nsets = 4)
+library(UpSetR)
+
+upset(sig_res_matrix, nsets = 13)
+
+```
 
 
 
+# Some junk
 
 
+```{r}
+res_sig %>%
+  mutate(sig = as.numeric(sig)) %>%
+  pivot_wider(names_from = result_name, values_from = sig, values_fill = FALSE) %>%
+  column_to_rownames("gene_id") %>%
+  as.matrix()
+unique(res_sig$result_name)
+pheatmap::pheatmap(res_sig, cluster_cols = FALSE, show_rownames = FALSE)
+```
+
+```{r}
 
 
 counts <- read_csv("../../rnaseq/results/salmon/salmon_merged_gene_counts.csv",
