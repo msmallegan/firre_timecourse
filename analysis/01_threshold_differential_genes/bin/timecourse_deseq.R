@@ -56,6 +56,10 @@ dds <- dds[rowSums(counts(dds)) >= 10,]
 # Run deseq -- individual timepoints
 dds <- DESeq(dds)
 
+## Export regularized log counts
+rlog_counts <- rlog(dds, blind = TRUE)
+write_rds(rlog_counts, paste0("../results/", exp, "_rlog_counts.rds"))
+
 res_wrapper <- function(x) {
   contrast <- unlist(str_split(gsub("_vs", "", x), "_"))
   res <- results(dds, contrast = contrast) %>%

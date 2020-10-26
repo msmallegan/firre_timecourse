@@ -15,6 +15,9 @@ options(stringsAsFactors = FALSE,
 library(tidyverse)
 library(DESeq2)
 source("../util/_plot_theme.R")
+library(ComplexHeatmap)
+library(circlize)
+library(seriation)
 ```
 
 ```{r}
@@ -28,7 +31,7 @@ timecourses <- counts %>%
                 firre_induced, timepoint_minutes, 
                 timecourse_length, experiment_replicate) %>%
   unite(experiment, cell_type, firre_ko, firre_induced,
-           timecourse_length, experiment_replicate, sep = "-") %>%
+        timecourse_length, experiment_replicate, sep = "-") %>%
   group_by(experiment) %>%
   nest(timecourse = c(sample_id, gene_id, timepoint_minutes, count)) %>%
   pmap(~ write_csv(.y, paste0("data/", .x, ".csv")))
@@ -41,8 +44,8 @@ Note, this doesn't work for pMEF's because we only have one replicate.
 
 ```{r}
 create_sbatch_script <- function(f) {
-exp <- gsub(".csv", "", gsub("data//","",f))
-line <- paste0("#!/bin/bash
+  exp <- gsub(".csv", "", gsub("data//","",f))
+  line <- paste0("#!/bin/bash
 #SBATCH -p short
 #SBATCH --job-name=timecourse_deseq_", exp, "
 #SBATCH --mail-type=NONE
@@ -57,10 +60,10 @@ date
 Rscript timecourse_deseq.R ", f, "
 date
 ")
-
-
-writeLines(line, 
-           con = paste0("bin/tc_deseq_", exp, ".sbatch"))
+  
+  
+  writeLines(line, 
+             con = paste0("bin/tc_deseq_", exp, ".sbatch"))
 }
 
 exp_files <- list.files("data/", pattern = ".csv", full.names = T)
@@ -69,8 +72,8 @@ lapply(exp_files, create_sbatch_script) %>%
 exps <- gsub(".csv", "", gsub("data//","",exp_files))
 # Create submit script
 cat(paste0("#!/bin/bash \n",
-              paste(paste0("sbatch ", paste0("tc_deseq_", exps, ".sbatch")),
-              collapse = "\n")),
+           paste(paste0("sbatch ", paste0("tc_deseq_", exps, ".sbatch")),
+                 collapse = "\n")),
     file = "bin/submit.sh")
 # TODO: this is a really cheap and messy way to do caching
 if(!file.exists("results/ESC-KO-control-long-1_sig_matrix.csv")) {
@@ -82,14 +85,13 @@ if(!file.exists("results/ESC-KO-control-long-1_sig_matrix.csv")) {
 # Compile results
 
 ```{r}
-sig_files <- list.files("results/", pattern = "_sig_matrix.csv", full.names = T)
-experiment_names <- sapply(sig_files, function(x) {
-  x <- gsub("firre_induced", "fi", x)
-  unlist(strsplit(unlist(strsplit(x, "//"))[[2]], "_"))[[1]]
+sig_files <- list.files("results", pattern = "_sig_matrix.csv", full.names = T)
+experiments <- sapply(sig_files, function(x) {
+  unlist(strsplit(unlist(strsplit(x, "/"))[[2]], "_sig"))[[1]]
 })
 sig_res <- lapply(sig_files, read_csv)
 for(i in 1:length(sig_res)) {
-  sig_res[[i]]$experiment <- experiment_names[[i]]
+  sig_res[[i]]$experiment <- experiments[[i]]
 }
 
 sig_res <- bind_rows(sig_res) %>%
@@ -111,6 +113,469 @@ library(UpSetR)
 upset(sig_res_matrix, nsets = 13)
 
 ```
+
+# Make a damn heatmap. 
+
+```{r}
+# Read in the regularize log counts.
+rlog_data <- lapply(list.files("results", 
+                               pattern = "_rlog_counts.rds", 
+                               full.names = T), 
+                    read_rds)
+# Extract rlog data for heatmap
+for(i in 1:length(rlog_data)) {
+  # Subtract the zero timepoint mean to give pseudo log2FoldChanges
+  rlog_long <- assay(rlog_data[[i]]) %>%
+    as.data.frame() %>%
+    rownames_to_column("gene_id") %>%
+    pivot_longer(2:ncol(.), names_to = "sample_id", values_to = "rlog_count") %>%
+    merge(samples) %>%
+    group_by(gene_id) %>%
+    mutate(rlog_zeroed = rlog_count - mean(rlog_count[timepoint == 0], na.rm = T)) %>%
+    group_by(experiment, gene_id, timepoint) %>%
+    summarize(rlog_zeroed = mean(rlog_zeroed, na.rm = T)) %>%
+    as.data.frame()
+  experiment <- unique(rlog_long$experiment)
+  stopifnot(length(experiment) == 1)
+  # Form into a matrix
+  rlog_matrix <- rlog_long %>%
+    dplyr::select(-experiment) %>%
+    pivot_wider(names_from = timepoint, values_from = rlog_zeroed) %>%
+    column_to_rownames("gene_id") %>%
+    as.matrix()
+  rlog_data[[i]] <- rlog_matrix
+  names(rlog_data)[[i]] <- experiment
+}
+```
+
+```{r}
+# Heatmap color pallete
+col_pal <- colorRamp2(seq(-0.2,0.2, length.out = 9),
+                      colors = c('#67001b', '#a03747', '#d26e77', 
+                                 '#ffa7ae', '#f5f5f5', '#91c9cc', 
+                                 '#5d9598', '#2d6467', '#003539'))
+```
+
+
+```{r}
+# Let's make a heatmap with everything
+# Set the order
+experiment_order <- c("ESC-KO-control-short-1",
+                      "ESC-KO-firre_induced-short-1",
+                      "ESC-KO-control-long-1",
+                      "ESC-KO-firre_induced-long-1",
+                      "ESC-WT-control-short-1",
+                      "ESC-WT-firre_induced-short-2",
+                      "ESC-WT-control-long-1",
+                      "ESC-WT-firre_induced-long-1",
+                      "NPC-KO-control-short-1",
+                      "NPC-KO-firre_induced-short-1",
+                      "NPC-WT-control-short-1",
+                      "NPC-WT-firre_induced-short-1")
+exp_short <-  c("ESC-KO-dox",
+                "ESC-KO-firre",
+                "ESC-KO-dox-l",
+                "ESC-KO-firre-1",
+                "ESC-WT-dox",
+                "ESC-WT-firre",
+                "ESC-WT-dox-l",
+                "ESC-WT-firre-l",
+                "NPC-KO-dox",
+                "NPC-KO-firre",
+                "NPC-WT-dox-l",
+                "NPC-WT-firre-l")
+rlog_ordered <- rlog_data[experiment_order]
+
+# Gather all DE genes
+sig_genes <- sig_res %>%
+  filter(experiment %in% experiment_order) %>%
+  dplyr::select(gene_id) %>%
+  distinct() %>%
+  pull(gene_id)
+
+# Put the rows in the same order
+for(i in 1:length(rlog_ordered)) {
+  
+  exp_sig_genes <- sig_res %>% 
+    filter(experiment == names(rlog_ordered)[[i]]) %>%
+    pull(gene_id)
+  
+  rlog <- rlog_ordered[[i]]
+  rlog <- rlog[rownames(rlog) %in% sig_genes,]
+  nonsig_genes <- rownames(rlog)[!(rownames(rlog) %in% exp_sig_genes)]
+  rlog[nonsig_genes,] <- 0
+  
+  missing_genes <- sig_genes[!(sig_genes %in% rownames(rlog))]
+  if(length(missing_genes) > 0) {
+    if(length(missing_genes) == 1) {
+      missing_matrix <- rlog[1:length(missing_genes),] %>%
+        t() %>%
+        as.matrix()
+      missing_matrix[1:nrow(missing_matrix),] <- 0
+      rownames(missing_matrix) <- missing_genes
+      rlog <- rbind(rlog, missing_matrix)
+    } else if(length(missing_genes) > 1) {
+      missing_matrix <- rlog[1:length(missing_genes),]
+      missing_matrix[1:nrow(missing_matrix),] <- 0
+      rownames(missing_matrix) <- missing_genes
+      rlog <- rbind(rlog, missing_matrix)
+    }
+  }
+  # Put in the proper order
+  rlog <- rlog[sig_genes,]
+  rlog_ordered[[i]] <- rlog
+}
+
+
+# Combine into matrix
+rlog_matrix <- do.call(cbind, rlog_ordered)
+
+# Determine ordering of rows
+olo_order <- seriate(dist(rlog_matrix), method = "OLO")
+genes_ordered <- rownames(rlog_matrix)[get_order(olo_order,1)]
+
+# Put in order
+rlog_matrix <- rlog_matrix[genes_ordered,]
+
+# Get the splits for the columns
+short_names <- data.frame("experiment" = experiment_order,
+                          "short_name" = exp_short)
+ntimepoints <- samples %>%
+  filter(experiment %in% experiment_order) %>%
+  group_by(experiment) %>%
+  summarize(ntimepoints = length(unique(timepoint))) %>%
+  merge(short_names) %>%
+  as.data.frame()
+rownames(ntimepoints) <- ntimepoints$experiment
+ntimepoints <- ntimepoints[experiment_order,]
+ntimepoints <- ntimepoints %>%
+  rowwise() %>%
+  mutate(split_vector = paste(rep(short_name, ntimepoints), collapse = ","))
+split_vector <- paste(ntimepoints$split_vector, collapse = ",")
+split_vector <- unlist(strsplit(split_vector, ","))
+split_vector <- factor(split_vector, levels = exp_short)
+
+
+# pdf("figures/all_DEG_all_exp_timecourse_heatmap.pdf", height = 12, width = 30)
+Heatmap(rlog_matrix, col = col_pal,
+        column_split = split_vector,
+        cluster_columns = FALSE,
+        cluster_rows = FALSE,
+        show_row_names = FALSE,
+        show_heatmap_legend = FALSE)
+# graphics.off()
+```
+
+
+```{r}
+# First, make a heatmap of just the short timecourse profiles
+sig_short <- sig_res %>%
+  filter(grepl("short", experiment),
+         experiment != "ESC-WT-firre_induced-short-1")
+rlog_short <- rlog_data[names(rlog_data) %in% unique(sig_short$experiment)]
+unique(sig_short$experiment)
+all_sig_short <- unique(sig_short$gene_id)
+
+
+for(i in 1:length(rlog_short)) {
+  sig_genes <- sig_res %>% 
+    filter(experiment == names(rlog_short)[[i]]) %>%
+    pull(gene_id)
+  
+  rlog <- rlog_short[[i]]
+  rlog <- rlog[rownames(rlog) %in% all_sig_short,]
+  nonsig_genes <- rownames(rlog)[!(rownames(rlog) %in% sig_genes)]
+  rlog[nonsig_genes,] <- 0
+  
+  missing_genes <- all_sig_short[!(all_sig_short %in% rownames(rlog))]
+  if(length(missing_genes) > 0) {
+    if(length(missing_genes) == 1) {
+      missing_matrix <- rlog[1:length(missing_genes),] %>%
+        t() %>%
+        as.matrix()
+      missing_matrix[1:nrow(missing_matrix),] <- 0
+      rownames(missing_matrix) <- missing_genes
+      rlog <- rbind(rlog, missing_matrix)
+    } else if(length(missing_genes) > 1) {
+      missing_matrix <- rlog[1:length(missing_genes),]
+      missing_matrix[1:nrow(missing_matrix),] <- 0
+      rownames(missing_matrix) <- missing_genes
+      rlog <- rbind(rlog, missing_matrix)
+    }
+  }
+  # Put the in same order
+  rlog <- rlog[all_sig_short,]
+  
+  rlog_short[[i]] <- rlog
+}
+```
+
+```{r}
+# Cluster everthing together
+short_combined <- do.call(cbind, rlog_short)
+
+# short_hclust <- hclust(dist(short_combined))
+
+olo_order <- seriate(dist(short_combined), method = "OLO")
+hclust_order <- rownames(short_combined)[get_order(olo_order,1)]
+
+for(i in 1:length(rlog_short)) {
+  rlog_short[[i]] <- rlog_short[[i]][hclust_order,]
+}
+
+
+```
+
+```{r}
+
+pdf("figures/all_DEG_short_timecourse_heatmap.pdf", height = 12, width = 15)
+Heatmap(rlog_short[[1]], col = col_pal,
+        cluster_columns = FALSE,
+        cluster_rows = FALSE,
+        show_row_names = FALSE,
+        column_title = "ESC-KO-dox",
+        show_heatmap_legend = FALSE)  + 
+  Heatmap(rlog_short[[2]], col = col_pal,
+          cluster_columns = FALSE,
+          cluster_rows = FALSE,
+          show_row_names = FALSE,
+          column_title = "ESC-KO-firre",
+          show_heatmap_legend = FALSE) +
+  Heatmap(rlog_short[[3]], col = col_pal,
+        cluster_columns = FALSE,
+        cluster_rows = FALSE,
+        show_row_names = FALSE,
+        column_title = "ESC-WT-dox",
+        show_heatmap_legend = FALSE)  + 
+  Heatmap(rlog_short[[4]], col = col_pal,
+          cluster_columns = FALSE,
+          cluster_rows = FALSE,
+          show_row_names = FALSE,
+          column_title = "ESC-WT-firre",
+          show_heatmap_legend = FALSE) +
+  Heatmap(rlog_short[[5]], col = col_pal,
+        cluster_columns = FALSE,
+        cluster_rows = FALSE,
+        show_row_names = FALSE,
+        column_title = "NPC-KO-dox",
+        show_heatmap_legend = FALSE)  + 
+  Heatmap(rlog_short[[6]], col = col_pal,
+          cluster_columns = FALSE,
+          cluster_rows = FALSE,
+          show_row_names = FALSE,
+          column_title = "NPC-KO-firre",
+          show_heatmap_legend = FALSE) +
+  Heatmap(rlog_short[[7]], col = col_pal,
+        cluster_columns = FALSE,
+        cluster_rows = FALSE,
+        show_row_names = FALSE,
+        column_title = "NPC-WT-dox",
+        show_heatmap_legend = FALSE)  + 
+  Heatmap(rlog_short[[8]], col = col_pal,
+          cluster_columns = FALSE,
+          cluster_rows = FALSE,
+          show_row_names = FALSE,
+          column_title = "NPC-WT-firre",
+          show_heatmap_legend = FALSE) 
+graphics.off()
+```
+
+```{r}
+# Remove dox genes and plot again. 
+# Cluster by sig profiles
+sig_res <- sig_res %>%
+  mutate(dox = grepl("control", experiment))
+
+dox_sig <- sig_res %>%
+  filter(dox == TRUE) %>%
+  dplyr::select(gene_id) %>%
+  distinct() %>%
+  pull(gene_id)
+
+nondox <- sig_res %>%
+  filter(!(gene_id %in% dox_sig))
+
+sig_short <- nondox %>%
+  filter(grepl("short", experiment),
+         experiment != "ESC-WT-firre_induced-short-1")
+rlog_short <- rlog_data[names(rlog_data) %in% unique(sig_short$experiment)]
+unique(sig_short$experiment)
+all_sig_short <- unique(sig_short$gene_id)
+
+
+for(i in 1:length(rlog_short)) {
+  sig_genes <- nondox %>% 
+    filter(experiment == names(rlog_short)[[i]]) %>%
+    pull(gene_id)
+  
+  rlog <- rlog_short[[i]]
+  rlog <- rlog[rownames(rlog) %in% all_sig_short,]
+  nonsig_genes <- rownames(rlog)[!(rownames(rlog) %in% sig_genes)]
+  rlog[nonsig_genes,] <- 0
+  
+  missing_genes <- all_sig_short[!(all_sig_short %in% rownames(rlog))]
+  if(length(missing_genes) > 0) {
+    if(length(missing_genes) == 1) {
+      missing_matrix <- rlog[1:length(missing_genes),] %>%
+        t() %>%
+        as.matrix()
+      missing_matrix[1:nrow(missing_matrix),] <- 0
+      rownames(missing_matrix) <- missing_genes
+      rlog <- rbind(rlog, missing_matrix)
+    } else if(length(missing_genes) > 1) {
+      missing_matrix <- rlog[1:length(missing_genes),]
+      missing_matrix[1:nrow(missing_matrix),] <- 0
+      rownames(missing_matrix) <- missing_genes
+      rlog <- rbind(rlog, missing_matrix)
+    }
+  }
+  # Put the in same order
+  rlog <- rlog[all_sig_short,]
+  
+  rlog_short[[i]] <- rlog
+}
+
+short_combined <- do.call(cbind, rlog_short)
+
+# short_hclust <- hclust(dist(short_combined))
+
+olo_order <- seriate(dist(short_combined), method = "OLO")
+hclust_order <- rownames(short_combined)[get_order(olo_order,1)]
+
+for(i in 1:length(rlog_short)) {
+  rlog_short[[i]] <- rlog_short[[i]][hclust_order,]
+}
+names(rlog_short)
+
+pdf("figures/all_nondox_short.pdf", height = 10, width = 12)
+Heatmap(rlog_short[[1]], col = col_pal,
+        cluster_columns = FALSE,
+        cluster_rows = FALSE,
+        show_row_names = FALSE,
+        column_title = "ESC-KO-firre",
+        show_heatmap_legend = FALSE)  + 
+  Heatmap(rlog_short[[2]], col = col_pal,
+          cluster_columns = FALSE,
+          cluster_rows = FALSE,
+          show_row_names = FALSE,
+          column_title = "ESC-WT-firre",
+          show_heatmap_legend = FALSE) +
+  Heatmap(rlog_short[[3]], col = col_pal,
+        cluster_columns = FALSE,
+        cluster_rows = FALSE,
+        show_row_names = FALSE,
+        column_title = "NPC-KO-firre",
+        show_heatmap_legend = FALSE)  + 
+  Heatmap(rlog_short[[4]], col = col_pal,
+          cluster_columns = FALSE,
+          cluster_rows = FALSE,
+          show_row_names = FALSE,
+          column_title = "NPC-WT-firre",
+          show_heatmap_legend = FALSE)
+graphics.off()
+
+```
+
+```{r}
+# 
+# 
+# sigm <- sig_res %>%
+#   mutate(sig = 1L) %>%
+#   pivot_wider(names_from = experiment, values_from = sig, values_fill = 0L) %>%
+#   column_to_rownames("gene_id") %>%
+#   as.matrix()
+# sig_profiles <- apply(sigm, 1, paste, collapse = ",")
+# length(rownames(sigm))
+# length(sig_profiles)
+# sig_p <- data.frame("gene_id" = rownames(sigm),
+#                            "sig_profile" = sig_profiles)
+# unique_profiles <- sig_p %>%
+#   group_by(sig_profile) %>%
+#   summarize(count = n())
+
+```
+
+
+```{r}
+# Set the non-significant rows to zero
+# And remove genes that aren't in all sig genes
+all_sig_genes <- unique(sig_res$gene_id)
+
+for(i in 1:length(rlog_data)) {
+  sig_genes <- sig_res %>% 
+    filter(experiment == names(rlog_data)[[i]]) %>%
+    pull(gene_id)
+  
+  rlog <- rlog_data[[i]]
+  rlog <- rlog[rownames(rlog) %in% all_sig_genes,]
+  nonsig_genes <- rownames(rlog)[!(rownames(rlog) %in% sig_genes)]
+  rlog[nonsig_genes,] <- 0
+  # Put the in same order
+  rlog <- rlog[all_sig_genes,0]
+  
+  rlog_data[[i]] <- rlog
+}
+```
+
+```{r}
+
+hmm <- rlog_data[[1]]
+
+
+rlog_short <- rlog_data[grep("short", names(rlog_data))]
+
+?Heatmap
+```
+
+
+
+
+```{r}
+# Get rlog counts.
+counts <- read_csv("../../rnaseq/results/salmon/salmon_merged_gene_counts.csv",
+                   col_types = cols()) %>%
+  column_to_rownames("gene_id") %>%
+  as.matrix()
+mode(counts) <- "integer"
+
+samples <- read_csv("../../rnaseq/rnaseq_samplesheet.csv", 
+                    col_types = cols()) %>%
+  dplyr::select(sample_id, cell_type, firre_ko,
+                firre_induced, timepoint, 
+                timecourse_length, experiment_replicate) %>%
+  unite(experiment, cell_type, firre_ko, firre_induced,
+        timecourse_length, experiment_replicate, sep = "-") %>%
+  mutate(rn = sample_id) %>%
+  column_to_rownames("rn")
+
+stopifnot(all(colnames(counts) %in% rownames(samples)))
+counts <- counts[,rownames(samples)]
+stopifnot(all(colnames(counts) == rownames(samples)))
+
+# Get rid of all zero rows
+counts <- counts[rowSums(counts) > 0,]
+
+# Get the regularized log counts using DEseq2
+vst_counts <- DESeqDataSetFromMatrix(counts, samples, 
+                                     design = ~ experiment) %>%
+  vst(blind = FALSE) %>%
+  assay() %>%
+  as.data.frame() %>% 
+  rownames_to_column("gene_id") %>%
+  pivot_longer(2:ncol(.), names_to = "sample_id", values_to = "vst_count") %>%
+  merge(samples %>% dplyr::select(sample_id, timepoint, experiment))
+
+write_rds(rlog_counts, "results/rlog_counts.rds")
+mutate(gradient_fraction = as.numeric(as.character(gradient_fraction))) %>%
+  group_by(sample_type, gene_id) %>%
+  mutate(rlog_zeroed = rlog_count - min(rlog_count)) %>%
+  group_by(sample_type, gene_id, gradient_fraction) %>%
+  mutate(rlog_mean = mean(rlog_count)) %>%
+  ungroup() %>%
+  nest(gradient = c(sample_id, gradient_fraction, 
+                    rlog_count, rlog_zeroed, rlog_mean))
+```
+
 
 
 
@@ -221,7 +686,7 @@ samples$sample_id <- rownames(samples)
 samples <- samples %>% unite(experiment, cell_type, firre_ko, firre_induced, timecourse_length, remove = F)
 huh <- hmm[1,]
 huh <- data.frame(sample_id = names(huh),
-              count = huh) %>% merge(samples)
+                  count = huh) %>% merge(samples)
 g <- ggplot(huh, aes(x = timepoint_minutes, y = count))
 g + geom_point() + facet_wrap(~experiment, scales = "free_x")
 
@@ -231,7 +696,7 @@ hmm <- vs_zero_sig %>% filter(gene_id %in% not_in_list)
 
 nrow(samples)
 is_consecutive <- function(tps) {
-
+  
   if(length(tps) == 1) {
     return(FALSE)
   }
