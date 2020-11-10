@@ -42,10 +42,10 @@ mode(salmon_gene_counts) <- "integer"
 samples <- read.csv("../../rnaseq/rnaseq_samplesheet.csv") %>%
   filter(cell_type != "pMEF",
          date_sequenced != "2018-09",
-         timepoint_minutes < 400,
+         timepoint < 400,
          timecourse_length == "short") %>%
   mutate(firre_ko = factor(firre_ko, levels = c("WT", "KO")),
-         timepoint_minutes = factor(timepoint_minutes, 
+         timepoint = factor(timepoint, 
                                     levels = c(seq(0,360,30))),
          firre_induced = factor(firre_induced, 
                                 levels = c("control", "firre_induced")))
@@ -80,15 +80,15 @@ esc_rlog_countsl <- assay(esc_rlog_counts) %>%
   pivot_longer(2:ncol(.), names_to = "sample_id", values_to = "rlog_count") 
 esc_rlog_countsl <- esc_rlog_countsl %>%
   merge(esc_samples %>% dplyr::select(sample_id, cell_type, firre_ko, 
-                                      firre_induced, timepoint_minutes)) %>%
+                                      firre_induced, timepoint)) %>%
   merge(g2s)
-esc_rlog_countsl$timepoint_minutes <- as.numeric(as.character(esc_rlog_countsl$timepoint_minutes))
+esc_rlog_countsl$timepoint <- as.numeric(as.character(esc_rlog_countsl$timepoint))
 esc_rlog_countsl <- esc_rlog_countsl %>%
-  arrange(gene_id, timepoint_minutes)
+  arrange(gene_id, timepoint)
 
 write_rds(esc_rlog_countsl, "results/esc_rlog_counts.RDS")
 esc_rlog_countsl <- read_rds("results/esc_rlog_counts.RDS")
-esc_rlog_countsl$timepoint_minutes <- as.numeric(as.character(esc_rlog_countsl$timepoint_minutes))
+esc_rlog_countsl$timepoint <- as.numeric(as.character(esc_rlog_countsl$timepoint))
 ```
 
 
@@ -109,14 +109,14 @@ esc_rlog_countsl <- esc_rlog_countsl %>%
 
 esc_rlog_counts_zero_centered <- esc_rlog_countsl %>%
   group_by(gene_id, gene_name, firre_ko, firre_induced) %>%
-  mutate(rlog_count = rlog_count - mean(rlog_count[timepoint_minutes == 0])) %>%
+  mutate(rlog_count = rlog_count - mean(rlog_count[timepoint == 0])) %>%
   ungroup()
 
 # Triage genes that are more or less not changing, so that we
 # don't have to compute the curve fitting for so many genes. 
 
 dynamic <- esc_rlog_counts_zero_centered %>%
-  group_by(gene_id, gene_name, firre_ko, firre_induced, timepoint_minutes) %>%
+  group_by(gene_id, gene_name, firre_ko, firre_induced, timepoint) %>%
   # Take the mean to deal with outliers
   summarize(lfc = mean(rlog_count)) %>%
   group_by(gene_id, gene_name) %>%
@@ -188,18 +188,63 @@ if(!file.exists("results/curve_fits/batch_1.rds")) {
 ```
 
 ```{r}
-# Import results.
-curve_fits <- tibble(batch = 1:n_batches) %>%
-  mutate(curve_fits = map(batch, ~ read_rds(paste0("results/curve_fits/batch_", .x, ".rds")))) %>%
-  unnest(curve_fits)
+# Import sig
+fl <- list.files("../01_threshold_differential_genes/results/", 
+                 pattern = "_sig.csv", full.names = T)
+experiment <- sapply(fl, function(x) {
+  gsub("_sig.csv", "", unlist(strsplit(x,"results//", fixed = T))[2])
+})
+deg <- lapply(fl, read_csv)
+for(i in 1:length(fl)) {
+  deg[[i]]$experiment <- experiment[[i]]
+}
+deg <- deg %>% bind_rows()
 
-write_rds(curve_fits, "results/curve_fits.rds")
-curve_fits <- curve_fits %>%
+deg <- deg %>% dplyr::select(-result_name, -sig) %>%
+  distinct()
+esc_short_deg <- deg %>% filter(grepl("ESC", experiment),
+                                grepl("short", experiment))
+
+esc_short_deg <- esc_short_deg %>%
+  mutate(experiment = gsub("firre_induced", "fi", experiment)) %>%
+  separate(experiment, into = c("cell_type", "firre_ko",
+                                "firre_induced", "timecourse_length", "experiment_replicate"),
+           remove = F) %>%
+  mutate(firre_induced = gsub("fi", "firre_induced", firre_induced)) %>%
+  unite(condition, firre_ko, firre_induced, remove = F)
   
-curve_fits$
-batch1 <- readRDS("results/curve_fits/batch_1.rds")
 
-batch1 <- batch1 %>%
+esc_short_deg <- esc_short_deg %>%
+  unite(gene_condition, gene_id, condition, remove = F)
+fl <- list.files("results/curve_fits/", full.names = T)
+curve_fits <- read_rds("results/curve_fits/batch_1.rds") 
+curve_fits <-curve_fits %>% 
+  unite(gene_condition, gene_id, condition, remove = F)
+curve_fits <-curve_fits %>%
+  filter(gene_condition %in% esc_short_deg$gene_condition)
+
+for(i in 2:length(fl)) {
+  print(i)
+  batch <- read_rds(fl[i]) %>%
+  unite(gene_condition, gene_id, condition, remove = F) %>%
+  filter(gene_condition %in% esc_short_deg$gene_condition)
+  curve_fits <- bind_rows(curve_fits, batch)
+}
+
+table(curve_fits$condition)
+# Import results.
+# curve_fits <- tibble(batch = 1:n_batches) %>%
+#   mutate(curve_fits = map(batch, ~ read_rds(paste0("results/curve_fits/batch_", .x, ".rds")))) %>%
+#   unnest(curve_fits)
+
+
+
+format(object.size(curve_fits), units = "GB")
+# write_rds(curve_fits, "results/curve_fits.rds")
+
+curve_fits <- read_rds("results/curve_fits.rds")
+
+curve_fitsl <- curve_fits %>%
   mutate(lm_tidy = map(lm_fit, tidy),
          sigmoid_tidy = map(sigmoid_fit, tidy),
          impulse_tidy = map(impulse_fit, tidy),
@@ -210,17 +255,17 @@ batch1 <- batch1 %>%
 choose_best_model <- function(bic_list) {
   unlist(strsplit(names(bic_list)[which.min(bic_list)], "_"))[[1]]
 }
-batch1$best_model <- apply(batch1[,c("lm_bic","sigmoid_bic", "impulse_bic")],
+curve_fitsl$best_model <- apply(curve_fitsl[,c("lm_bic","sigmoid_bic", "impulse_bic")],
                             1, choose_best_model)
 
-batch1_sigmoid <- batch1 %>%
+curve_fitsl_sigmoid <- curve_fitsl %>%
   unnest(sigmoid_tidy)
-# batch1 <- batch1 %>%
+# curve_fitsl <- curve_fitsl %>%
 #   unnest(impulse_tidy)
-plot_timecourse_fits("Klf4", batch1)
+plot_timecourse_fits("Klf4", curve_fitsl)
 
-unique(batch1_sigmoid$term)
-good_ones <- batch1_sigmoid %>%
+unique(curve_fitsl_sigmoid$term)
+good_ones <- curve_fitsl_sigmoid %>%
   filter(term == "rate") %>%
   filter(p.value < 0.05)
 # Cool gene list
@@ -229,6 +274,211 @@ good_ones <- batch1_sigmoid %>%
 # Fv1
 
 ```
+
+```{r}
+# Determine sig genes
+fl <- list.files("../01_threshold_differential_genes/results/", 
+                 # pattern = "_sig.csv", 
+                 full.names = T)
+fl <- fl[!grepl("sig",fl)]
+fl <- fl[!grepl("rds",fl)]
+fl <- fl[grep("ESC", fl)]
+fl <- fl[grep("short", fl)]
+fl <- fl[!grepl("ESC-WT-firre_induced-short-1.csv", fl)]
+experiment <- sapply(fl, function(x) {
+  gsub(".csv", "", unlist(strsplit(x,"results//", fixed = T))[2])
+})
+res <- lapply(fl, read_csv)
+for(i in 1:length(fl)) {
+  res[[i]]$experiment <- experiment[[i]]
+}
+res <- res %>% bind_rows()
+
+res <- res %>%
+  mutate(experiment = gsub("firre_induced", "fi", experiment)) %>%
+  separate(experiment, into = c("cell_type", "firre_ko",
+                                "firre_induced", "timecourse_length", "experiment_replicate"),
+           remove = F) %>%
+  mutate(firre_induced = gsub("fi", "firre_induced", firre_induced)) %>%
+  unite(condition, firre_ko, firre_induced, remove = F)
+
+fi_vs_control <- read_csv("../01_firre_induction_vs_control/results/firre_induced_genes.csv") %>%
+  dplyr::select(gene_id, gene_name, ESC_KO_padj0.05,ESC_WT_padj0.05) %>%
+  pivot_longer(cols = c(ESC_KO_padj0.05,ESC_WT_padj0.05), names_to = "condition", values_to = "sig") %>%
+  filter(sig == 1)
+fi_vs_control$condition <- gsub("ESC_KO_padj0.05", "KO_firre_induced", fi_vs_control$condition)
+fi_vs_control$condition <- gsub("ESC_WT_padj0.05", "WT_firre_induced", fi_vs_control$condition)
+table(fi_vs_control$condition)
+res_summary <- res %>% filter(grepl("_vs_0",result_name)) %>%
+  group_by(gene_id, experiment, condition, firre_ko, firre_induced) %>%
+  summarize(mean_fc = mean(l2fc))
+
+res_pval <- res %>%
+  group_by(gene_id, experiment, condition, firre_ko, firre_induced) %>%
+  summarize(min_pval = min(padj))
+res_pval <- res_pval %>%
+  pivot_wider(id_cols = c(gene_id, firre_ko), names_from = firre_induced, values_from = min_pval)
+res_summary <- res_summary %>%
+  pivot_wider(id_cols = c(gene_id, firre_ko), names_from = firre_induced, values_from = mean_fc)
+
+
+res_pval <- res_pval %>% as.data.frame()
+res_summary <- res_summary %>% as.data.frame()
+names(res_pval)[3:4] <- c("ctrl_pval", "fi_pval")
+res_res <- merge(res_summary, res_pval)
+
+res_res$ctrl_sig <- as.numeric(res_res$ctrl_pval < 0.05)
+res_res$fi_sig <- as.numeric(res_res$fi_pval < 0.05)
+res_res[is.na(res_res$ctrl_sig),"ctrl_sig"] <- 0L
+res_res[is.na(res_res$fi_sig),"fi_sig"] <- 0L
+
+res_res$fi_sign <- sign(res_res$firre_induced)
+res_res$ctrl_sign <- sign(res_res$control)
+res_res$diff <- res_res$fi_sign - res_res$ctrl_sign
+table(res_res$diff)
+res_res_fi <- res_res %>%
+  filter(fi_sig == 1)
+
+res_res_fi$fi_deg <- 0L
+res_res_fi[which(res_res_fi$fi_sig == 1 & res_res_fi$ctrl_sig == 0),"fi_deg"] <- 1L
+res_res_fi[which(res_res_fi$fi_sig == 1 & res_res_fi$ctrl_sig == 1 & res_res_fi$diff != 0),"fi_deg"] <- 1L
+
+write_csv(res_res_fi, "results/firre_deg_genes.csv")
+res_res_fi <- res_res_fi %>%
+  filter(fi_deg == 1)
+res_res_fi$condition <- paste0(res_res_fi$firre_ko, "_firre_induced")
+res_res_fi <- res_res_fi %>%
+  unite(gene_condition, gene_id, condition, remove = F)
+
+fi_vs_control <- fi_vs_control %>%
+  unite(gene_condition, gene_id, condition, remove = F)
+sig_gene_conditions <- c(fi_vs_control$gene_condition, res_res_fi$gene_condition)
+```
+
+```{r}
+# Curve fits
+table(curve_fits$condition)
+curve_fits_fi <- curve_fits %>% filter(gene_condition %in% sig_gene_conditions)
+curve_fits_fi <- curve_fits_fi %>%
+  mutate(lm_tidy = map(lm_fit, tidy),
+         sigmoid_tidy = map(sigmoid_fit, tidy),
+         impulse_tidy = map(impulse_fit, tidy),
+         lm_bic = map(lm_fit, BIC),
+         sigmoid_bic = map(sigmoid_fit, BIC),
+         impulse_bic = map(impulse_fit, BIC))
+
+choose_best_model <- function(bic_list) {
+  unlist(strsplit(names(bic_list)[which.min(bic_list)], "_"))[[1]]
+}
+curve_fits_fi$best_model <- apply(curve_fits_fi[,c("lm_bic","sigmoid_bic", "impulse_bic")],
+                            1, choose_best_model)
+table(curve_fits_fi$best_model)
+
+curve_fits_fi_sigmoid <-  curve_fits_fi %>%
+  unnest(sigmoid_tidy)
+cf_fi_sig <- curve_fits_fi_sigmoid %>%
+  filter(term == "t_rise")  %>%
+  filter(p.value < 0.05)
+table(cf_fi_sig$best_model)
+# curve_fits_fi_sigmoid <- curve_fits_fi_sigmoid %>%
+#   filter(best_model == "sigmoid")
+
+
+
+cf_fi_imp <- curve_fits_fi %>%
+  unnest(impulse_tidy) %>%
+  # filter(best_model == "impulse")
+ filter(term == "t_rise")  %>%
+  filter(p.value < 0.05)
+
+table(cf_fi_imp$best_model)
+
+covered_genes <- unique(c(cf_fi_imp$gene_condition, cf_fi_sig$gene_condition))
+length(which(curve_fits_fi$gene_condition %in% covered_genes))
+length(unique(curve_fits_fi$gene_condition))
+table(curve_fits_fi$best_model)
+
+cf_fi_lm <- curve_fits_fi %>%
+  unnest(lm_tidy)
+
+lm_good <- cf_fi_lm %>%
+  filter(term == "timepoint_minutes",
+         best_model == "lm") %>%
+  arrange(p.value)
+imp_good <- cf_fi_imp %>%
+ 
+  arrange(p.value)
+
+for(i in 1:20) {
+  show(plot_timecourse_fits(lm_good$gene_name[[i]], curve_fitsl))
+  Sys.sleep(2)
+}
+?Sys.sleep
+show(plot_timecourse_fits("Adgrg1", curve_fitsl))
+
+
+
+cf_fi_sig <- curve_fits_fi %>%
+  unnest(sigmoid_tidy) %>%
+  filter(term == "t_rise",
+         p.value < 0.01) 
+hist(cf_fi_sig$p.value)
+Psmd11
+```
+
+```{r}
+# let's merge the estimates of t_rise
+cf_sig <- cf_fi_sig %>% dplyr::select(gene_condition, gene_name, estimate, p.value)
+cf_imp <- cf_fi_imp %>% dplyr::select(gene_condition, gene_name, estimate, p.value)
+
+names(cf_sig)[3:4] <- c("sig_trise", "sig_p")
+names(cf_imp)[3:4] <- c("imp_trise", "imp_p")
+cfm <- merge(cf_sig, cf_imp, all = T)
+library(ggpubr)
+g <- ggplot(cfm %>% filter(sig_p < 0.1, imp_p < 0.1), aes(x = sig_trise, y = imp_trise))
+g + geom_point() + stat_cor() +
+  geom_abline(slope = 1) + 
+  ggtitle("t_rise model correlation") + 
+  xlab("Sigmoid") +
+  ylab("Impulse")
+
+cfm$t_rise <- cfm$sig_trise
+cfm[which(!is.na(cfm$imp_trise) | cfm$imp_p < cfm$sig_p), "t_rise"] <- cfm[which(!is.na(cfm$imp_trise) | cfm$imp_p < cfm$sig_p), "imp_trise"]
+
+ress <- res %>% filter(grepl("_vs_0",result_name)) %>%
+  group_by(gene_id, experiment, condition, firre_ko, firre_induced) %>%
+  summarize(max_fc = l2fc[which.max(abs(l2fc))])
+names(cfm)
+cfm$gene_condition
+cfm_tr <- cfm  %>%
+  mutate(gene_condition = gsub("firre_induced", "fi", gene_condition)) %>%
+  separate(gene_condition, into = c("gene_id", "firre_ko", "firre_induced"), sep = "_") %>%
+  mutate(firre_induced = gsub("fi", "firre_induced", firre_induced)) %>%
+  dplyr::select(gene_id, firre_ko, firre_induced, gene_name, t_rise)
+hmm <- merge(cfm_tr, ress, all.x = T)
+library(ggrepel)
+library(scico)
+g <- ggplot(hmm %>% filter(firre_ko == "KO"), aes(x = t_rise, y = max_fc, color = t_rise))
+g + geom_hline(yintercept = 0) +geom_point() +
+  # geom_text_repel(aes(label = gene_name), data = hmm %>% filter(firre_ko == "KO", max_fc > 2)) +
+  geom_text_repel(aes(label = gene_name), data = hmm %>% filter(firre_ko == "KO", t_rise < 60)) +
+    xlim(20,100) +
+  ylim(-1,1) +
+  ggtitle("ESC WT Firre timecouse") + 
+  scale_color_scico(direction = -1, begin = 0.1)
+
+g <- ggplot(hmm %>% filter(firre_ko == "WT"), aes(x = t_rise, y = max_fc, color = t_rise))
+g + geom_hline(yintercept = 0) +geom_point() +
+  # geom_text_repel(aes(label = gene_name), data = hmm %>% filter(firre_ko == "WT", max_fc > 1 | max_fc < -0.9)) + 
+  geom_text_repel(aes(label = gene_name), data = hmm %>% filter(firre_ko == "WT", t_rise < 50)) +
+  xlim(20,70) +
+  ylim(-1,1) +
+   ggtitle("ESC KO Firre timecouse") +
+  scale_color_scico(direction = -1, begin = 0.1)
+```
+
+
+
 
 
 ```{r}
@@ -239,16 +489,16 @@ goi <- "Firre"
 
 curve_fits <- rlog_counts  %>%
   filter(gene_name %in% goi) %>%
-  dplyr::select(gene_id, gene_name, timepoint_minutes, 
+  dplyr::select(gene_id, gene_name, timepoint, 
                 rlog_count, firre_ko, firre_induced) %>%
   unite(condition, firre_ko, firre_induced) %>%
   # Center zero timepoint at zero
   group_by(gene_id, gene_name, condition) %>%
   ungroup() %>%
-  nest(timecourse = c(timepoint_minutes, rlog_count)) %>%
-  mutate(lm_fit = map(timecourse, ~ lm(rlog_count ~ 0 + timepoint_minutes, data = .)),
-         sigmoid_fit = map(timecourse, ~ cmp_fit_sigmoid_wrapper(.$rlog_count, .$timepoint_minutes)),
-         impulse_fit = map(timecourse, ~ cmp_fit_impulse_wrapper(.$rlog_count, .$timepoint_minutes))) 
+  nest(timecourse = c(timepoint, rlog_count)) %>%
+  mutate(lm_fit = map(timecourse, ~ lm(rlog_count ~ 0 + timepoint, data = .)),
+         sigmoid_fit = map(timecourse, ~ cmp_fit_sigmoid_wrapper(.$rlog_count, .$timepoint)),
+         impulse_fit = map(timecourse, ~ cmp_fit_impulse_wrapper(.$rlog_count, .$timepoint))) 
 
 curve_fits <- curve_fits %>%
   mutate(lm_tidy = map(lm_fit, tidy),
@@ -267,10 +517,10 @@ curve_fits$best_model <- apply(curve_fits[,c("lm_bic","sigmoid_bic", "impulse_bi
 
 plot_timecourse_fits <- function(gene, fit_df) {
   
+og <- fit_df %>%
+  filter(gene_name == gene)
 
-
-og_augmented <- fit_df %>%
-  filter(gene_name == gene) %>%
+og_augmented <- og %>%
   mutate(lm_augmented = map(lm_fit, augment),
          sigmoid_augmented = map(sigmoid_fit, augment),
          impulse_augmented = map(impulse_fit, augment))%>%
@@ -303,7 +553,8 @@ g <- ggplot(og_augmented, aes(x = lm_augmented_timepoint_minutes,
 return(g)
 }
 
-plot_timecourse_fits("Firre", curve_fits)
+hmm <- curve_fitsl %>% filter(gene_name == "Firre")
+plot_timecourse_fits("Nanog", curve_fitsl)
 # Lars2 outlier in sample JR2432
 # Also RN7sk in sample JR2432
 ```
@@ -313,9 +564,9 @@ one_tc <- esc_rlog_countsl %>%
   filter(firre_induced == "firre_induced", 
          firre_ko == "WT",
          gene_name == "Firre") %>%
-  arrange(timepoint_minutes)
-zero_tp_val <- mean(one_tc[one_tc$timepoint_minutes == 0,"rlog_count"])
-x <- as.numeric(as.character(one_tc$timepoint_minutes))
+  arrange(timepoint)
+zero_tp_val <- mean(one_tc[one_tc$timepoint == 0,"rlog_count"])
+x <- as.numeric(as.character(one_tc$timepoint))
 y <- one_tc$rlog_count
 y <- y - zero_tp_val
 plot(y~x)
