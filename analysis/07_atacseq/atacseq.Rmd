@@ -27,6 +27,36 @@ atac_c_fc <- read.table("../../atacseq/results/bwa/mergedLibrary/macs/broadPeak/
 ```
 
 ```{r}
+library(bamsignals)
+
+library(Rsamtools)
+
+atac_consensus_gr <- GRanges(seqnames = atac_consensus$Chr,
+                             IRanges(start = atac_consensus$Start,
+                                     end = atac_consensus$End))
+
+fl <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary/", pattern = ".bam$", full.names = T)
+peak_coverage <- sapply(fl, function(x) bamCount(x, atac_consensus_gr[92261], paired.end = "midpoint"))
+peak_coverage
+peak_coverage_df <- data.frame(counts = peak_coverage) %>%
+  rownames_to_column("filepath") %>%
+  mutate(sample_name = gsub("/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary//",
+                            "", filepath),
+         sample_name = gsub(".mLb.clN.sorted.bam", "", sample_name)) %>%
+  merge(samples)
+
+hmm <- merge(peak_coverage_df, test_counts)
+plot(hmm$feature_counts, hmm$counts)
+# plot(peak_coverage[[1]]@signals[[1]])
+# plot(peak_coverage[[4]]@signals[[1]])
+
+?bamProfile
+# awk '{print NF}' firre_atac_treat_pileup_sorted.bedGraph > ncols.txt
+hmm <- read.table("/scratch/Shares/rinn/Michael/firre_timecourse/analysis/07_atacseq/bin/ncols.txt")
+```
+
+
+```{r}
 # Let's run a linear model and determine which peaks are different about
 # Apparently this consensus peak approach is prone to false positives
 # https://support.bioconductor.org/p/108458/#108469
@@ -60,11 +90,97 @@ ko_counts <- counts[,rownames(ko_samples)]
 ```
 
 ```{r}
+# Let's plot some things
+# Normalize to total mapped reads
+mapped_reads <- read_tsv("data/samtools_alignments.tsv")
+names(mapped_reads)[1] <- "sample_name"
+mapped_reads <- mapped_reads %>% 
+  dplyr::select(-Unmapped) %>%
+  mutate(mapped_M = Mapped / 10e6) %>%
+  dplyr::select(-Mapped)
+
+mapped_reads$sample_name <- gsub("_T1", "", mapped_reads$sample_name)
+mapped_reads <- mapped_reads %>%
+  filter(!grepl("_T2", sample_name))
+
+counts_df <- counts %>% 
+  as.data.frame() %>%
+  rownames_to_column("interval_id") %>%
+  pivot_longer(2:ncol(.), names_to = "sample_name", values_to = "counts") %>%
+  merge(samples)
+
+mapped_reads$sample_name %in% unique(counts_df$sample_name)
+length(unique(mapped_reads$sample_name))
+nrow(mapped_reads)
+counts_df <- counts_df %>% merge(mapped_reads)
+counts_df <- counts_df %>% 
+  mutate(cpm = counts / mapped_M)
+
+test_counts <- counts_df %>% filter(interval_id == "Interval_76872") %>%
+  dplyr::select(sample_name, counts) %>%
+  dplyr::rename(feature_counts = counts)
+
+# 132119
+# 76872
+ggplot(roi, aes(x = counts, y = cpm)) + geom_point()
+
+roi <- counts_df %>% filter(grepl("76872", interval_id))
+ggplot(roi, aes(x = timepoint_minutes, y = cpm, group = interval_id)) + 
+  geom_point() + 
+  facet_grid(firre_ko~firre_induced) + 
+  geom_line()
+
+
+```
+
+ATAC-seq normalization
+https://epigeneticsandchromatin.biomedcentral.com/articles/10.1186/s13072-020-00342-y
+
+
+```{r}
 # ## FULL MODEL
 # design_formula <- formula(paste0("~ timepoint_minutes + firre_induced + firre_ko +",
 #                                    "firre_induced*timepoint_minutes"))
 # ## REDUCED MODEL
 # reduced_formula <- formula("~ timepoint_minutes + firre_induced + firre_ko")
+
+samples$condition <- "control"
+samples$timepoint <- as.numeric(as.character(samples$timepoint_minutes))
+samples$condition[which(samples$timepoint> 0 & samples$firre_induced == "firre_induced")] <- "firre"
+colnames(counts)
+counts <- counts[,rownames(samples)]
+stopifnot(all(colnames(counts) == rownames(samples)))
+mode(counts) <- "integer"
+samples$condition <- factor(samples$condition, levels = c("control", "firre"))
+dds <- DESeqDataSetFromMatrix(countData = counts, 
+                               colData = samples, 
+                               design = ~ condition)
+
+dds <- DESeq(dds)
+res_df <- results(dds) %>%
+  as.data.frame() %>%
+  rownames_to_column("interval_id") %>%
+  merge(atac_consensus %>% 
+                  dplyr::select(interval_id, Gene.Name, Nearest.PromoterID, Distance.to.TSS, Chr, Start, End)) %>% 
+  unite(ucsc_coord, Chr, Start, remove = FALSE, sep = ":") %>%
+  unite(ucsc_coord, ucsc_coord, End, sep = "-", remove = FALSE)
+names(res_df)[8] <- "gene_name"
+names(res_df)[9] <- "gene_id"
+
+
+
+# From manual annotation in the browser
+res_df$gene_name[which(res_df$interval_id == "Interval_4124")] <- "Pde6d"
+res_df$gene_name[which(res_df$interval_id == "Interval_138095")] <- "Arih1"
+	
+res_df$gene_name[which(res_df$interval_id == "Interval_76872")] <- "Rapgef4"
+res_df$gene_name[which(res_df$interval_id == "Interval_43032")] <- "Ddhd1"
+res_df$firre_responder <- FALSE
+res_df$firre_responder[which(res_df$gene_name %in% unique(sig_fr$gene_name))] <- TRUE
+
+ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj), color = firre_responder)) + geom_point() + 
+  geom_text_repel(data = res_df %>% filter(firre_responder == TRUE,
+                                           padj < 0.05), aes(label = gene_name))
 
 wt_dds <- DESeqDataSetFromMatrix(countData = round(wt_counts), 
                                colData = wt_samples, 
@@ -163,6 +279,13 @@ names(wt_res_shrunken)[8] <- "gene_id"
 # Let's check out what's happening near genes that are changing in response to 
 # Firre. 
 fr <- read_csv("../01_firre_induction_vs_control/results/deseq_res.csv")
+
+sig_fr <- fr %>% filter(comparison == "dynamic_firre_induction_vs_control", cell_type == "ESC") %>%
+  filter(padj < 0.05, log2FoldChange > 0.2)
+
+
+ggplot(sig_fr, aes(x = log2FoldChange, y = -log10(padj))) + geom_point()
+
 unique(fr$comparison)
 fr <- fr %>% filter(cell_type == "ESC") %>%
   group_by(gene_id, gene_name, firre_ko) %>%
@@ -172,8 +295,8 @@ fr <- fr %>% filter(cell_type == "ESC") %>%
 wt_res_sig_fr <- merge(wt_res_shrunken, fr, all.x = T)
 ko_res_sig_fr <- merge(ko_res_shrunken, fr, all.x = T)
 
-atac_fr_sig <- atac_consensus[atac_consensus$Nearest.PromoterID %in% fr_sig$gene_id,]
-names(atac_fr_sig)[1] <- "interval_id"
+# atac_fr_sig <- atac_consensus[atac_consensus$Nearest.PromoterID %in% fr_sig$gene_id,]
+# names(atac_fr_sig)[1] <- "interval_id"
 
 fr_res <- wt_res %>% filter(wt_res$interval_id %in% atac_fr_sig$interval_id)
 
@@ -233,6 +356,42 @@ for(i in 51425:nrow(ko_fi_counts)) {
 
 
 
+
+```
+
+```{r}
+fl <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary/", pattern = ".bam$", full.names = T)
+cat(fl)
+```
+
+```{bash}
+# Combine all data and call peaks on everything combined.
+#!/bin/bash
+#SBATCH -p short
+#SBATCH --job-name=atac_macs
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=michael.smallegan@colorado.edu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --mem=100gb
+#SBATCH --time=24:00:00
+#SBATCH --output=atac_macs.out
+#SBATCH --error=atac_macs.err
+date; hostname
+
+source ~/anaconda3/bin/activate macs3
+
+macs3 callpeak -f BAMPE -t /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary//ESC_KO_control_0_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary//ESC_KO_control_120_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary//ESC_KO_control_150_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary//ESC_KO_control_30_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary//ESC_KO_control_60_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary//ESC_KO_control_90_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary//ESC_KO_firre_induced_0_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary//ESC_KO_firre_induced_120_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary//ESC_KO_firre_induced_150_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary//ESC_KO_firre_induced_30_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary//ESC_KO_firre_induced_60_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary//ESC_KO_firre_induced_90_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary//ESC_WT_control_0_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary//ESC_WT_control_120_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary//ESC_WT_control_150_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary//ESC_WT_control_30_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary//ESC_WT_control_60_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary//ESC_WT_control_90_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary//ESC_WT_firre_induced_0_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary//ESC_WT_firre_induced_120_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary//ESC_WT_firre_induced_150_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary//ESC_WT_firre_induced_30_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary//ESC_WT_firre_induced_90_R1.mLb.clN.sorted.bam -g mm -n firre_atac -B -q 0.1
+date
+```
+
+```{bash}
+# Convert bedGraph to bigwig
+sort -k1,1 -k2,2n firre_atac_treat_pileup.bdg > firre_atac_treat_pileup_sorted.bedGraph
+  sed '78360883d' firre_atac_treat_pileup_sorted.bedGraph > firre_atac_treat_pileup_sorted_cleaned.bedGraph
+ 
+bedGraphToBigWig firre_atac_treat_pileup_sorted_cleaned.bedGraph /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/genome/GRCm38.p6.genome.fa.sizes firre_atac_treat_pileup.bigWig
+ 
 
 ```
 
