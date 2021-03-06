@@ -389,11 +389,291 @@ date
 # Convert bedGraph to bigwig
 sort -k1,1 -k2,2n firre_atac_treat_pileup.bdg > firre_atac_treat_pileup_sorted.bedGraph
   sed '78360883d' firre_atac_treat_pileup_sorted.bedGraph > firre_atac_treat_pileup_sorted_cleaned.bedGraph
- 
+  sed -n '113645386,113645388p' firre_atac_treat_pileup_sorted_cleaned_sorted_again.bedGraph
+  bedSort firre_atac_treat_pileup_sorted_cleaned_sorted_again.bedGraph firre_atac_treat_pileup_sorted_cleaned_sorted_again.bedGraph
 bedGraphToBigWig firre_atac_treat_pileup_sorted_cleaned.bedGraph /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/genome/GRCm38.p6.genome.fa.sizes firre_atac_treat_pileup.bigWig
+
+bedSort firre_atac_control_lambda.bdg firre_atac_control_lambda_sorted.bedGraph
+
+
+
+bedGraphToBigWig firre_atac_control_lambda_sorted.bedGraph /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/genome/GRCm38.p6.genome.fa.sizes firre_atac_control_lambda_sorted.bigWig
  
 
 ```
+
+```{r}
+# Make file ready for UCSC
+atac_peaks <- rtracklayer::import("bin/firre_atac_peaks.narrowPeak") %>%
+  as.data.frame() %>%
+  filter(seqnames %in% c(paste0("chr", 1:19), "chrX", "chrY", "chrM")) %>%
+  dplyr::select(seqnames, start, end, name, score, strand, signalValue, pValue, qValue, peak) %>%
+  mutate(strand = ".")
+# atac_peaks <- atac_peaks[which(seqnames(atac_peaks) %in% c(paste0("chr", 1:19), "chrX", "chrY", "chrM"))]  
+# rtracklayer::export(atac_peaks, "results/atac_peaks_merge.narrowPeak", format = "narrowPeak")
+?export
+
+
+write_tsv(atac_peaks, "results/atac_peaks_merge.narrowPeak")
+```
+
+```{r}
+# Let's get the counts for these peak regions
+atac_peaks_gr <- GRanges(seqnames = atac_peaks$seqnames,
+                         IRanges(start = atac_peaks$start,
+                                 end = atac_peaks$end))
+
+
+saf <- atac_peaks %>% select(name, seqnames, start, end, strand)
+names(saf) <- c("GeneID", "Chr", "Start", "End", "Strand")
+write.table(saf, "results/atac_peaks.saf", quote = FALSE, row.names = FALSE, col.names = TRUE, sep = "\t")
+
+
+peak_counts <- sapply(bams, function(x) bamCount(x, atac_peaks_gr, paired.end = "midpoint"))
+
+```
+
+
+```{r}
+bams <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary/", pattern = ".bam$", full.names = T)
+names(bams) <- gsub("/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary//|.mLb.clN.sorted.bam", "", bams)
+for(i in 1:length(bams)) {
+script <- paste0("#!/bin/bash
+#SBATCH -p short
+#SBATCH --job-name=atac_fc_",names(bams)[i],"
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=michael.smallegan@colorado.edu
+#SBATCH --nodes=1
+#SBATCH --ntasks=4
+#SBATCH --mem=20gb
+#SBATCH --time=3:00:00
+#SBATCH --output=atac_fc_",names(bams)[i],".out
+#SBATCH --error=atac_fc_",names(bams)[i],".err
+
+date; hostname
+module load subread/1.6.2
+featureCounts \\
+-F SAF \\
+-O \\
+--fracOverlap 0.2 \\
+-T 4 \\
+-p --donotsort \\
+-a /scratch/Shares/rinn/Michael/firre_timecourse/analysis/07_atacseq/results/atac_peaks.saf \\
+-o /scratch/Shares/rinn/Michael/firre_timecourse/analysis/07_atacseq/results/featureCounts/",names(bams)[i],".featureCounts.txt \\
+",bams[i],"
+date
+")
+write_lines(script, paste0("bin/featureCounts/fc_", names(bams)[i], ".sh"))
+}
+
+scripts <- c("#!/bin/bash", paste0("sbatch ", list.files("bin/featureCounts/")))
+write_lines(scripts, "bin/featureCounts/submit.sh")
+system("source /etc/profile; cd bin/featureCounts; chmod u+x submit.sh; ./submit.sh")
+```
+
+```{r}
+
+
+fc <- lapply(paste0("results/featureCounts/", names(bams), ".featureCounts.txt"),
+             read_tsv, skip = 1)
+counts <- sapply(fc, function(x) x[[7]])
+colnames(counts) <- gsub("scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary//|.mLb.clN.sorted.bam", "", sapply(fc, function(x) colnames(x)[[7]]))
+colnames(counts) <- gsub("/","",colnames(counts))
+rownames(counts) <- fc[[1]]$Geneid
+mode(counts) <- "integer"
+
+samples <- data.frame("sample_name" = colnames(counts)) %>%
+  mutate(sample_name = gsub("firre_induced", "firreinduced", sample_name)) %>%
+  separate(sample_name, into = c("cell_type", "firre_ko", "firre_induced", "timepoint", "r"), remove = FALSE) %>%
+  mutate(sample_name = gsub("firreinduced", "firre_induced", sample_name),
+         firre_induced = gsub("firreinduced", "firre_induced", firre_induced),
+         timepoint = as.numeric(timepoint),
+         condition = ifelse(timepoint > 0 & firre_induced == "firre_induced", "firre", "control"),
+         rownames = sample_name,
+         condition = factor(condition, levels = c("control", "firre"))) %>%
+  column_to_rownames("rownames") %>%
+  dplyr::select(-r)
+stopifnot(all(colnames(counts) == rownames(samples)))
+
+dds <- DESeqDataSetFromMatrix(countData = counts, 
+                               colData = samples, 
+                               design = ~ condition)
+
+dds <- DESeq(dds)
+
+atac_annotated <- read.table("bin/firre_atac_peaks.annotatePeaks.txt", sep = "\t", header = T)
+names(atac_annotated)[1] <- "name"
+
+res_df <- results(dds) %>%
+  as.data.frame() %>%
+  rownames_to_column("name") %>%
+  merge(atac_annotated %>% 
+          dplyr::select(name, Gene.Name, Nearest.PromoterID, Distance.to.TSS, Chr, Start, End))
+
+write_csv(res_df, "results/atac_merged_deseq.csv")
+  # merge(atac_consensus %>% 
+  #                 dplyr::select(interval_id, Gene.Name, Nearest.PromoterID, Distance.to.TSS, Chr, Start, End)) %>% 
+  # unite(ucsc_coord, Chr, Start, remove = FALSE, sep = ":") %>%
+  # unite(ucsc_coord, ucsc_coord, End, sep = "-", remove = FALSE)
+# firre_atac_peak_83137 -- RAPGEF4
+# firre_atac_peak_4531 -- PDE6D
+# firre_atac_peak_149640 -- ARIH1
+# firre_atac_peak_46566 -- Ddhd1
+# firre_atac_peak_147750 -- Pknox2?
+man_annotation <- read_csv("data/firre_peaks_manually_annotated.csv", col_names = c("name", "Gene.Name"))
+# Update res_df
+for(i in 1:nrow(man_annotation)) {
+res_df$Gene.Name[which(res_df$name == man_annotation$name[i])] <- man_annotation$Gene.Name[i]
+}
+fr <- read_csv("../01_firre_induction_vs_control/results/deseq_res.csv")
+sig_fr <- fr %>% filter(comparison == "dynamic_firre_induction_vs_control", cell_type == "ESC") %>%
+  filter(padj < 0.05, log2FoldChange > 0.2)
+
+res_df$firre_responder <- FALSE
+res_df$firre_responder[which(res_df$Gene.Name %in% unique(sig_fr$gene_name))] <- TRUE
+library(ggrepel)
+ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj), color = firre_responder)) +  
+  geom_vline(xintercept = 0) +
+  geom_hline(yintercept = 0) +
+  geom_point() +
+  geom_hline(yintercept = -log10(0.01), lty = 2) +
+  geom_text_repel(data = res_df %>% filter(firre_responder == TRUE,
+                                           padj < 0.05), aes(label = Gene.Name)) + 
+  ggtitle("Firre ATAC-seq differential peaks") 
+ggsave("figures/firre_atacseq_differential_peaks.pdf", useDingbats = FALSE)
+
+ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj))) + geom_point()
+
+ggplot(res_df, aes(x = log10(baseMean), y = log2FoldChange)) + geom_point() + 
+  geom_smooth()
+```
+
+```{bash}
+annotatePeaks.pl \
+/scratch/Shares/rinn/Michael/firre_timecourse/analysis/07_atacseq/bin/firre_atac_peaks.narrowPeak \
+/scratch/Shares/rinn/genomes/Mus_musculus/Gencode/M25/GRCm38.p6.genome.fa \
+-gid \
+-gtf /scratch/Shares/rinn/genomes/Mus_musculus/Gencode/M25/gencode.vM25.annotation.gtf \
+-cpu 6 \
+> firre_atac_peaks.annotatePeaks.txt
+```
+
+
+```{r}
+# Motifs in top peaks
+top_peaks <- res_df %>% filter(padj < 0.05)
+top_peaks_gr <- GRanges(seqnames = top_peaks$Chr,
+                        IRanges(start = top_peaks$Start,
+                                end = top_peaks$End))
+top_peaks_gr$name <- top_peaks$name
+rtracklayer::export(top_peaks_gr, "results/top_peaks.bed")
+
+
+```
+
+```{bash}
+module load bedtools
+bedtools getfasta -fi /scratch/Shares/rinn/genomes/Mus_musculus/Gencode/M25/GRCm38.p6.genome.fa -fo top_peaks.fa -bed top_peaks.bed -name+ 
+
+
+fimo --verbosity 1 --text --thresh 0.05 \
+--bfile mm10_background_frequencies.txt /scratch/Shares/rinn/Michael/firre_timecourse/analysis/07_atacseq/data/motif_databases/MOUSE/HOCOMOCOv11_core_MOUSE_mono_meme_format.meme \
+top_peaks.fa > top_peaks_fimo.txt
+```
+
+
+```{r}
+fimo_res <- read_tsv("results/top_peaks_fimo.txt")
+fimo_sig <- fimo_res %>% filter(`p-value` < 1e-6)
+fimo_sig$name <- sapply(fimo_sig$sequence_name, function(x) {
+  unlist(strsplit(x, "::"))[[1]]
+})
+fimo_sig$dbp <- sapply(fimo_sig$motif_id, function(x) {
+  unlist(strsplit(x, "_"))[[1]]
+})
+
+fr_peaks <- res_df %>% filter(firre_responder == TRUE)
+fr_peaks <- unique(fr_peaks$name)
+fr_peaks <- fr_peaks[fr_peaks %in% fimo_sig$name]
+
+motif_peaks <- fimo_sig %>%
+  group_by(dbp, name) %>%
+  summarize(count = n(),
+            occurrence = as.numeric(count > 0)) %>%
+  dplyr::select(-count) %>%
+  filter(name %in% fr_peaks) %>%
+  pivot_wider(names_from = name, values_from = occurrence, values_fill = 0) %>%
+  column_to_rownames("dbp") %>%
+  as.matrix()
+
+tfs <- data.frame(count = rowSums(motif_peaks)) %>%
+  rownames_to_column("dbp")
+
+
+motif_merge <- fimo_sig %>%
+  filter(name %in% fr_peaks) %>%
+  group_by(dbp, name) %>%
+  summarize(count = n()) %>%
+  pivot_wider(names_from = dbp, values_from = count, values_fill = 0)
+
+hmm <- merge(res_df, motif_merge)
+
+fr_motif_matrix <- hmm %>%
+  dplyr::select(Gene.Name, ASCL1:ZN335) %>%
+  column_to_rownames("Gene.Name") %>%
+  as.matrix()
+
+pheatmap::pheatmap(fr_motif_matrix)
+names(hmm)
+up_peaks <- res_df %>% filter(log2FoldChange > 0)
+up_peaks <- up_peaks$name
+up_peaks <- up_peaks[up_peaks %in% colnames(motif_peaks)]
+
+up_motif_peaks <- motif_peaks[,up_peaks]
+
+up_tfs <- data.frame(count = rowSums(up_motif_peaks)) %>%
+  rownames_to_column("dbp") %>%
+  mutate(percent = count / ncol(up_motif_peaks) *100) %>%
+  filter(count > 4)
+ncol(up_motif_peaks)
+hist(up_tfs$count)
+
+motif_merge <- fimo_sig %>%
+  filter(dbp %in% up_tfs$dbp) %>%
+  group_by(dbp, name) %>%
+  summarize(count = n()) %>%
+  pivot_wider(names_from = dbp, values_from = count, values_fill = 0)
+
+hmm <- merge(res_df, motif_merge)
+
+ggplot(hmm, aes(x = log2FoldChange, y = MAZ)) + 
+  geom_point()
+
+ggplot(hmm, aes(x = log2FoldChange, y = ZBT17)) + 
+  geom_point()
+
+motif_merge <- fimo_sig %>%
+  filter(dbp %in% up_tfs$dbp) %>%
+  group_by(dbp, name) %>%
+  summarize(count = n(),
+            occurrence = as.numeric(count > 0)) %>%
+  dplyr::select(-count) %>%
+  pivot_wider(names_from = dbp, values_from = occurrence, values_fill = 0) %>%
+  column_to_rownames("name") %>%
+  as.matrix()
+
+pheatmap::pheatmap(motif_merge)
+fr_tfs <- data.frame(count = rowSums(fr_motif_peaks)) %>%
+  rownames_to_column("dbp") %>%
+  filter(count > 0)
+
+
+
+```
+
+
+
+
 
 
 
