@@ -95,11 +95,11 @@ genes <- genes[rownames(salmon_gene_counts)]
 samples <- read.csv("../../rnaseq/rnaseq_samplesheet.csv") %>%
   filter(cell_type != "pMEF",
          date_sequenced != "18-Sep",
-         timepoint_minutes < 400,
+         timepoint < 400,
          timecourse_length == "short") %>%
   mutate(firre_ko = factor(firre_ko, levels = c("WT", "KO")),
-         timepoint_minutes = factor(timepoint_minutes, 
-                                    levels = c(seq(0,360,30))),
+         timepoint = factor(timepoint, 
+                            levels = c(seq(0,360,30))),
          firre_induced = factor(firre_induced, 
                                 levels = c("control", "firre_induced")))
 rownames(samples) <- samples$sample_id
@@ -112,10 +112,10 @@ rownames(samples) <- samples$sample_id
 if(!file.exists("results/deseq_res.csv")) {
   
   ## FULL MODEL
-  design_formula <- formula(paste0("~ timepoint_minutes + firre_induced + ",
-                                   "firre_induced*timepoint_minutes"))
+  design_formula <- formula(paste0("~ timepoint + firre_induced + ",
+                                   "firre_induced*timepoint"))
   ## REDUCED MODEL
-  reduced_formula <- formula("~ timepoint_minutes + firre_induced")
+  reduced_formula <- formula("~ timepoint + firre_induced")
   
   ## EXPERIMENTS
   # We're going to make 4 comparisons
@@ -142,6 +142,40 @@ if(!file.exists("results/deseq_res.csv")) {
 resdf <- read.csv("results/deseq_res.csv")
 res_shrunkendf <- read.csv("results/deseq_res_shrunken.csv")
 ```
+
+```{r}
+# Let's plot the vs zero fold changes
+res_vszero <- resdf %>% filter(comparison == "vs_zero")
+
+res_vszero <- res_vszero %>%
+  mutate(timepoint = gsub("timepoint_minutes_", "", result_name),
+         timepoint = gsub("_vs_0", "", timepoint),
+         timepoint = as.numeric(timepoint))
+
+esc_res_vszero <- res_vszero %>%
+  filter(cell_type == "ESC")
+
+ggplot(res_vszero, aes(x = timepoint, y = log2FoldChange)) + 
+  geom_point()
+table(res_vszero$result_name)
+
+# g2 <- ggplot(sresdf, aes(x = x_bm, y = log2FoldChange, color = point_color, group = gene_id, text = paste("gene_name:", gene_name)))
+# g2 <- g2 + 
+#   # stat_smooth(geom = "line", aes(group = gene_id), data = sresdf %>% filter(isDE != "0"),
+#   #           color = "#7F7F7F", alpha = 0.3, se = F, method = "loess", span = 0.15, size = 0.2) +
+#     geom_line(aes(group = gene_id), data = sresdf %>% filter(isDE != "0"),
+#             color = "#7F7F7F", alpha = 0.3, size = 0.2) +
+#   geom_hline(yintercept = 0, size = 2, color = "white") +
+#   geom_point(alpha = 0.7, data = sresdf %>% filter(DE == "1" | DE == "-1"), size = 2) + 
+#   geom_point(alpha = 0.1, data = sresdf %>% filter(DE == "0") %>% sample_n(5e3), color = "#f2f2f2") +
+#   scale_x_continuous(breaks = c(seq(30,330,30),seq(400,550,50)),
+#                      labels = c(paste0(seq(30,330,30), "m"), "12h", "24h", "48h", "96h")) +
+#   xlab("Timepoint") +
+#   ggtitle("Firre induction vs. control") +
+#   scale_color_identity(guide = FALSE)
+
+```
+
 
 #### Independent filtering
 
@@ -414,7 +448,7 @@ if(plot_gene_profiles == TRUE) {
     
     res_goi <- resdf %>% filter(gene_id == goi)
     
-    g_tpm <- ggplot(tpm_goi, aes(x = timepoint_minutes, y = tpm)) + 
+    g_tpm <- ggplot(tpm_goi, aes(x = timepoint, y = tpm)) + 
       geom_point(aes(color = firre_induced)) + 
       geom_smooth(aes(group = condition, color = firre_induced), method = "loess", 
                   formula = "y ~ x", se = FALSE) +
@@ -434,7 +468,7 @@ if(plot_gene_profiles == TRUE) {
       filter(comparison == "dynamic_firre_induction_vs_control") 
     res_goi_dynamic$timepoint <- sapply(res_goi_dynamic$result_name,
                                         function(x) {
-                                          x <- gsub("timepoint_minutes", "", x)
+                                          x <- gsub("timepoint", "", x)
                                           gsub(".firre_inducedfirre_induced", "", x,
                                                fixed = T)
                                         }) %>%
@@ -493,7 +527,7 @@ samples <- read.csv("../../rnaseq/rnaseq_samplesheet.csv") %>%
   filter(cell_type != "pMEF",
          date_sequenced != "2018-09") %>%
   mutate(firre_ko = factor(firre_ko, levels = c("WT", "KO")),
-         timepoint_minutes = factor(timepoint_minutes, 
+         timepoint = factor(timepoint, 
                                     levels = c(seq(0,360,30), 720, 1440, 2880, 5760)),
          firre_induced = factor(firre_induced, 
                                 levels = c("control", "firre_induced")))
@@ -519,9 +553,9 @@ tpm_goi <- tpm %>% filter(gene_id == goi) %>%
       merge(samples) %>%
       unite("condition", cell_type, firre_ko, firre_induced, sep = ";",
             remove = FALSE)
-tpm_goi$timepoint_minutes
+tpm_goi$timepoint
 
-g_tpm <- ggplot(tpm_goi, aes(x = timepoint_minutes, y = tpm)) + 
+g_tpm <- ggplot(tpm_goi, aes(x = timepoint, y = tpm)) + 
       geom_point(aes(color = firre_induced)) + 
       geom_smooth(aes(group = condition, color = firre_induced), method = "loess", 
                   formula = "y ~ x", se = FALSE) +
@@ -549,10 +583,10 @@ esc_ko_tpm <- tpm[,c("gene_id", esc_ko_samples$sample_id)] %>%
       merge(esc_ko_samples) %>%
       unite("condition", cell_type, firre_ko, firre_induced, sep = ";",
             remove = FALSE)
-esc_ko_tpm <- esc_ko_tpm %>% group_by(gene_id, timepoint_minutes) %>%
+esc_ko_tpm <- esc_ko_tpm %>% group_by(gene_id, timepoint) %>%
   summarize(mean_tpm = mean(tpm, na.rm = T))
 esc_ko_tpm_matrix <- esc_ko_tpm %>%
-  pivot_wider(id_cols = "gene_id", names_from = timepoint_minutes,
+  pivot_wider(id_cols = "gene_id", names_from = timepoint,
               values_from = mean_tpm, names_prefix = "tp_") %>%
   column_to_rownames("gene_id") %>%
   as.matrix()
@@ -596,7 +630,7 @@ esc_fr_lfc <- resdf %>%
   filter(gene_id %in% esc_fr$gene_id,
          cell_type =="ESC",
          grepl(".firre_inducedfirre_induced", result_name))
-esc_fr_lfc$timepoint <- gsub("timepoint_minutes", "tp_", esc_fr_lfc$result_name)
+esc_fr_lfc$timepoint <- gsub("timepoint", "tp_", esc_fr_lfc$result_name)
 unique(esc_fr_lfc$timepoint)
 esc_fr_lfc$timepoint <- gsub(".firre_inducedfirre_induced", "", esc_fr_lfc$timepoint)
 esc_fr_lfc$timepoint <- factor(esc_fr_lfc$timepoint, levels =
