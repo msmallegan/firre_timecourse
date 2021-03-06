@@ -1,0 +1,105 @@
+---
+title: "Firre regulators"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(rentrez)
+source("../util/_plot_theme.R")
+```
+
+# Firre eQTLS
+
+I found this site that integrates a bunch of different lncRNA databases called [lncrnaKB](http://psychiatry.som.jhmi.edu/lncrnakb/) and thought I'd do some Firre exploration. Here's the link to [Firre's gene page](http://psychiatry.som.jhmi.edu/lncrnakb/gene_details.php?id=lnckb.58788.chrX:131689833-131830643). One of the data sources that they integrate is eQTLs from GTEX. I've never checked out these eQTLs for Firre and since you're always curious about what pathways Firre is and what might regulate Firre, I figured I'd write you a little markdown. :-) 
+
+Basically, I'm waiting for some 200GB of files to download to run some co-expression analyses, and I know I have other stuff on my plate, but sometimes you gotta do something fun!
+Also, I just happen to have relevant code freshly in my head -- code to find SNP sites based on the rs number from the IPF pool and code for mapping motifs from the intron retention project. 
+
+It would be cool to know where these eQTLs are clustering and what motifs / binding they're nearby. This may give some clues as to what is regulating Firre's expression. The eQTLs from Firre are just in the Nerve and Pancreas tissues, but may be informative nonetheless. 
+
+First we'll need to load in the eQTLs and map the rs numbers to their locations in the genome using NCBI's dbSNP API.
+
+
+```{r retreive-snp-locations}
+eqtls <- read.table("data/firre_eqtls.txt", header = T)
+
+# This takes a while to run so we'll cache this
+if(!file.exists("results/snp_locations_hg19.csv")) {
+  
+  pos_from_dbsnp <- data.frame("SNP" = character(), "chrpos" = character())
+  for(i in 1:nrow(eqtls)) {
+    # First we'll search dbSNP
+    r_search <- entrez_search(db = "snp", term = paste0(eqtls$SNP[[i]], "[RS]"))
+    
+    # This often returns multiple results for when snp_ids have been merged or updated.
+    # We'll parse all results into a data.frame then sort out which ones match our rsids.
+    if(length(r_search$ids) > 0) {
+      r_summary <- entrez_summary(db = "snp", id = r_search$ids)
+      if(any(grepl("snp_id", names(r_summary))) == TRUE) {
+        pos_from_dbsnp <- bind_rows(pos_from_dbsnp,
+                                    data.frame(SNP = as.character(r_summary["snp_id"]),
+                                               chrpos = as.character(r_summary["chrpos_prev_assm"])))
+      } else {
+        for(j in 1:length(r_summary)) {
+          pos_from_dbsnp <- bind_rows(pos_from_dbsnp,
+                                      data.frame(SNP = as.character(r_summary[[j]]["snp_id"]),
+                                                 chrpos = as.character(r_summary[[j]]["chrpos_prev_assm"])))
+        }
+      }
+    }
+  }
+  pos_from_dbsnp <- pos_from_dbsnp %>%
+    mutate(SNP = paste0("rs", SNP))
+
+  write_csv(pos_from_dbsnp, "results/snp_locations_hg19.csv")
+} else {
+  pos_from_dbsnp <- read.csv("results/snp_locations_hg19.csv")
+}
+
+
+pos_from_dbsnp <- read_csv("results/snp_locations.csv")
+# There are a lot of duplicates because of the forementioned issue with 
+# snp_ids merging into one another. Let's get only the unique ones.
+pos_from_dbsnp <- pos_from_dbsnp %>%
+  distinct()
+eqtls  <- merge(eqtls, pos_from_dbsnp) 
+
+# Now let's separate the chromosome and position
+eqtls <- eqtls %>%
+  separate(chrpos, into = c("chr", "pos"), sep = ":")
+
+eqtls <- eqtls %>%
+  mutate(pos = as.integer(pos))
+table(eqtls$chr)
+```
+
+Well, they're all on chromosome X, although I think that's to be expected given that there's likely a distance cutoff in the eQTL analysis. 
+
+```{r}
+# Let's see where these are in relation to Firre. 
+gtf <- rtracklayer::import("data/gencode.v36.long_noncoding_RNAs.gtf.gz")
+firre_gr <- gtf[gtf$type == "gene" & gtf$gene_name == "FIRRE"]
+
+ggplot(eqtls, aes(x = pos, y = -log10(pvalue), color = Tissue)) + 
+  geom_jitter(height = 0.1) +
+  geom_vline(xintercept = start(firre_gr)) +
+  geom_vline(xintercept = end(firre_gr)) + 
+  facet_grid(Tissue~.) +
+  geom_vline(xintercept = 131862371) +
+  geom_vline(xintercept = 131862711) + 
+  xlim(131860371-10e3, 131863011+10e3)
+
+# Super conserved enhancer EH38E2768842
+chrX:131862371-131862711
+eqtl_gr <- GRanges(seqnames = "chrX",
+                   ranges = IRanges(start = eqtls$pos, end = eqtls$pos))
+
+eqtls <- eqtls %>% 
+  arrange(-pos)
+eqtls$diff <- c(0, eqtls$pos[2:nrow(eqtls)] - eqtls$pos[1:(nrow(eqtls)-1)])
+```
+
