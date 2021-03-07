@@ -1,0 +1,32 @@
+---
+title: "Firre timecourse sneak peak"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+Firre is one of the handful of lncRNAs that have been fairly well studied. It's quite a strange gene in a number of ways: it escapes X inactivation, it may mediate cross-chromsomal interations and mediate higher order chromatin organization ([Hacisuleyman et al. 2014](https://www.nature.com/articles/nsmb.2764)), it has local repeats within its exons that are not in the rest of the genome ([Hacisuleyman et al. 2016](https://www.nature.com/articles/ncomms11021)), it's right at the center of a TAD boundary but when you delete the loci the TAD boundary doesn't change ([Barutcu et al. 2018](https://www.nature.com/articles/s41467-018-03614-0)). One of the most compelling aspects for me though in studying this is that it's been implicated in human disease -- two case studies have traced neurological & developmental defects to a duplication in the Firre genetic loci: [Abe et al 2014](https://onlinelibrary.wiley.com/doi/full/10.1111/dmcn.12553) and [Miolo et al 2020](https://www.mdpi.com/2075-4418/10/12/1009). 
+
+#### Firre roles
+![](figures/firre_roles.png)
+
+One aspect that's been consistent throughout the literature is that Firre has an effect on gene regulation. However, the direct targets of Firre are still not known, nor is the mechanism by which it's producing effects on gene expression. One obstacle to this is just the sheer volume of genes that seem to be effected in steady state experiments. In the paper that really introduced Firre as an interesting gene to be studied ([Hacisuleyman et al. 2014](https://www.nature.com/articles/nsmb.2764)), they did a Firre knockout in mESCs and found about ~1000 genes changing as a result of a Firre knockdown -- with about half upregulated and half downregulated. In more recent studies looking at gene expression in Firre knockout mice[^1], tens of thousands of genes changed between WT and Firre KO ([Andergassen et al 2019](https://elifesciences.org/articles/47214) and [Lewandowski et al 2019](https://www.nature.com/articles/s41467-019-12970-4)). Many of those (~10k) are unique to a single tissue, further obscuring the true targets of Firre. 
+
+
+[^1]: Andergassen is the one you should check out if you're going to read one of those. It's pretty wild -- he was able to get allele specific expression across a bunch of mouse tissues and showed that the primary driver of gene expression changes is Firre rather than changes to the chromatin architecture in that same region. And this brings up this cool idea of X-linked genes that escape X-inactivation like Firre mediating crosstalk between the sex chromosomes and the autosomes.
+
+
+
+#### Firre KO gene expression changes in mouse tissues
+![](figures/firre_tissue_degs.png)
+
+And anyway, I know I'm preaching to the choir on this one since Arpeggio is already into timecourses, but a really good way to resolve these issues and get at genes that are more likely to be first order targets is to capture the dynamics upon the induction of the gene. And also, this should be done with genetics to avoid all of the confounders that come up when using transient transfections and knockdowns. So, that's what we did. We have a Firre transgene downstream from an rTTA element incorporated into the genome in mouse embryonic stem cells so that we can induced Firre expression with doxycycline. And we have it in a Firre WT and Firre KO background. So we induced the expression of Firre with dox and did RNA-seq every 30 minutes (two replicates per timepoint) for 6 hours. Additionally, to control for the effects of adding doxycycline to the cells, we did the experiment in parallel in cell lines where Firre is not induced[^2]. 
+
+[^2]: One cool thing about the Dox timecourses is that not much seems to change until the 180 min mark and then lots of things change. 
+
+![](figures/firre_timecourse_vs_zero_profile.png)
