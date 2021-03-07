@@ -53,8 +53,7 @@ genes <- genes[rownames(salmon_gene_counts)]
 # TODO: re-run with the long timepoints. Gaaah.
 samples <- read.csv("../../rnaseq/rnaseq_samplesheet.csv") %>%
   filter(cell_type != "pMEF",
-         date_sequenced != "2018-09",
-         timecourse_length == "short") %>%
+         date_sequenced != "2018-09") %>%
   mutate(firre_ko = factor(firre_ko, levels = c("WT", "KO")),
          timepoint = factor(timepoint, 
                                     levels = c(seq(0,360,30), 720, 1440, 2880, 5760)),
@@ -67,25 +66,28 @@ tpml <- tpm %>% pivot_longer(cols = 3:ncol(.), names_to = "sample_id",
 ```
 
 ```{r}
-timepoints <- seq(30,330,30)
-
-timepoints <- timepoints[-1]
-vs_zero_timepoints <- rep(list(c("timepoint")),length(timepoints))
-for(i in 1:length(vs_zero_timepoints)) {
-  vs_zero_timepoints[[i]] <- c(vs_zero_timepoints[[i]],timepoints[[i]], "0")
+create_vs_zero_contrasts <- function(timepoints) {
+  timepoints <- timepoints[-1]
+  vs_zero_timepoints <- rep(list(c("timepoint")),length(timepoints))
+  for(i in 1:length(vs_zero_timepoints)) {
+    vs_zero_timepoints[[i]] <- c(vs_zero_timepoints[[i]],timepoints[[i]], "0")
+  }
+  # timepoints <- seq(30,330,30)
+  vs_prev_timepoints <- rep(list(c("timepoint")), length(timepoints)-1)
+  
+  for(i in 1:length(vs_prev_timepoints)) {
+    vs_prev_timepoints[[i]] <- c(vs_prev_timepoints[[i]],timepoints[[i+1]])
+    vs_prev_timepoints[[i]] <- c(vs_prev_timepoints[[i]],timepoints[[i]])
+  }
+  contrasts_list <- c(vs_zero_timepoints, vs_prev_timepoints)
+  
+  names(contrasts_list) <- sapply(contrasts_list, function(x) {
+    paste(x[[1]], x[[2]], "vs", x[[3]], sep = "_")
+  })
+  
+  return(contrasts_list)
 }
-# timepoints <- seq(30,330,30)
-vs_prev_timepoints <- rep(list(c("timepoint")), length(timepoints)-1)
 
-for(i in 1:length(vs_prev_timepoints)) {
-  vs_prev_timepoints[[i]] <- c(vs_prev_timepoints[[i]],timepoints[[i+1]])
-  vs_prev_timepoints[[i]] <- c(vs_prev_timepoints[[i]],timepoints[[i]])
-}
-contrasts_list <- c(vs_zero_timepoints, vs_prev_timepoints)
-
-names(contrasts_list) <- sapply(contrasts_list, function(x) {
-  paste(x[[1]], x[[2]], "vs", x[[3]], sep = "_")
-})
 
 
 ```
@@ -97,7 +99,6 @@ names(contrasts_list) <- sapply(contrasts_list, function(x) {
 
 run_vs_zero_deseq <- function(experiment,
                               counts, samples, genes,
-                              contrasts_list,
                               ncores = 12,
                               save_dds = FALSE,
                               save_res = FALSE) {
@@ -114,6 +115,12 @@ run_vs_zero_deseq <- function(experiment,
   samples <- samples %>% filter(cell_type == ct,
                                 firre_ko == fko,
                                 firre_induced == fi)
+  
+  
+  timepoints <- unique(as.numeric(as.character(samples$timepoint)))
+  timepoints <- timepoints[order(timepoints)]
+  contrasts_list <- create_vs_zero_contrasts(timepoints)
+  
   
   counts <- counts[,samples$sample_id]
   mode(counts) <- "integer"
@@ -214,8 +221,7 @@ if(!file.exists("results/vs_zero_deseq_res.csv")) {
   deseq_res <- lapply(experiments, run_vs_zero_deseq,
                       counts = salmon_gene_counts, 
                       samples = samples,
-                      genes = genes,
-                      contrasts_list = contrasts_list)
+                      genes = genes)
   
   res_list <- lapply(deseq_res, "[[","res")
   res_shrunken_list <- lapply(deseq_res, "[[","res_shrunken")

@@ -102,7 +102,19 @@ g + geom_histogram() + facet_grid(cell_type~firre_ko) +
 ```
 
 ```{r}
+ltc <- read_csv("../03_long_timecourse/results/deseq_res_shrunken.csv")
+unique(res_96h$firre_ko)
+res_96h <- ltc %>% filter(result_name == "timepoint_minutes5760.firre_inducedfirre_induced")
+                          
 
+ggplot(res_96h, aes(x = log10(baseMean), y = log2FoldChange)) + geom_point()
+
+ggplot(ltc %>% filter(result_name == "timepoint_minutes_720_vs_0"), aes(x = log2FoldChange, y = -log10(padj))) + geom_point() + 
+  facet_grid(~firre_ko)
+
+ggplot(res_96h, aes(x = log2FoldChange, y = -log10(padj))) + geom_point() + 
+  facet_grid(~firre_ko)
+timepoint_minutes2880.firre_inducedfirre_induced
 ```
 
 
