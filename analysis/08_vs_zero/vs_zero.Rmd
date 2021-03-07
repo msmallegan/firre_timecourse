@@ -248,13 +248,13 @@ if(!file.exists("results/vs_zero_deseq_res.csv")) {
   vs_zero_res <- resdf %>%
     filter(comparison == "vs_zero")
   vs_zero_res$timepoint_vs_zero <- sapply(vs_zero_res$result_name, function(x) {
-    unlist(strsplit(x, "_"))[[3]] %>% as.numeric()
+    unlist(strsplit(x, "_"))[[2]] %>% as.numeric()
   })
   
   vs_zero_res_shrunken <- res_shrunkendf %>%
     filter(comparison == "vs_zero")
   vs_zero_res_shrunken$timepoint_vs_zero <- sapply(vs_zero_res_shrunken$result_name, function(x) {
-    unlist(strsplit(x, "_"))[[3]] %>% as.numeric()
+    unlist(strsplit(x, "_"))[[2]] %>% as.numeric()
   })
   
   vs_prev_res <- resdf %>%
@@ -277,7 +277,9 @@ vs_prev_res <- read_csv("results/vs_prev_deseq_res.csv")
 
 vs_zero_res_shrunken <- read_csv("results/vs_zero_deseq_res_shrunken.csv")
 vs_prev_res_shrunken <- read_csv("results/vs_prev_deseq_res_shrunken.csv")
-
+vs_zero_res_shrunken$timepoint_vs_zero <- sapply(vs_zero_res_shrunken$result_name, function(x) {
+  unlist(strsplit(x, "_"))[[2]] %>% as.numeric()
+})
 
 gene_res <- vs_zero_res_shrunken %>% 
   group_by(gene_id, gene_name, cell_type, firre_ko, firre_induced) %>%
@@ -351,7 +353,7 @@ gene_res <- vs_zero_res_shrunken %>%
                           levels = c(seq(30,360,30), 720, 1440, 2880, 5760)),
          sig = padj < 0.05) %>% 
   mutate(timepoint = as.numeric(as.character(timepoint_vs_zero)))
-
+unique(gene_res$timepoint_vs_zero)
 sig_res <- gene_res %>% filter(n_sig > 1 | gene_name == "Firre")
 # Add in the zero timepoints
 
@@ -382,7 +384,23 @@ sig_res <- merge(sig_res, mbm)
 sig_res$bm_norm <- log10(sig_res$baseMean) / sig_res$max_log_base_mean
 
 sig_res$x_bm <- sig_res$timepoint + sig_res$bm_norm * 15
+timepoints
+ggplot(sig_res %>% filter(timepoint_vs_zero == 5760), aes(x = log2FoldChange, y = -log10(padj)))+ geom_point() + 
+  facet_grid(~firre_ko)+ 
+  xlim(-6,6)
 
+ggplot(sig_res %>% filter(timepoint_vs_zero == 2880), aes(x = log2FoldChange, y = -log10(padj)))+ geom_point() + 
+  facet_grid(~firre_ko)+ 
+  xlim(-6,6)
+hmm <- sig_res %>% filter(timepoint_vs_zero == 180)
+ggplot(sig_res %>% filter(timepoint_vs_zero == 330), aes(x = log2FoldChange, y = -log10(padj)))+ geom_point() + 
+  facet_grid(~firre_ko)+ 
+  xlim(-6,6) + 
+  geom_text_repel(data = sig_res %>% filter(timepoint_vs_zero == 330, log2FoldChange > 1), aes(label = gene_name))
+ggplot(sig_res %>% filter(timepoint_vs_zero == 330), aes(x = log2FoldChange, y = -log10(padj)))+ geom_point() + 
+  facet_grid(~firre_ko)+ 
+  xlim(-6,6) + 
+  geom_text_repel(data = sig_res %>% filter(timepoint_vs_zero == 330, log2FoldChange > 1), aes(label = gene_name))
 
 # sresdf$point_color <- cut(sresdf$log2FoldChange, breaks = seq(-5,5,length.out = 100), labels = FALSE)
 # sresdf$point_color <- pals::ocean.curl(100)[sresdf$point_color]
@@ -397,7 +415,7 @@ g2 +
   geom_point(alpha = 0.7, data = sig_res %>% filter(gene_name != "Firre"), color = "#424242") +
   geom_point(alpha = 1, data = sig_res %>% filter(gene_name == "Firre"), color = "#a8404c") +
   facet_wrap(firre_ko ~ firre_induced) + 
-  scale_x_continuous(breaks = c(seq(0,330,30))) + 
+  # scale_x_continuous(breaks = c(seq(0,330,30))) + 
   xlab("Time (min)")
 
 ggsave("figures/firre_timecourse_vs_zero_profile.pdf", useDingbats=FALSE)
