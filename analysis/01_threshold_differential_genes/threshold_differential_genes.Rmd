@@ -18,6 +18,8 @@ source("../util/_plot_theme.R")
 library(ComplexHeatmap)
 library(circlize)
 library(seriation)
+library(UpSetR)
+
 ```
 
 ```{r}
@@ -36,6 +38,8 @@ timecourses <- counts %>%
   nest(timecourse = c(sample_id, gene_id, timepoint_minutes, count)) %>%
   pmap(~ write_csv(.y, paste0("data/", .x, ".csv")))
 
+samples <- read.csv("../../rnaseq/rnaseq_samplesheet.csv") %>%
+  unite(experiment, cell_type, firre_ko, firre_induced, timecourse_length, experiment_replicate, sep = "-", remove = FALSE)
 ```
 
 # Run DEseq2 for LRT, vs zero, vs prev
@@ -108,7 +112,6 @@ upset(sig_short, nsets = 9)
 
 sig_long <- sig_res_matrix[,c(1,grep("long", names(sig_res_matrix)))]
 upset(sig_long, nsets = 4)
-library(UpSetR)
 
 upset(sig_res_matrix, nsets = 13)
 
@@ -266,6 +269,7 @@ Heatmap(rlog_matrix, col = col_pal,
 # graphics.off()
 ```
 
+![](figures/all_DEG_all_exp_timecourse_heatmap.pdf)
 
 ```{r}
 # First, make a heatmap of just the short timecourse profiles
