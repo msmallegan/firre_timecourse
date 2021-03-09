@@ -1,0 +1,28 @@
+---
+title: "Previous firre RNA-seq"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+
+[Hacisuleyman et al 2014 -- Firre KO mESC](https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE45157&format=file&file=GSE45157%5FmESC%5FKO%5Fvs%5FWT%5Fdiff%2Etxt%2Egz)
+```{r}
+# Hacisuleyman et al 2014 -- mESC Firre KO vs WT
+dat <- read_tsv("data/GSE45157_mESC_KO_vs_WT_diff.txt")
+
+ggplot(dat %>% filter(mESC_WT_mESC_KO_significant == "yes"), 
+       aes(x = mESC_WT_mESC_KO_log2_fold_change)) + 
+  geom_density() 
+
+sig <- dat %>% filter(mESC_WT_mESC_KO_significant == "yes")
+
+summary(sig$mESC_WT_mESC_KO_q_value)
+summary(abs(sig$mESC_WT_mESC_KO_log2_fold_change))
+```
+
