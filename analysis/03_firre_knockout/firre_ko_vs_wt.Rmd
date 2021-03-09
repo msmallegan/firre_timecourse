@@ -38,12 +38,12 @@ mode(salmon_gene_counts) <- "integer"
 # Put in order
 genes <- genes[rownames(salmon_gene_counts)]
 
-samples <- read.csv("../../rnaseq/samplesheet.csv") %>%
+samples <- read.csv("../../rnaseq/rnaseq_samplesheet.csv") %>%
   filter(cell_type != "pMEF",
          date_sequenced != "2018-09",
-         timepoint_minutes == 0) %>%
+         timepoint == 0) %>%
   mutate(firre_ko = factor(firre_ko, levels = c("WT", "KO")),
-         timepoint_minutes = factor(timepoint_minutes, 
+         timepoint = factor(timepoint, 
                                     levels = c(seq(0,360,30))),
          firre_induced = factor(firre_induced, 
                                 levels = c("control", "firre_induced"))) %>%
@@ -55,20 +55,93 @@ stopifnot(all(rownames(samples) == colnames(counts)))
 ```
 
 ```{r}
+# Let's make a little heatmap
+
+esc_samples <- read.csv("../../rnaseq/rnaseq_samplesheet.csv") %>%
+  filter(cell_type == "ESC",
+         date_sequenced != "2018-09") %>%
+  mutate(firre_ko = factor(firre_ko, levels = c("WT", "KO")),
+         timepoint = factor(timepoint, levels = c(seq(0,360,30), 720, 1440, 2880, 5760)),
+         firre_induced = factor(firre_induced, 
+                                levels = c("control", "firre_induced"))) %>%
+  unite(experiment, cell_type, firre_ko, remove = FALSE)
+
+
+
+tpm <- read_csv("../../rnaseq/results/salmon/salmon_merged_gene_tpm.csv")
+tpml <- tpm %>% pivot_longer(cols = 2:ncol(.), names_to = "sample_id",
+                                             values_to = "tpm") %>%
+  merge(esc_samples)
+
+
+plt_samples <- esc_samples %>%
+  filter(firre_ko == "WT" & timepoint == 0 |
+           firre_ko == "KO" & firre_induced == "firre_induced" |
+           firre_ko == "KO" & firre_induced == "control" & timepoint == 0)
+# WT 0 timepoint
+# KO 0 timepoiunt
+# KO firre_induced
+
+esc_steady_state_tpm <- tpml %>% 
+  filter(sample_id %in%plt_samples$sample_id) %>%
+  group_by(gene_id, firre_ko, timepoint, firre_induced) %>%
+  summarize(tpm = mean(tpm)) %>%
+  unite(firreko_timepoint, firre_ko, timepoint, firre_induced) %>%
+  filter(gene_id %in% names(top_genes_pc1[1:10])) %>%
+  pivot_wider(names_from = firreko_timepoint, values_from = tpm) %>%
+  column_to_rownames("gene_id") %>%
+  as.matrix() %>%
+  t()
+hmm <- scale(esc_steady_state_tpm)
+rownames(hmm)
+steady_state <-esc_steady_state_tpm[c("WT_0_control", "WT_0_firre_induced", "KO_0_control", "KO_0_firre_induced"),]
+
+pca <- prcomp(steady_state)
+pca_df <- pca$x %>% as.data.frame() %>%
+  rownames_to_column("experiment")
+ggplot(pca_df, aes(x = PC1, y = PC2, label = experiment)) + geom_point() + geom_text()
+
+hmm_df <- pca$rotation
+
+top_genes_pc1 <- abs(hmm_df[,1])
+top_genes_pc1 <- top_genes_pc1[order(-top_genes_pc1)]
+top_genes_pc1[1:10]
+# pheatmap::pheatmap(steady_state)
+diff_wt_ko <- steady_state["WT_0_control",] - steady_state["KO_0_control",]
+most_diff <- diff_wt_ko[order(-abs(diff_wt_ko))]
+most_diff[1:50]
+# huh <- t(scale(t(esc_steady_state_tpm)))
+rowSums(hmm)
+colSums(hmm)
+?scale
+pheatmap::pheatmap(hmm)
+pheatmap::pheatmap(huh)
+
+```
+
+
+```{r}
 # Separately for ESC and NPC
-esc_samples <- samples %>% filter(cell_type == "ESC")
-npc_samples <- samples %>% filter(cell_type == "NPC")
+esc_samples <- samples %>% 
+  filter(cell_type == "ESC") %>%
+  mutate(firre_ko = factor(firre_ko, levels = c("WT", "KO")))
+rownames(esc_samples) <- esc_samples$sample_id
+npc_samples <- samples %>% 
+  filter(cell_type == "NPC")
 esc_counts <- salmon_gene_counts[,as.character(esc_samples$sample_id)]
 npc_counts <- salmon_gene_counts[,as.character(npc_samples$sample_id)]
+
+
 
 stopifnot(all(rownames(esc_samples) == colnames(esc_counts)))
 
 esc_dds <- DESeqDataSetFromMatrix(countData = esc_counts, 
                                 colData = esc_samples, 
-                                design = ~ firre_ko + timecourse_length + firre_induced,
+                                design = ~ firre_ko,
                                 rowData = genes)
 esc_dds <- esc_dds[rowSums(counts(esc_dds)) >= 20,]
 esc_dds <- DESeq(esc_dds)
+
 
 res_names <- resultsNames(esc_dds)
 esc_res <- results(esc_dds, 
@@ -76,6 +149,23 @@ esc_res <- results(esc_dds,
 esc_resdf <- esc_res %>% as.data.frame() %>%
   rownames_to_column("gene_id") %>% 
   merge(g2s)
+
+res_shrunken <- lfcShrink(esc_dds, type = "apeglm", coef = res_names[2])
+
+
+esc_resdf <- esc_res %>% as.data.frame() %>%
+  rownames_to_column("gene_id") %>% 
+  merge(g2s)
+
+esc_shrunken_df <- res_shrunken %>%
+  as.data.frame() %>%
+  rownames_to_column("gene_id") %>% 
+  merge(g2s)
+sig_esc_shrunken_df <- esc_shrunken_df %>%
+  filter(padj < 0.05, abs(log2FoldChange) > 1)
+
+ggplot(esc_shrunken_df, aes(x = log2FoldChange, y = -log10(padj))) +
+  geom_point()
 
 stopifnot(all(rownames(npc_samples) == colnames(npc_counts)))
 npc_dds <- DESeqDataSetFromMatrix(countData = npc_counts, 
@@ -98,6 +188,19 @@ write_csv(npc_resdf, "results/firre_ko_vs_wt_npc_res.csv")
 
 
 ```{r}
+
+hmm_esc_resdf <- read_csv("results/firre_ko_vs_wt_esc_res.csv")
+
+ggplot(esc_resdf, aes(x = log2FoldChange)) + geom_density()
+
+ggplot(esc_resdf %>% filter(padj < 0.05), aes(x = log2FoldChange)) + geom_density()
+
+up_vs_down <- esc_resdf %>% filter(padj < 0.01) %>%
+  mutate(direction = ifelse(log2FoldChange > 0, "up", "down")) %>%
+  group_by(direction) %>%
+  summarize(count = n())
+
+summary(abs(esc_resdf %>% filter(padj < 0.05)))
 sig_esc <- esc_resdf %>% filter(padj < 0.01)
 sig_npc <- npc_resdf %>% filter(padj < 0.01)
 ```
