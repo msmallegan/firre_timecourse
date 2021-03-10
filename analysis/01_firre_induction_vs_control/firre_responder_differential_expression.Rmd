@@ -90,12 +90,9 @@ mode(salmon_gene_counts) <- "integer"
 genes <- genes[rownames(salmon_gene_counts)]
 
 ### SAMPLE INFO
-# Somehow the long timepoints didn't make it into this run.
-# TODO: re-run with the long timepoints. Gaaah.
 samples <- read.csv("../../rnaseq/rnaseq_samplesheet.csv") %>%
   filter(cell_type != "pMEF",
-         date_sequenced != "18-Sep",
-         timepoint < 400,
+         date_sequenced != "2018-09",
          timecourse_length == "short") %>%
   mutate(firre_ko = factor(firre_ko, levels = c("WT", "KO")),
          timepoint = factor(timepoint, 
@@ -105,7 +102,7 @@ samples <- read.csv("../../rnaseq/rnaseq_samplesheet.csv") %>%
 rownames(samples) <- samples$sample_id
 ```
 
-### DEseq2 
+### DEseq2 -- WT and KO separate
 
 ```{r deseq2}
 # Since this takes a while to run, we'll cache this part
@@ -142,6 +139,255 @@ if(!file.exists("results/deseq_res.csv")) {
 resdf <- read.csv("results/deseq_res.csv")
 res_shrunkendf <- read.csv("results/deseq_res_shrunken.csv")
 ```
+
+### DEseq2 -- Combined model
+
+```{r}
+## Let's run the DEseq2 on the combined model
+
+esc_samples <- samples %>% filter(cell_type == "ESC")
+esc_counts <- salmon_gene_counts[,esc_samples$sample_id]
+
+dds <- DESeqDataSetFromMatrix(countData = esc_counts, 
+                              colData = esc_samples, 
+                              design = formula("~ firre_ko + timepoint + firre_induced + firre_induced*timepoint"),
+                              rowData = genes)
+
+dds <- DESeq(dds, 
+             test="LRT", 
+             reduced = ~ firre_ko + timepoint + firre_induced,
+             parallel=TRUE,
+             BPPARAM=MulticoreParam(12))
+
+res_names <- resultsNames(dds)
+res <- results(dds, name = res_names[2]) 
+  
+res_shrunken <- lfcShrink(dds = dds,
+                          coef = res_names[2],
+                          res = res,
+                          type = "apeglm",
+                          parallel = TRUE,
+                          BPPARAM=MulticoreParam(12)) %>% 
+  as.data.frame() %>%
+  rownames_to_column(var = "gene_id") %>%
+  merge(g2s) %>%
+  mutate(result_name = res_names[2]) 
+  
+  
+# Convert to data frame
+res <- res %>% 
+  as.data.frame() %>%
+  rownames_to_column(var = "gene_id") %>%
+  merge(g2s) %>%
+  mutate(result_name = res_names[2]) 
+
+for(i in 3:length(res_names)) {
+  tmp_res <- results(dds, 
+                     name = res_names[i])
+  
+  tmp_res_shrunken <- suppressMessages(lfcShrink(dds = dds,
+                                                 coef = res_names[i],
+                                                 res = tmp_res,
+                                                 type = "apeglm",
+                                                 parallel = TRUE,
+                                                 BPPARAM=MulticoreParam(ncores))) %>%
+    as.data.frame() %>%
+    rownames_to_column(var = "gene_id") %>%
+    merge(g2s) %>%
+    mutate(result_name = res_names[i]) 
+  
+  tmp_res <- tmp_res %>% 
+    as.data.frame() %>%
+    rownames_to_column(var = "gene_id") %>%
+    merge(g2s) %>%
+    mutate(result_name = res_names[i]) 
+  
+  res_shrunken <- bind_rows(res_shrunken, tmp_res_shrunken)
+  res <- bind_rows(res, tmp_res)
+}
+
+write_csv(res, "results/combined_esc_deg.csv")
+write_csv(res_shrunken, "results/combined_esc_deg_shrunken.csv")
+```
+
+```{r}
+# NPC combined model
+npc_samples <- samples %>% filter(cell_type == "NPC")
+npc_counts <- salmon_gene_counts[,npc_samples$sample_id]
+genes <- genes[rownames(npc_counts)]
+
+dds <- DESeqDataSetFromMatrix(countData = npc_counts, 
+                              colData = npc_samples, 
+                              design = formula("~ firre_ko + timepoint + firre_induced + firre_induced*timepoint"),
+                              rowData = genes)
+
+dds <- DESeq(dds, 
+             test="LRT", 
+             reduced = ~ firre_ko + timepoint + firre_induced,
+             parallel=TRUE,
+             BPPARAM=MulticoreParam(12))
+
+res_names <- resultsNames(dds)
+res <- results(dds, name = res_names[2]) 
+  
+res_shrunken <- lfcShrink(dds = dds,
+                          coef = res_names[2],
+                          res = res,
+                          type = "apeglm",
+                          parallel = TRUE,
+                          BPPARAM=MulticoreParam(12)) %>% 
+  as.data.frame() %>%
+  rownames_to_column(var = "gene_id") %>%
+  merge(g2s) %>%
+  mutate(result_name = res_names[2]) 
+  
+  
+# Convert to data frame
+res <- res %>% 
+  as.data.frame() %>%
+  rownames_to_column(var = "gene_id") %>%
+  merge(g2s) %>%
+  mutate(result_name = res_names[2]) 
+
+for(i in 3:length(res_names)) {
+  tmp_res <- results(dds, 
+                     name = res_names[i])
+  
+  tmp_res_shrunken <- suppressMessages(lfcShrink(dds = dds,
+                                                 coef = res_names[i],
+                                                 res = tmp_res,
+                                                 type = "apeglm",
+                                                 parallel = TRUE,
+                                                 BPPARAM=MulticoreParam(ncores))) %>%
+    as.data.frame() %>%
+    rownames_to_column(var = "gene_id") %>%
+    merge(g2s) %>%
+    mutate(result_name = res_names[i]) 
+  
+  tmp_res <- tmp_res %>% 
+    as.data.frame() %>%
+    rownames_to_column(var = "gene_id") %>%
+    merge(g2s) %>%
+    mutate(result_name = res_names[i]) 
+  
+  res_shrunken <- bind_rows(res_shrunken, tmp_res_shrunken)
+  res <- bind_rows(res, tmp_res)
+}
+
+write_csv(res, "results/npc_combined_esc_deg.csv")
+write_csv(res_shrunken, "results/npc_combined_esc_deg_shrunken.csv")
+
+npc_sig <- res %>% filter(padj < 0.05)
+```
+
+```{r}
+# HMM
+# https://cells.ucsc.edu/?ds=cortex-dev&gene=SHF
+# https://cells.ucsc.edu/cortex-dev/exprMatrix.tsv.gz
+hmm <- read_tsv("data/exprMatrix.tsv")
+sg <- tolower(sig_genes$gene_name)
+hmm_sig <- hmm[tolower(hmm$gene) %in% c(sg, "gpr56", "eg667281", "epo", "epp", "epxd", "eper"),]
+
+sg[!(sg %in% tolower(hmm_sig$gene))]
+
+hmm_sig <- hmm_sig[,c(TRUE,colSums(hmm_sig[,2:ncol(hmm_sig)]) > 0)]
+colnames(hmm_sig)[1]
+
+
+hmm_sig <- hmm_sig %>% column_to_rownames("gene") %>%
+  as.matrix()
+
+log2(hmm_sig[1:10,1:10])
+hmm_sig_scaled <- t(scale(t(log10(hmm_sig + 1)), center = T))
+summary(hmm_sig_scaled["FIRRE",])
+log10(1)
+table(hmm_sig_scaled["FIRRE",] > 1)
+hmm_firre <- hmm_sig_scaled[,hmm_sig_scaled["FIRRE",] > 0]
+summary(colSums(hmm_sig_scaled))
+summary(rowSums(hmm_sig_scaled))
+pheatmap::pheatmap(hmm_sig_scaled, show_colnames = FALSE)
+
+# https://cells.ucsc.edu/cbl-dev/exprMatrix.tsv.gz
+# https://cells.ucsc.edu/early-brain/exprMatrix.tsv.gz
+```
+
+
+```{r}
+res <- read_csv("results/combined_esc_deg.csv")
+hmm <- res %>% filter(padj < 0.05)
+# length(unique(hmm$gene_id))
+combined_model_sig <- res_shrunken %>% filter(padj < 0.05)
+
+# Let's make some plots with these using the vs_zero fold-changes.
+res_vs_zero_shrunken <- read_csv("../08_vs_zero/results/vs_zero_deseq_res_shrunken.csv")
+sig_vs_zero <- res_vs_zero_shrunken %>% filter(gene_id %in% combined_model_sig$gene_id)
+
+```
+
+
+```{r}
+
+# Let's plot these in a heatmap
+sig_fc <- res %>% filter(padj < 0.05, grepl("firre_inducedfirre_induced", result_name)) %>%
+  filter(gene_id %in% sig_genes$gene_id) %>%
+  mutate(timepoint = gsub("timepoint|.firre_inducedfirre_induced", "", result_name) %>% as.numeric())
+
+ggplot(sig_fc, aes(x = timepoint, y = log2FoldChange, group = gene_id)) + geom_point() + geom_line()
+ggplot(sig_fc, aes(x = log10(baseMean), y = -log10(padj))) + geom_point() + 
+  geom_text(data = sig_fc %>% filter(padj < 1e-3), aes(label=gene_name))
+```
+
+I'm trying to figure out what to plot in the heatmap
+the options are
+1. full model coefficients for the interaction term
+2. mean tpm for that timepoint in the firre induction. (z-score)
+3. The fitted model from the impulse fitting
+4. the shrunken fold-changes from the zero timepoint.
+
+I'm also trying to figure out whether to make a fold-change cutoff in addition to padj < 0.05
+the options are
+1. no fold change cutoff
+2. fold-change cutoff based on the last timetpoint
+3. fold-change cutoff based on the max fold change
+4. fold-change cutoff based on consecutive run in the same direction.
+
+# I'll try first the cutoff based on the last timepoint
+
+```{r}
+sig_genes <- sig_fc %>% filter(timepoint == 330, abs(log2FoldChange) > 1)
+
+
+
+atac_peaks <- read_csv("../07_atacseq/results/atac_merged_deseq.csv") %>%
+  filter(padj < 0.05)
+
+atac_peaks_gr <- GRanges(seqnames = atac_peaks$Chr,
+                         IRanges(start = atac_peaks$Start, end = atac_peaks$End))
+
+sig_genes_gr <- genes[which(genes$gene_id %in% sig_genes$gene_id)]
+
+sig_genes_gr_region <- resize(sig_genes_gr, width = width(sig_genes_gr) + 1e6, fix = "center")
+width(sig_genes_gr_region)
+num_atac_peaks_overlapped <- data.frame(countOverlaps(sig_genes_gr_region, atac_peaks_gr)) %>%
+  rownames_to_column("gene_id") %>%
+  merge(g2s)
+
+ov_list <- findOverlaps(sig_genes_gr_region, atac_peaks_gr)
+
+atac_peaks$matching_fr_gene_id <- NA
+atac_peaks$matching_fr_gene_id[ov_list@to] <- sig_genes_gr_region$gene_id[ov_list@from]
+
+atac_peaks$matching_fr_gene_name <- NA
+atac_peaks$matching_fr_gene_name[ov_list@to] <- sig_genes_gr_region$gene_name[ov_list@from]
+
+ggplot(atac_peaks, aes(x = log2FoldChange, y = -log10(pvalue))) + geom_point() + 
+  geom_text_repel(data = atac_peaks %>% filter(!is.na(matching_fr_gene_name)), aes(label = matching_fr_gene_name))
+
+ov_atac <- num_atac_peaks_overlapped %>% filter(countOverlaps.sig_genes_gr_region..atac_peaks_gr. > 0)
+hmm <- sig_genes %>% filter(gene_id %in% ov_atac$gene_id)
+?shift
+```
+
 
 ```{r}
 # Let's plot the vs zero fold changes

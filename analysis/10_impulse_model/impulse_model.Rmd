@@ -260,10 +260,39 @@ curve_fitsl$best_model <- apply(curve_fitsl[,c("lm_bic","sigmoid_bic", "impulse_
 
 curve_fitsl_sigmoid <- curve_fitsl %>%
   unnest(sigmoid_tidy)
-# curve_fitsl <- curve_fitsl %>%
-#   unnest(impulse_tidy)
+curve_fitsl <- curve_fitsl %>%
+  unnest(impulse_tidy)
 plot_timecourse_fits("Klf4", curve_fitsl)
+plot_timecourse_fits("Kdr", curve_fitsl)
+plot_timecourse_fits("Arih1", curve_fitsl)
+plot_timecourse_fits("Firre", curve_fitsl)
+plot_timecourse_fits("Nceh1", curve_fitsl)
+plot_timecourse_fits("Nceh1", curve_fitsl)
+plot_timecourse_fits("Shf", curve_fitsl)
+plot_timecourse_fits("Dpf2", curve_fitsl)
+plot_timecourse_fits("Umps", curve_fitsl)	
+plot_timecourse_fits("Fst", curve_fitsl)
+plot_timecourse_fits("Clock", curve_fitsl)
+plot_timecourse_fits("Adgrg1", curve_fitsl)
+plot_timecourse_fits("Apod", curve_fitsl)
+plot_timecourse_fits("Kdr", curve_fitsl)
+plot_timecourse_fits("Duox1", curve_fitsl)
+plot_timecourse_fits("Pde6d", curve_fitsl)
+plot_timecourse_fits("Ppp1r2", curve_fitsl)
+plot_timecourse_fits("Ddhd1", curve_fitsl)
+plot_timecourse_fits("Hacd3", curve_fitsl)
 
+
+Kdr
+
+	Clock
+
+	
+
+Dpf2
+Nceh1
+Arih1
+# plot_timecourse_fits("Slf29a3", curve_fitsl)
 unique(curve_fitsl_sigmoid$term)
 good_ones <- curve_fitsl_sigmoid %>%
   filter(term == "rate") %>%
@@ -344,6 +373,7 @@ res_res_fi[which(res_res_fi$fi_sig == 1 & res_res_fi$ctrl_sig == 0),"fi_deg"] <-
 res_res_fi[which(res_res_fi$fi_sig == 1 & res_res_fi$ctrl_sig == 1 & res_res_fi$diff != 0),"fi_deg"] <- 1L
 
 write_csv(res_res_fi, "results/firre_deg_genes.csv")
+res_res_fi <- read_csv("results/firre_deg_genes.csv")
 res_res_fi <- res_res_fi %>%
   filter(fi_deg == 1)
 res_res_fi$condition <- paste0(res_res_fi$firre_ko, "_firre_induced")
