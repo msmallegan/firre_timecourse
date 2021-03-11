@@ -314,13 +314,63 @@ pheatmap::pheatmap(hmm_sig_scaled, show_colnames = FALSE)
 
 ```{r}
 res <- read_csv("results/combined_esc_deg.csv")
-hmm <- res %>% filter(padj < 0.05)
+
+sig_in_last_timepoint <- res %>% filter(padj < 0.05, grepl("firre_inducedfirre_induced", result_name)) %>%
+  mutate(timepoint = gsub("timepoint|.firre_inducedfirre_induced", "", result_name) %>% as.numeric()) %>%
+  filter(timepoint == 330, abs(log2FoldChange) > 1)
+res_sig <- res %>% filter(grepl("firre_inducedfirre_induced", result_name),
+                          gene_id %in% sig_in_last_timepoint$gene_id) %>%
+  mutate(timepoint = gsub("timepoint|.firre_inducedfirre_induced", "", result_name) %>% as.numeric())
+# all(table(res_sig$gene_name) == 11)
+res_sig_matrix <- res_sig %>% dplyr::select(gene_name, timepoint, log2FoldChange)
+
+zeros <- res_sig_matrix %>%
+  dplyr::select(gene_name) %>%
+  distinct() %>%
+  mutate(timepoint = 0, log2FoldChange = 0)
+library(janitor)
+res_sig_m <- res_sig_matrix %>% bind_rows(zeros) %>%
+  arrange(timepoint) %>%
+  clean_names() %>%
+  pivot_wider(names_from = timepoint, values_from = log2fold_change) %>%
+  column_to_rownames("gene_name") %>%
+  as.matrix()
+
+
+
+
+fcscaled <- res_sig_m %>%
+  t() %>%
+  scale(center = FALSE) %>%
+  t()
+library(stats)
+fcsmoothed <- apply(fcscaled,1,smooth) %>% t()
+rownames(fcsmoothed) <- rownames(res_sig_m)
+library(pheatmap)
+pheatmap(fcsmoothed, cluster_cols = FALSE, 
+         breaks = seq(-2,2,length.out = 100),
+         cutree_rows = 10,
+         color = rev(pals::brewer.rdbu(100)),
+         border_color = NA)
+# pheatmap(fcmat, cluster_cols = FALSE, breaks = seq(-1,1, length.out = 100))
+g <- ggplot(sshort, aes(x = log2FoldChange))
+g + geom_density() + geom_vline(xintercept = 0.3)
+
+breaksList <- c(0,1,2,3)
+library(RColorBrewer)
+library(ComplexHeatmap)
+?Heatmap
+Heatmap(res_sig_m, cluster_columns =  FALSE)
+# res_sig_m_scaled <- t(scale(t(res_sig_m)))
+pheatmap::pheatmap(res_sig_m, cluster_cols = FALSE,
+                   color = colorRampPalette(rev(brewer.pal(n = 7, name = "RdYlBu")))(length(breaksList)), # Defines the vector of colors for the legend (it has to be of the same lenght of breaksList)
+         breaks = breaksList)
 # length(unique(hmm$gene_id))
-combined_model_sig <- res_shrunken %>% filter(padj < 0.05)
+# combined_model_sig <- res_shrunken %>% filter(padj < 0.05)
 
 # Let's make some plots with these using the vs_zero fold-changes.
-res_vs_zero_shrunken <- read_csv("../08_vs_zero/results/vs_zero_deseq_res_shrunken.csv")
-sig_vs_zero <- res_vs_zero_shrunken %>% filter(gene_id %in% combined_model_sig$gene_id)
+# res_vs_zero_shrunken <- read_csv("../08_vs_zero/results/vs_zero_deseq_res_shrunken.csv")
+# sig_vs_zero <- res_vs_zero_shrunken %>% filter(gene_id %in% combined_model_sig$gene_id)
 
 ```
 
@@ -354,18 +404,18 @@ the options are
 # I'll try first the cutoff based on the last timepoint
 
 ```{r}
-sig_genes <- sig_fc %>% filter(timepoint == 330, abs(log2FoldChange) > 1)
+# sig_genes <- sig_fc %>% filter(timepoint == 330, abs(log2FoldChange) > 1)
 
-
+sig_genes <- sig_in_last_timepoint
 
 atac_peaks <- read_csv("../07_atacseq/results/atac_merged_deseq.csv") %>%
-  filter(padj < 0.05)
+  mutate(sig = padj < 0.05)
 
 atac_peaks_gr <- GRanges(seqnames = atac_peaks$Chr,
                          IRanges(start = atac_peaks$Start, end = atac_peaks$End))
 
 sig_genes_gr <- genes[which(genes$gene_id %in% sig_genes$gene_id)]
-
+# sig_genes_gr
 sig_genes_gr_region <- resize(sig_genes_gr, width = width(sig_genes_gr) + 1e6, fix = "center")
 width(sig_genes_gr_region)
 num_atac_peaks_overlapped <- data.frame(countOverlaps(sig_genes_gr_region, atac_peaks_gr)) %>%
@@ -380,8 +430,17 @@ atac_peaks$matching_fr_gene_id[ov_list@to] <- sig_genes_gr_region$gene_id[ov_lis
 atac_peaks$matching_fr_gene_name <- NA
 atac_peaks$matching_fr_gene_name[ov_list@to] <- sig_genes_gr_region$gene_name[ov_list@from]
 
-ggplot(atac_peaks, aes(x = log2FoldChange, y = -log10(pvalue))) + geom_point() + 
-  geom_text_repel(data = atac_peaks %>% filter(!is.na(matching_fr_gene_name)), aes(label = matching_fr_gene_name))
+atac_peaks$matching_fr_gene_name[atac_peaks$sig == FALSE] <- NA
+atac_peaks$matching_fr_gene_name[is.na(atac_peaks$sig)] <- NA
+ggplot(atac_peaks %>% filter(padj < 0.6), aes(x = log2FoldChange, y = -log10(pvalue), color = !is.na(matching_fr_gene_name))) + 
+  geom_point(data = atac_peaks %>% filter(padj >= 0.6) %>% sample_n(10000)) + 
+  geom_point(data = atac_peaks %>% filter(padj < 0.6, is.na(matching_fr_gene_name))) + 
+  geom_point(data = atac_peaks %>% filter(!is.na(matching_fr_gene_name))) + 
+  geom_text_repel(data = atac_peaks %>% filter(!is.na(matching_fr_gene_name)), aes(label = matching_fr_gene_name)) + 
+    geom_vline(xintercept = 0) +
+  geom_hline(yintercept = 0) +
+  geom_hline(yintercept = -log10(0.05), lty = 2) + 
+  ggtitle("Firre ATAC seq peaks")
 
 ov_atac <- num_atac_peaks_overlapped %>% filter(countOverlaps.sig_genes_gr_region..atac_peaks_gr. > 0)
 hmm <- sig_genes %>% filter(gene_id %in% ov_atac$gene_id)

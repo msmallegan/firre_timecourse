@@ -257,7 +257,9 @@ choose_best_model <- function(bic_list) {
 }
 curve_fitsl$best_model <- apply(curve_fitsl[,c("lm_bic","sigmoid_bic", "impulse_bic")],
                             1, choose_best_model)
-
+colnames(curve_fits)
+sig_curve_fits <- curve_fits %>% filter(gene_id %in% unique(hmm$gene_id))
+write_rds(sig_curve_fits, "results/sig_curve_fits.rds")
 curve_fitsl_sigmoid <- curve_fitsl %>%
   unnest(sigmoid_tidy)
 curve_fitsl <- curve_fitsl %>%

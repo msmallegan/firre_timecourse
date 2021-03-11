@@ -511,6 +511,7 @@ res_df <- results(dds) %>%
           dplyr::select(name, Gene.Name, Nearest.PromoterID, Distance.to.TSS, Chr, Start, End))
 
 write_csv(res_df, "results/atac_merged_deseq.csv")
+res_df <- read_csv("results/atac_merged_deseq.csv")
   # merge(atac_consensus %>% 
   #                 dplyr::select(interval_id, Gene.Name, Nearest.PromoterID, Distance.to.TSS, Chr, Start, End)) %>% 
   # unite(ucsc_coord, Chr, Start, remove = FALSE, sep = ":") %>%
@@ -624,6 +625,8 @@ fr_motif_matrix <- hmm %>%
   as.matrix()
 
 pheatmap::pheatmap(fr_motif_matrix)
+
+
 names(hmm)
 up_peaks <- res_df %>% filter(log2FoldChange > 0)
 up_peaks <- up_peaks$name
