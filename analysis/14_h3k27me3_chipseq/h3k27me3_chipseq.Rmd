@@ -1,0 +1,149 @@
+---
+title: "Firre H3K27me3 ChIP-seq"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Call peaks on the merged dataset
+
+```{bash}
+# Combine all data and call peaks on everything combined.
+#!/bin/bash
+#SBATCH -p short
+#SBATCH --job-name=h3k27me3_chipseq
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=michael.smallegan@colorado.edu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --mem=100gb
+#SBATCH --time=10:00:00
+#SBATCH --output=h3k27me3_chip_macs.out
+#SBATCH --error=h3k27me3_chip_macs.err
+date; hostname
+source ~/anaconda3/bin/activate macs3
+macs3 callpeak -f BAMPE -t /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/KO_CTL_48_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/KO_CTL_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/KOiTg_48_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/KOiTg_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/WT_CTL_48_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/WT_CTL_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/WTiTg_48_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/WTiTg_IP_R1.mLb.clN.sorted.bam -c /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/KO_CTL_48_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/KO_CTL_48_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/KO_CTL_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/KOiTg_48_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/KOiTg_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/WT_CTL_48_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/WT_CTL_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/WTiTg_48_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/WTiTg_R1.mLb.clN.sorted.bam -g mm -n firre_h3k27me3_chipseq --broad --broad-cutoff 0.1 -B
+date
+```
+
+### Get the data ready for UCSC trackhub
+
+chrom - The name of the chromosome (e.g. chr3, chrY, chr2_random) or scaffold (e.g. scaffold10671).
+chromStart - The starting position of the feature in the chromosome or scaffold. The first base in a chromosome is numbered 0.
+chromEnd - The ending position of the feature in the chromosome or scaffold. The chromEnd base is not included in the display of the feature, however, the number in position format will be represented. For example, the first 100 bases of chromosome 1 are defined as chrom=1, chromStart=0, chromEnd=100, and span the bases numbered 0-99 in our software (not 0-100), but will represent the position notation chr1:1-100. Read more here.
+The 9 additional optional BED fields are:
+
+name - Defines the name of the BED line. This label is displayed to the left of the BED line in the Genome Browser window when the track is open to full display mode or directly to the left of the item in pack mode.
+score - A score between 0 and 1000. If the track line useScore attribute is set to 1 for this annotation data set, the score value will determine the level of gray in which this feature is displayed (higher numbers = darker gray). This table shows the Genome Browser's translation of BED score values into shades of gray:
+shade	 	 	 	 	 	 	 	 	 
+score in range  	≤ 166	167-277	278-388	389-499	500-611	612-722	723-833	834-944	≥ 945
+strand - Defines the strand. Either "." (=no strand) or "+" or "-".
+
+```{r}
+# http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64.v385/bedToBigBed
+# http://hgdownload.soe.ucsc.edu/goldenPath/mm10/bigZips/mm10.chrom.sizes
+fl <- list.files("/scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/macs/broadPeak", 
+                 full.names = T, pattern = ".broadPeak")
+bp <- lapply(fl, rtracklayer::import)
+names(bp) <- gsub("/scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/macs/broadPeak/", "", fl)
+# Filter to canonical chrs
+chrs <- c(paste0("chr", 1:19), "chrM", "chrX", "chrY")
+for(i in 1:length(bp)) {
+  bp[[i]] <- bp[[i]][seqnames(bp[[i]]) %in% chrs]
+}
+
+bpdf <- lapply(bp, as.data.frame)
+# Export
+
+for(i in 1:length(bp)) {
+  write.table(bpdf[[i]] %>% dplyr::select(seqnames, start, end, name, score, strand, signalValue, pValue, qValue) %>%
+                mutate(strand = "."),
+              paste0("results/individual_peak_calls/broadPeak/", names(bp)[i]),
+               quote = F, row.names = F, col.names = F)
+}
+
+f <- data.frame(files = list.files("results/individual_peak_calls/broadPeak", full.names = T, pattern = "broadPeak")) %>%
+  mutate(rep_name = gsub("results/individual_peak_calls/broadPeak/|_peaks.broadPeak", "", files),
+         command = paste0(">&2 echo '", gsub("-", "_", rep_name), "\n'; bedToBigBed -as=fmt.as -type=bed6+3 -extraIndex=signalValue,pValue,qValue ../results/individual_peak_calls/broadPeak/", rep_name, "_peaks.broadPeak mm10.chrom.sizes ../results/individual_peak_calls/bigBed/", rep_name, ".bb")) %>%
+  dplyr::select(command) %>%
+    write.table("bin/broadpeak2bb.sh", quote = F, col.names = F, row.names = F)
+
+```
+
+```{bash}
+chmod u+x broadpeak2bb.sh
+./broadpeak2bb.sh
+
+rsync results/individual_peak_calls/bigBed/* mism6893@biof-trackhub.colorado.edu:/srv/http/biof-trackhub.colorado.edu/rinnlab/micahel/firre_timecourse/firre_prc2_chipseq/.
+```
+
+```{r}
+
+bb_fl <- list.files("results/individual_peak_calls/bigBed")
+conditions <- gsub("_IP_R1.bb", "", bb_fl)
+bw_fl <- list.files("/scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/bigwig", pattern = ".bigWig")
+
+
+i <- 2
+track_lines <- c()
+for(i in 1:length(conditions)){
+  
+
+tfl_bb <- bb_fl[grep(paste0(conditions[i], "_IP"),bb_fl)]
+
+ip_track <- bw_fl[grep(paste0(conditions[i], "_IP"), bw_fl)]
+input_track <- bw_fl[grepl(paste0(conditions[i], "_R1"), bw_fl)]
+
+
+names(tfl_bb) <- gsub("_R1.bb", "", tfl_bb)
+names(input_track) <- gsub("_R1.bigWig", "", input_track)
+names(ip_track) <- gsub("_R1.bigWig", "", ip_track)
+
+
+
+
+
+# Make the IP track
+ip <- paste0("track ", names(ip_track) ,"
+bigDataUrl https://biof-trackhub.colorado.edu/rinnlab/micahel/firre_timecourse/firre_h3k27me3_chipseq/", ip_track,"
+shortLabel ", names(ip_track) ,"
+longLabel ", names(ip_track) ,"
+color 168,64,76
+type bigWig
+visibility full
+
+")
+
+input <- paste0("track ", names(input_track) ,"_input
+bigDataUrl https://biof-trackhub.colorado.edu/rinnlab/micahel/firre_timecourse/firre_h3k27me3_chipseq/", input_track,"
+shortLabel ", names(input_track) ,"
+longLabel ", names(input_track) ,"
+color 168,64,76
+type bigWig
+visibility full
+
+")
+
+# Peaks track
+peaks <- paste0("track ", names(tfl_bb) ,"_peaks
+bigDataUrl https://biof-trackhub.colorado.edu/rinnlab/micahel/firre_timecourse/firre_h3k27me3_chipseq/", tfl_bb,"
+shortLabel ", names(tfl_bb) ,"_peaks
+longLabel ", names(tfl_bb) ,"_peaks
+color 168,64,76
+type bigBed
+visibility full
+
+")
+track_lines <- c(track_lines, ip, input, peaks)
+}
+
+write_lines(track_lines, "results/th.txt")
+
+```
+
+
+
