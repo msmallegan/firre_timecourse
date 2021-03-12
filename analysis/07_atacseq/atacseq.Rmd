@@ -521,27 +521,80 @@ res_df <- read_csv("results/atac_merged_deseq.csv")
 # firre_atac_peak_149640 -- ARIH1
 # firre_atac_peak_46566 -- Ddhd1
 # firre_atac_peak_147750 -- Pknox2?
-man_annotation <- read_csv("data/firre_peaks_manually_annotated.csv", col_names = c("name", "Gene.Name"))
-# Update res_df
-for(i in 1:nrow(man_annotation)) {
-res_df$Gene.Name[which(res_df$name == man_annotation$name[i])] <- man_annotation$Gene.Name[i]
-}
-fr <- read_csv("../01_firre_induction_vs_control/results/deseq_res.csv")
-sig_fr <- fr %>% filter(comparison == "dynamic_firre_induction_vs_control", cell_type == "ESC") %>%
-  filter(padj < 0.05, log2FoldChange > 0.2)
+# man_annotation <- read_csv("data/firre_peaks_manually_annotated.csv", col_names = c("name", "Gene.Name"))
+# # Update res_df
+# for(i in 1:nrow(man_annotation)) {
+# res_df$Gene.Name[which(res_df$name == man_annotation$name[i])] <- man_annotation$Gene.Name[i]
+# }
+atac_peaks <- res_df
+atac_peaks <- atac_peaks %>%
+  mutate(sig = ifelse(padj < 0.05, TRUE, FALSE))
+# table(atac_peaks$sig)
+fr <- read_csv("../01_firre_induction_vs_control/results/combined_esc_deg.csv")
+sig_in_last_timepoint <- fr %>% filter(padj < 0.05, grepl("firre_inducedfirre_induced", result_name)) %>%
+  mutate(timepoint = gsub("timepoint|.firre_inducedfirre_induced", "", result_name) %>% as.numeric()) %>%
+  filter(timepoint == 330, abs(log2FoldChange) > 1)
 
-res_df$firre_responder <- FALSE
-res_df$firre_responder[which(res_df$Gene.Name %in% unique(sig_fr$gene_name))] <- TRUE
+atac_peaks_gr <- GRanges(seqnames = atac_peaks$Chr,
+                         IRanges(start = atac_peaks$Start, end = atac_peaks$End))
+
+sig_genes_gr <- genes[which(genes$gene_id %in% sig_in_last_timepoint$gene_id)]
+sig_genes_gr
+# sig_genes_gr
+sig_genes_gr_region <- resize(sig_genes_gr, width = width(sig_genes_gr) + 5e4, fix = "center")
+width(sig_genes_gr_region)
+
+sig_genes_gr_region$gene_name
+num_atac_peaks_overlapped <- data.frame(countOverlaps(sig_genes_gr_region, atac_peaks_gr)) %>%
+  rownames_to_column("gene_id") %>%
+  merge(g2s)
+
+ov_list <- findOverlaps(sig_genes_gr_region, atac_peaks_gr)
+
+atac_peaks$matching_fr_gene_id <- NA
+atac_peaks$matching_fr_gene_id[ov_list@to] <- sig_genes_gr_region$gene_id[ov_list@from]
+
+atac_peaks$matching_fr_gene_name <- NA
+atac_peaks$matching_fr_gene_name[ov_list@to] <- sig_genes_gr_region$gene_name[ov_list@from]
+
+
+
+atac_peaks$matching_fr_gene_name[atac_peaks$sig == FALSE] <- NA
+atac_peaks$matching_fr_gene_name[is.na(atac_peaks$sig)] <- NA
+
+
+atac_peaks$firre_responder <- FALSE
+atac_peaks$firre_responder[!is.na(atac_peaks$matching_fr_gene_name)] <- TRUE
+# sig_fr <- fr %>% filter(comparison == "dynamic_firre_induction_vs_control", cell_type == "ESC") %>%
+#   filter(padj < 0.05, log2FoldChange > 0.2)
+# 
+# res_df$firre_responder <- FALSE
+# res_df$firre_responder[which(res_df$Gene.Name %in% unique(sig_in_last_timepoint$gene_name))] <- TRUE
 library(ggrepel)
-ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj), color = firre_responder)) +  
+
+ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj))) +  
   geom_vline(xintercept = 0) +
   geom_hline(yintercept = 0) +
   geom_point() +
   geom_hline(yintercept = -log10(0.05), lty = 2) +
-  geom_text_repel(data = res_df %>% filter(firre_responder == TRUE,
-                                           padj < 0.05), aes(label = Gene.Name)) + 
+  ggtitle("Firre ATAC-seq differential peaks") 
+ggsave("figures/firre_atacseq_differential_peaks_unlabeled.pdf", useDingbats = FALSE)
+
+
+atac_peaks$matching_fr_gene_name[which(atac_peaks$matching_fr_gene_name == "Duox1")] <- "Duox1/Shf"
+
+ggplot(atac_peaks, aes(x = log2FoldChange, y = -log10(padj), color = firre_responder)) +  
+  geom_vline(xintercept = 0) +
+  geom_hline(yintercept = 0) +
+  geom_point() +
+  geom_hline(yintercept = -log10(0.05), lty = 2) +
+  geom_text_repel(data = atac_peaks %>% filter(firre_responder == TRUE,
+                                           padj < 0.05), aes(label = matching_fr_gene_name)) + 
   ggtitle("Firre ATAC-seq differential peaks") 
 ggsave("figures/firre_atacseq_differential_peaks.pdf", useDingbats = FALSE)
+
+length(sig_in_last_timepoint$gene_name)
+length(which(!is.na(atac_peaks$matching_fr_gene_name)))
 
 ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj))) + geom_point()
 

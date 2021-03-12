@@ -213,21 +213,25 @@ esc_short_deg <- esc_short_deg %>%
   mutate(firre_induced = gsub("fi", "firre_induced", firre_induced)) %>%
   unite(condition, firre_ko, firre_induced, remove = F)
   
-esc_short_deg <- read_csv("../01/results/combined_esc_deg.csv")
-esc_short_deg <- esc_short_deg %>%
-  unite(gene_condition, gene_id, condition, remove = F)
+esc_short_deg <- read_csv("../01_firre_induction_vs_control//results/combined_esc_deg.csv")
+sig_in_last_timepoint <- res %>% filter(padj < 0.05, grepl("firre_inducedfirre_induced", result_name)) %>%
+  mutate(timepoint = gsub("timepoint|.firre_inducedfirre_induced", "", result_name) %>% as.numeric()) %>%
+  filter(timepoint == 330, abs(log2FoldChange) > 1)
+# esc_short_deg <- esc_short_deg %>%
+#   unite(gene_condition, gene_id, condition, remove = F)
 fl <- list.files("results/curve_fits/", full.names = T)
 curve_fits <- read_rds("results/curve_fits/batch_1.rds") 
 curve_fits <-curve_fits %>% 
   unite(gene_condition, gene_id, condition, remove = F)
-curve_fits <-curve_fits %>%
-  filter(gene_condition %in% esc_short_deg$gene_condition)
+unique(curve_fits$gene_id)
+curve_fits<-curve_fits %>%
+  filter(gene_id %in% c(unique(sig_in_last_timepoint$gene_id), "ENSMUSG00000118140.1"))
 
 for(i in 2:length(fl)) {
   print(i)
   batch <- read_rds(fl[i]) %>%
   unite(gene_condition, gene_id, condition, remove = F) %>%
-  filter(gene_condition %in% esc_short_deg$gene_condition)
+  filter(gene_id %in% unique(sig_in_last_timepoint$gene_id))
   curve_fits <- bind_rows(curve_fits, batch)
 }
 
@@ -240,7 +244,7 @@ table(curve_fits$condition)
 
 
 format(object.size(curve_fits), units = "GB")
-# write_rds(curve_fits, "results/curve_fits.rds")
+# write_rds(curve_fits, "results/conservative_sig_esc_curve_fits.rds")
 
 curve_fits <- read_rds("results/curve_fits.rds")
 
