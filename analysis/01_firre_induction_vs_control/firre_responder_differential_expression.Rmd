@@ -318,6 +318,28 @@ res <- read_csv("results/combined_esc_deg.csv")
 sig_in_last_timepoint <- res %>% filter(padj < 0.05, grepl("firre_inducedfirre_induced", result_name)) %>%
   mutate(timepoint = gsub("timepoint|.firre_inducedfirre_induced", "", result_name) %>% as.numeric()) %>%
   filter(timepoint == 330, abs(log2FoldChange) > 1)
+res_shrunken <- read_csv("results/combined_esc_deg_shrunken.csv")
+last_timepoint <- res %>% filter(grepl("firre_inducedfirre_induced", result_name)) %>%
+   mutate(timepoint = gsub("timepoint|.firre_inducedfirre_induced", "", result_name) %>% as.numeric()) %>%
+  filter(timepoint == 330)
+library(ggrepel)
+ggplot(last_timepoint %>% filter(padj < 1), aes(x = log2FoldChange, y = -log10(padj))) + 
+    geom_vline(xintercept = 0) + 
+  geom_hline(yintercept = 0) +
+  geom_point()  + 
+  geom_hline(yintercept = -log10(0.04), lty = 2) + 
+  geom_text_repel(data = last_timepoint %>% filter(padj < 0.05, log2FoldChange > 1, gene_name != "Firre"), aes(label = gene_name)) + 
+   geom_text_repel(data = last_timepoint %>% filter(gene_name == "Firre"), aes(label = gene_name)) + 
+  xlim(-4.2,4.2) + 
+  ggtitle("Firre induction: 330 min")
+ggsave("figures/firre_induction_330m_volcano.pdf")
+deg_summary <- last_timepoint %>% filter(padj < 0.05) %>%
+  mutate(deg = ifelse(log2FoldChange > 0, "up", "down")) %>%
+  group_by(deg) %>%
+  summarize(count = n())
+
+
+deg_summary
 res_sig <- res %>% filter(grepl("firre_inducedfirre_induced", result_name),
                           gene_id %in% sig_in_last_timepoint$gene_id) %>%
   mutate(timepoint = gsub("timepoint|.firre_inducedfirre_induced", "", result_name) %>% as.numeric())

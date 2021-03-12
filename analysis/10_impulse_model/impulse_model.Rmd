@@ -213,7 +213,7 @@ esc_short_deg <- esc_short_deg %>%
   mutate(firre_induced = gsub("fi", "firre_induced", firre_induced)) %>%
   unite(condition, firre_ko, firre_induced, remove = F)
   
-
+esc_short_deg <- read_csv("../01/results/combined_esc_deg.csv")
 esc_short_deg <- esc_short_deg %>%
   unite(gene_condition, gene_id, condition, remove = F)
 fl <- list.files("results/curve_fits/", full.names = T)
@@ -260,6 +260,7 @@ curve_fitsl$best_model <- apply(curve_fitsl[,c("lm_bic","sigmoid_bic", "impulse_
 colnames(curve_fits)
 sig_curve_fits <- curve_fits %>% filter(gene_id %in% unique(hmm$gene_id))
 write_rds(sig_curve_fits, "results/sig_curve_fits.rds")
+
 curve_fitsl_sigmoid <- curve_fitsl %>%
   unnest(sigmoid_tidy)
 curve_fitsl <- curve_fitsl %>%
