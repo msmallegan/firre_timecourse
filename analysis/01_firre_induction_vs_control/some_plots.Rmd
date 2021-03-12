@@ -1,0 +1,44 @@
+---
+title: "PLots"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+gencode_gtf <- rtracklayer::import("/scratch/Shares/rinn/genomes/Homo_sapiens/Gencode/v35/gencode.v35.annotation.gtf")
+
+
+n_lncRNA <- length(which(gencode_gtf$gene_type == "lncRNA" & gencode_gtf$type == "gene"))
+n_mRNA <- length(which(gencode_gtf$gene_type == "protein_coding" & gencode_gtf$type == "gene"))
+total_genes <- n_lncRNA + n_mRNA
+# sqrt(n_lncRNA + n_mRNA)
+200*1.77
+
+total_genes/255
+
+255/144
+16/9
+16:9
+c("#424242","#a8404c")
+gene_matrix <- expand_grid(x = 1:255, y = 1:145) %>%
+  dplyr::slice(1:total_genes) %>%
+  mutate(gene_type = c(rep("lncRNA", n_lncRNA), rep("mRNA", n_mRNA)))
+ggplot(gene_matrix, aes(x = x, y = y)) + geom_point(size = 0.0001, color = "#424242") + 
+  theme_void()
+ggsave("human_genes_unlabeled.png", height = 8, width = 15)
+
+ggplot(gene_matrix, aes(x = x, y = y)) + 
+  geom_point(data = gene_matrix %>% filter(gene_type == "lncRNA"), size = 0.0001, color = "#424242") + 
+  geom_point(data = gene_matrix %>% filter(gene_type == "mRNA"), size = 0.0001, color = "#a8404c", alpha = 0.2) + 
+  theme_void() 
+  
+ggsave("human_genes_mrna_red.png", height = 8, width = 15)
+8*1.66
+2500/1500
+```
+
