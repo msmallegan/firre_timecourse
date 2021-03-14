@@ -145,5 +145,83 @@ write_lines(track_lines, "results/th.txt")
 
 ```
 
+```{r}
+bw_files <- list.files("/scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/bigwig/", pattern = ".bigWig")
+bw_files
+names(bw_files) <- gsub("_R1.bigWig", "", bw_files)
+
+for(i in 1:length(bw_files)) {
+  script <- paste0("#!/bin/bash
+#SBATCH -p short
+#SBATCH --job-name=deeptools_profile", i, "
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=michael.smallegan@colorado.edu
+#SBATCH --nodes=1
+#SBATCH --ntasks=4
+#SBATCH --mem=20gb
+#SBATCH --time=3:00:00
+#SBATCH --output=deeptools_profile", i, ".out
+#SBATCH --error=deeptools_profile", i, ".err
+
+source ~/anaconda3/bin/activate deeptools
+
+date; hostname
+
+computeMatrix reference-point \\
+-S /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/bigwig/", bw_files[i]," \\
+-R /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/genome/gencode.vM25.annotation.bed \\
+--outFileName ", names(bw_files)[i], ".computeMatrix.mat.gz \\
+--outFileNameMatrix ", names(bw_files)[i],".computeMatrix.vals.mat.tab \\
+--outFileSortedRegions ", names(bw_files)[i],".sorted_regions.txt \\
+-a 3000 -b 3000 \\
+--referencePoint TSS \\
+--numberOfProcessors 4
+
+date
+")
+
+write_lines(script, paste0("bin/deeptools_profile/", names(bw_files)[i], ".sh"))
+}
+
+submit_script <- c("#!/bin/bash", paste0("sbatch ", names(bw_files), ".sh"))
+write_lines(submit_script, "bin/deeptools_profile/submit.sh")
+
+```
+
+
+```{bash}
+# Use deeptools to plot the TSS profile metaplot
+source ~/anaconda3/bin/activate deeptools
+
+# Gene bed file: /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/genome/gencode.vM25.annotation.bed
+# Test bigWig: /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/bigwig/KOiTg_48_IP_R1.bigWig
+
+
+#!/bin/bash
+#SBATCH -p short
+#SBATCH --job-name=deeptools_profile1
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=michael.smallegan@colorado.edu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --mem=100gb
+#SBATCH --time=10:00:00
+#SBATCH --output=deeptools_profile1.out
+#SBATCH --error=deeptools_profile1.err
+computeMatrix reference-point \
+--scoreFileName /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/bigwig/KOiTg_48_IP_R1.bigWig \
+--regionsFileName /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/genome/gencode.vM25.annotation.bed \
+--outFileName KOiTg_48_IP_R1.computeMatrix.mat.gz
+--outFileNameMatrix KOiTg_48_IP_R1.computeMatrix.vals.mat.tab
+--outFileSortedRegions KOiTg_48_IP_R1_sorted_regions \
+--upstream 3000 --downstream 3000 \
+--referencePoint TSS \
+--numberOfProcessors 4
+
+
+
+```
+
+
 
 
