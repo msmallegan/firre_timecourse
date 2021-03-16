@@ -39,3 +39,6 @@ work/*
 *bin*
 *data*
 *.txt
+*.xls
+*.gappedPeak
+*.broadPeak
