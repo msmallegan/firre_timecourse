@@ -1,7 +1,9 @@
 ---
 title: "Firre timecourse sneak peak"
-output: html_document
-editor_options: 
+output:
+  html_document: default
+  pdf_document: default
+editor_options:
   chunk_output_type: console
 ---
 
@@ -30,3 +32,14 @@ And anyway, I know I'm preaching to the choir on this one since Arpeggio is alre
 [^2]: One cool thing about the Dox timecourses is that not much seems to change until the 180 min mark and then lots of things change. 
 
 ![](figures/firre_timecourse_vs_zero_profile.png)
+If we take a pretty conservative cutoff, there are really only 15 genes changing. 
+
+![](figures/firre_responders_conservative.png)
+
+What's really cool (and is a more recent result) is that we also did an ATAC-seq timecourse and what we find is that only ~50 peaks change. However, 9 of the 15 DEGs had a corresponding ATAC-seq peak changing.
+
+![](figures/firre_atacseq_differential_peaks.png)
+
+What we'd really like to find at this point is which TFs might be mediating this interaction. We've looked at the TFBS motif instances in the ATAC-seq peaks that are changing, but I think that PRO-seq will be a much better tool to see which TFs are activated and at what timepoint. We're thinking that we don't need to have a PRO-seq timecourse for all four cell lines, but rather just for the WT firre_induction line and WT control line. 
+
+I don't want to say too much more here since this is already a little wordy, but I wanted you guys to get a global picture of this project and our aims so you could see where the PRO-seq is fitting in. In short, I'm pretty stoked on what PRO-seq and the MD-scores can tell us about what Firre is doing!
