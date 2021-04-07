@@ -7,6 +7,7 @@ editor_options:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
 ```
 
 ### Call peaks on the merged dataset
@@ -221,6 +222,14 @@ computeMatrix reference-point \
 
 
 ```
+
+```{r}
+fl <- list.files("bin/deeptools_profile/", pattern = ".mat.tab",
+                 full.names = TRUE)
+
+hmm <- read_table(fl[1])
+```
+
 
 
 
