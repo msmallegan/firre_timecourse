@@ -6,6 +6,7 @@ editor_options:
 ---
 
 ```{r setup, include=FALSE}
+options(stringsAsFactors = T)
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 ```
@@ -27,9 +28,400 @@ library(tidyverse)
 #SBATCH --error=h3k27me3_chip_macs.err
 date; hostname
 source ~/anaconda3/bin/activate macs3
-macs3 callpeak -f BAMPE -t /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/KO_CTL_48_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/KO_CTL_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/KOiTg_48_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/KOiTg_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/WT_CTL_48_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/WT_CTL_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/WTiTg_48_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/WTiTg_IP_R1.mLb.clN.sorted.bam -c /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/KO_CTL_48_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/KO_CTL_48_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/KO_CTL_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/KOiTg_48_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/KOiTg_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/WT_CTL_48_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/WT_CTL_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/WTiTg_48_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/WTiTg_R1.mLb.clN.sorted.bam -g mm -n firre_h3k27me3_chipseq --broad --broad-cutoff 0.1 -B
+macs3 callpeak -f BAMPE -t /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/bwa/mergedLibrary/KO_CTL_48_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/bwa/mergedLibrary/KO_CTL_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/bwa/mergedLibrary/KOiTg_48_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/bwa/mergedLibrary/KOiTg_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/bwa/mergedLibrary/WT_CTL_48_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/bwa/mergedLibrary/WT_CTL_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/bwa/mergedLibrary/WTiTg_48_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/bwa/mergedLibrary/WTiTg_IP_R1.mLb.clN.sorted.bam -c /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/bwa/mergedLibrary/KO_CTL_48_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/bwa/mergedLibrary/KO_CTL_48_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/bwa/mergedLibrary/KO_CTL_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/bwa/mergedLibrary/KOiTg_48_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/bwa/mergedLibrary/KOiTg_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/bwa/mergedLibrary/WT_CTL_48_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/bwa/mergedLibrary/WT_CTL_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/bwa/mergedLibrary/WTiTg_48_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/bwa/mergedLibrary/WTiTg_R1.mLb.clN.sorted.bam -g mm -n firre_h3k27me3_chipseq --broad --broad-cutoff 0.1 -B
 date
 ```
+
+
+
+```{r}
+library(Rsubread)
+# Create an SAF file
+merged_peaks <- rtracklayer::import("macs/firre_h3k27me3_chipseq_peaks.broadPeak")
+merged_peaks_df <- merged_peaks %>% as.data.frame()
+
+merged_peaks_df %>% filter(seqnames == "chr2", end == 122348081)
+
+merged_peaks_saf <- merged_peaks_df %>%
+  dplyr::select(name,seqnames, start, end, strand) %>%
+  dplyr::rename(GeneID = name,
+                Chr = seqnames,
+                Start = start,
+                End = end,
+                Strand = strand)
+
+write.table(merged_peaks_saf, "data/merged_peaks.saf", quote = F, row.names = F, sep = "\t")
+
+bam_files <- list.files("/scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results_all_individual_runs/bwa/mergedLibrary/", pattern = ".bam$", full.names = T)
+
+counts <- featureCounts(bam_files, 
+                        annot.ext = "data/merged_peaks.saf", 
+                        isPairedEnd = TRUE, nthreads = 16)
+write_rds(counts, "results/merged_peak_counts.rds")
+counts <- read_rds("results/merged_peak_counts.rds")
+```
+
+```{r}
+chipr_peaks <- read.table("data/chipr/h3k27me3_ip_chipr_optimal.bed") 
+names(chipr_peaks) <- c("chr",	"start", "end", "name", "score", "strand", "signalValue", "pval", "qval")
+
+chipr_peaks_saf <- chipr_peaks %>%
+  dplyr::select(name, chr, start, end, strand) %>%
+  dplyr::rename(GeneID = name,
+                Chr = chr,
+                Start = start,
+                End = end,
+                Strand = strand)
+write.table(chipr_peaks_saf, "data/chipr_peaks.saf", quote = F, row.names = F, sep = "\t")
+bam_files <- list.files("/scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results_all_individual_runs/bwa/mergedLibrary/", pattern = ".bam$", full.names = T)
+chipr_counts <- featureCounts(bam_files, 
+                        annot.ext = "data/chipr_peaks.saf", 
+                        isPairedEnd = TRUE, nthreads = 16)
+write_rds(chipr_counts, "results/chipr_peak_counts.rds")
+chipr_counts <- read_rds("results/chipr_peak_counts.rds")
+```
+
+
+```{r}
+
+
+count_matrix <- chipr_counts$counts
+samples <- read.csv("data/h3k27me3_firre_samplesheet.csv")
+stopifnot(all(colnames(count_matrix) == samples$bam_file))
+colnames(count_matrix) <- samples$sample_id
+
+# Subset the count matrix to just the peaks in CHIPR optimal peaks
+# chipr_merged_peaks <- subsetByOverlaps(merged_peaks, chipr_peaks_gr)
+# chipr_merged_peaks_df <- chipr_merged_peaks %>% as.data.frame()
+# count_matrix <- count_matrix[chipr_merged_peaks_df$name,]
+
+
+samples <- samples %>% unite(itg_timepoint, firre_itg, timepoint, remove = FALSE)
+
+samples$condition <- "control"
+samples[samples$itg_timepoint == "ITG_48", "condition"] <- "induced"
+# Transgene induced
+ip_samples <- samples %>% filter(h3k27me3 == "IP", timepoint == 48)
+ip_counts <- count_matrix[,ip_samples$sample_id]
+
+
+
+library(DESeq2)
+
+dds <- DESeqDataSetFromMatrix(countData = ip_counts,
+                              colData = ip_samples,
+                              design = ~ firre_itg)
+dds <- DESeq(dds)
+resultsNames(dds)
+res <- results(dds, name = "firre_itg_ITG_vs_CTL")
+
+res_df <- res %>% as.data.frame()
+
+sig <- res_df %>% filter(padj < 0.05)
+
+ggplot(res_df, aes(x = log10(baseMean), y = log2FoldChange)) + geom_point()
+ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj))) + geom_point()
+```
+
+```{r}
+wt_ip_samples <- samples %>% filter(firre_ko == "WT", h3k27me3 == "IP")
+wt_ip_counts <- count_matrix[,wt_ip_samples$sample_id]
+
+dds <- DESeqDataSetFromMatrix(countData = wt_ip_counts,
+                              colData = wt_ip_samples,
+                              design = ~ condition)
+dds <- DESeq(dds)
+resultsNames(dds)
+res <- results(dds, name = "condition_induced_vs_control")
+res_df <- res %>% as.data.frame()
+sig <- res_df %>% filter(padj < 0.05)
+
+ggplot(res_df, aes(x = log10(baseMean), y = log2FoldChange)) + geom_point()
+ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj))) + geom_point()
+```
+
+```{r}
+ko_ip_samples <- samples %>% filter(firre_ko == "KO", h3k27me3 == "IP")
+ko_ip_counts <- count_matrix[,ko_ip_samples$sample_id]
+
+dds <- DESeqDataSetFromMatrix(countData = ko_ip_counts,
+                              colData = ko_ip_samples,
+                              design = ~ condition)
+dds <- DESeq(dds)
+resultsNames(dds)
+res <- results(dds, name = "condition_induced_vs_control")
+res_df <- res %>% as.data.frame()
+sig <- res_df %>% filter(padj < 0.05)
+
+ggplot(res_df, aes(x = log10(baseMean), y = log2FoldChange)) + geom_point()
+ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj))) + geom_point()
+```
+
+```{r}
+# 48 itg vs 0 itg
+itg_ip_samples <- samples %>% filter(h3k27me3 == "IP", firre_itg == "ITG")
+itg_ip_counts <- count_matrix[,itg_ip_samples$sample_id]
+itg_ip_samples$timepoint <- factor(itg_ip_samples$timepoint, c("0", "48"))
+
+dds <- DESeqDataSetFromMatrix(countData = itg_ip_counts,
+                              colData = itg_ip_samples,
+                              design = ~ timepoint)
+dds <- DESeq(dds)
+resultsNames(dds)
+res <- results(dds, name = "timepoint_48_vs_0")
+res_df <- res %>% as.data.frame()
+sig <- res_df %>% filter(padj < 0.05)
+
+ggplot(res_df, aes(x = log10(baseMean), y = log2FoldChange)) + geom_point()
+ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj))) + geom_point()
+```
+
+
+
+```{r}
+# 48 ctl vs 0 ctl
+
+ctl_ip_samples <- samples %>% filter(h3k27me3 == "IP", firre_itg == "CTL")
+ctl_ip_counts <- count_matrix[,ctl_ip_samples$sample_id]
+ctl_ip_samples$timepoint <- factor(ctl_ip_samples$timepoint, c("0", "48"))
+
+dds <- DESeqDataSetFromMatrix(countData = ctl_ip_counts,
+                              colData = ctl_ip_samples,
+                              design = ~ timepoint)
+dds <- DESeq(dds)
+resultsNames(dds)
+res <- results(dds, name = "timepoint_48_vs_0")
+res_df <- res %>% as.data.frame()
+sig <- res_df %>% filter(padj < 0.05)
+
+ggplot(res_df, aes(x = log10(baseMean), y = log2FoldChange)) + geom_point()
+ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj))) + geom_point()
+```
+
+
+
+```{r}
+zero_samples <- samples %>% filter(h3k27me3 == "IP", condition == "control")
+zero_counts <- count_matrix[,zero_samples$sample_id]
+
+dds <- DESeqDataSetFromMatrix(countData = zero_counts,
+                              colData = zero_samples,
+                              design = ~ firre_ko)
+dds <- DESeq(dds)
+resultsNames(dds)
+res <- results(dds, name = "firre_ko_WT_vs_KO")
+res_df <- res %>% as.data.frame()
+sig <- res_df %>% filter(padj < 0.05)
+
+
+
+ggplot(res_df, aes(x = log10(baseMean), y = log2FoldChange)) + geom_point()
+ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj))) + geom_point()
+```
+
+```{r}
+fortyeight_samples <- samples %>% filter(h3k27me3 == "IP", timepoint == 48)
+fortyeight_counts <- count_matrix[,fortyeight_samples$sample_id]
+
+dds <- DESeqDataSetFromMatrix(countData = fortyeight_counts,
+                              colData = fortyeight_samples,
+                              design = ~ firre_ko)
+dds <- DESeq(dds)
+resultsNames(dds)
+res <- results(dds, name = "firre_ko_WT_vs_KO")
+res_df <- res %>% as.data.frame()
+sig <- res_df %>% filter(padj < 0.05)
+
+ggplot(res_df, aes(x = log10(baseMean), y = log2FoldChange)) + geom_point()
+ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj))) + geom_point()
+```
+
+```{r}
+ip_samples <- samples %>% filter(h3k27me3 == "IP", condition == "control")
+ip_counts <- count_matrix[,ip_samples$sample_id]
+ip_samples$firre_ko <- factor(ip_samples$firre_ko, levels = c("WT", "KO"))
+dds <- DESeqDataSetFromMatrix(countData = ip_counts,
+                              colData = ip_samples,
+                              design = ~ firre_ko)
+dds <- DESeq(dds)
+resultsNames(dds)
+res <- results(dds, name = "firre_ko_KO_vs_WT")
+res_df <- res %>% as.data.frame()
+sig <- res_df %>% filter(padj < 0.05)
+
+ggplot(res_df, aes(x = log10(baseMean), y = log2FoldChange)) + geom_point()
+ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj))) + geom_point()
+```
+
+
+```{r}
+sig <- sig %>% rownames_to_column("name")
+sig <- merge(sig, chipr_peaks)
+
+sig <- sig %>% mutate(width = end - start)
+nrow(sig) / nrow(chr11_chipr)
+chr11_chipr <- chipr_peaks %>% filter(chr == "chr11")
+```
+
+
+
+
+```{r}
+ip_samples <- samples %>% filter(h3k27me3 == "IP")
+ip_counts <- count_matrix[,ip_samples$sample_id]
+
+ip_samples$firre_ko <- factor(ip_samples$firre_ko, levels = c("WT", "KO"))
+ip_samples$timepoint <- factor(ip_samples$timepoint, levels = c("0", "48"))
+dds <- DESeqDataSetFromMatrix(countData = ip_counts,
+                              colData = ip_samples,
+                              design = ~ firre_itg + timepoint + firre_itg*timepoint)
+dds <- DESeq(dds, test = "LRT",
+             reduced = ~ firre_itg + timepoint)
+resultsNames(dds)
+res <- results(dds, name = "firre_itgITG.timepoint48")
+
+res_df <- res %>% as.data.frame()
+
+sig <- res_df %>% filter(padj < 0.05)
+
+ggplot(res_df, aes(x = log10(baseMean), y = log2FoldChange)) + geom_point()
+ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj))) + geom_point()
+```
+
+
+
+
+
+
+
+
+```{r}
+# collect the peakfiles
+peak_files <- list.files("/scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results_all_individual_runs/broad_peaks", pattern = ".broadPeak", full.names = T)
+cat(peak_files)
+```
+
+
+```{bash}
+# CHIPR
+# source ~/anaconda3/bin/activate chipr
+chipr -i /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results_all_individual_runs/broad_peaks/KO_CTL_48_IP_R1_peaks.broadPeak /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results_all_individual_runs/broad_peaks/KO_CTL_IP_R1_peaks.broadPeak /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results_all_individual_runs/broad_peaks/KOiTg_48_IP_R1_peaks.broadPeak /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results_all_individual_runs/broad_peaks/KOiTg_IP_R1_peaks.broadPeak /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results_all_individual_runs/broad_peaks/WT_CTL_48_IP_R1_peaks.broadPeak /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results_all_individual_runs/broad_peaks/WT_CTL_IP_R1_peaks.broadPeak /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results_all_individual_runs/broad_peaks/WTiTg_48_IP_R1_peaks.broadPeak /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results_all_individual_runs/broad_peaks/WTiTg_IP_R1_peaks.broadPeak -m 2 -o h3k27me3_ip_chipr
+```
+
+```{r}
+# Peaks passing IDR
+chipr_peaks <- read.table("data/chipr/h3k27me3_ip_chipr_optimal.bed") 
+names(chipr_peaks) <- c("chr",	"start", "end", "name", "score", "strand", "signalValue", "pval", "qval")
+
+chipr_bed <- chipr_peaks %>% dplyr::select(chr, start, end) %>% filter(grepl("chr", chr))
+write.table(chipr_bed, "results/chipr_peaks.bed", sep = "\t", quote = F, col.names = F, row.names = F)
+
+sig_chipr_peaks <- chipr_peaks %>% filter(qval < 0.05)
+
+chipr_peaks_gr <- GRanges(seqnames = chipr_peaks$chr,
+                          ranges = IRanges(start = chipr_peaks$start,
+                                           end = chipr_peaks$end))
+
+
+chipr_merge_ov <- findOverlaps(chipr_peaks_gr, merged_peaks)
+
+table(1:length(chipr_peaks_gr) %in% unique(chipr_merge_ov@from))
+
+
+
+```
+
+
+```{r}
+# WTiTG_0
+# WT_CTL_0
+# WT_CTL_48
+
+# /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/bwa/mergedLibrary/WTiTg_48_IP_R1.mLb.clN.sorted.bam
+```
+
+
+
+
+```{bash}
+#!/bin/bash
+#SBATCH -p short
+#SBATCH --job-name=h3k27me3_chipseq
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=michael.smallegan@colorado.edu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --mem=30gb
+#SBATCH --time=1:00:00
+#SBATCH --output=h3k27me3_chip_macs.out
+#SBATCH --error=h3k27me3_chip_macs.err
+
+date; hostname
+source ~/anaconda3/bin/activate macs3
+macs3 callpeak -f BAMPE -t /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results_all_individual_runs/bwa/mergedLibrary/WTiTg_48_IP_R1.mLb.clN.sorted.bam -c /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results_all_individual_runs/bwa/mergedLibrary/WTiTg_48_R1.mLb.clN.sorted.bam -g mm -n wt_itg_h3k27me3_chipseq --broad --broad-cutoff 0.1 -B
+date
+```
+
+```{bash}
+#!/bin/bash
+#SBATCH -p short
+#SBATCH --job-name=h3k27me3_chipseq_ko
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=michael.smallegan@colorado.edu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --mem=30gb
+#SBATCH --time=1:00:00
+#SBATCH --output=h3k27me3_chip_macs.out
+#SBATCH --error=h3k27me3_chip_macs.err
+
+date; hostname
+source ~/anaconda3/bin/activate macs3
+macs3 callpeak -f BAMPE -t /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results_all_individual_runs/bwa/mergedLibrary/KOiTg_48_IP_R1.mLb.clN.sorted.bam -c /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results_all_individual_runs/bwa/mergedLibrary/KOiTg_48_R1.mLb.clN.sorted.bam -g mm -n ko_itg_h3k27me3_chipseq --broad --broad-cutoff 0.1 -B
+date
+```
+
+
+```{bash}
+#!/bin/bash
+#SBATCH -p short
+#SBATCH --job-name=h3k27me3_chipseq_ctl
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=michael.smallegan@colorado.edu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --mem=100gb
+#SBATCH --time=3:00:00
+#SBATCH --output=h3k27me3_chip_macs_itg.out
+#SBATCH --error=h3k27me3_chip_macs_itg.err
+
+date; hostname
+source ~/anaconda3/bin/activate macs3
+macs3 callpeak -f BAMPE -t /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results_all_individual_runs/bwa/mergedLibrary/WT_CTL_48_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results_all_individual_runs/bwa/mergedLibrary/WT_CTL_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results_all_individual_runs/bwa/mergedLibrary/WTiTg_IP_R1.mLb.clN.sorted.bam -c /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results_all_individual_runs/bwa/mergedLibrary/WT_CTL_48_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results_all_individual_runs/bwa/mergedLibrary/WT_CTL_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results_all_individual_runs/bwa/mergedLibrary/WTiTg_R1.mLb.clN.sorted.bam -g mm -n wt_ctl_h3k27me3_chipseq --broad --broad-cutoff 0.1 -B
+date
+```
+
+```{bash}
+#!/bin/bash
+#SBATCH -p short
+#SBATCH --job-name=h3k27me3_chipseq_ctl_ko
+#SBATCH --mail-type=END,FAIL
+#SBATCH --mail-user=michael.smallegan@colorado.edu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --mem=100gb
+#SBATCH --time=10:00:00
+#SBATCH --output=h3k27me3_chip_macs_itg.out
+#SBATCH --error=h3k27me3_chip_macs_itg.err
+
+date; hostname
+source ~/anaconda3/bin/activate macs3
+macs3 callpeak -f BAMPE -t /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results_all_individual_runs/bwa/mergedLibrary/KO_CTL_48_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results_all_individual_runs/bwa/mergedLibrary/KO_CTL_IP_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results_all_individual_runs/bwa/mergedLibrary/KOiTg_IP_R1.mLb.clN.sorted.bam -c /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results_all_individual_runs/bwa/mergedLibrary/KO_CTL_48_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results_all_individual_runs/bwa/mergedLibrary/KO_CTL_R1.mLb.clN.sorted.bam /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results_all_individual_runs/bwa/mergedLibrary/KOiTg_R1.mLb.clN.sorted.bam -g mm -n ko_ctl_h3k27me3_chipseq --broad --broad-cutoff 0.1 -B
+date
+```
+
+
+
 
 ### Get the data ready for UCSC trackhub
 
@@ -47,10 +439,10 @@ strand - Defines the strand. Either "." (=no strand) or "+" or "-".
 ```{r}
 # http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64.v385/bedToBigBed
 # http://hgdownload.soe.ucsc.edu/goldenPath/mm10/bigZips/mm10.chrom.sizes
-fl <- list.files("/scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/macs/broadPeak", 
+fl <- list.files("/scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/bwa/mergedLibrary/macs/broadPeak", 
                  full.names = T, pattern = ".broadPeak")
 bp <- lapply(fl, rtracklayer::import)
-names(bp) <- gsub("/scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/macs/broadPeak/", "", fl)
+names(bp) <- gsub("/scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/bwa/mergedLibrary/macs/broadPeak/", "", fl)
 # Filter to canonical chrs
 chrs <- c(paste0("chr", 1:19), "chrM", "chrX", "chrY")
 for(i in 1:length(bp)) {
@@ -64,14 +456,14 @@ for(i in 1:length(bp)) {
   write.table(bpdf[[i]] %>% dplyr::select(seqnames, start, end, name, score, strand, signalValue, pValue, qValue) %>%
                 mutate(strand = "."),
               paste0("results/individual_peak_calls/broadPeak/", names(bp)[i]),
-               quote = F, row.names = F, col.names = F)
+              quote = F, row.names = F, col.names = F)
 }
 
 f <- data.frame(files = list.files("results/individual_peak_calls/broadPeak", full.names = T, pattern = "broadPeak")) %>%
   mutate(rep_name = gsub("results/individual_peak_calls/broadPeak/|_peaks.broadPeak", "", files),
          command = paste0(">&2 echo '", gsub("-", "_", rep_name), "\n'; bedToBigBed -as=fmt.as -type=bed6+3 -extraIndex=signalValue,pValue,qValue ../results/individual_peak_calls/broadPeak/", rep_name, "_peaks.broadPeak mm10.chrom.sizes ../results/individual_peak_calls/bigBed/", rep_name, ".bb")) %>%
   dplyr::select(command) %>%
-    write.table("bin/broadpeak2bb.sh", quote = F, col.names = F, row.names = F)
+  write.table("bin/broadpeak2bb.sh", quote = F, col.names = F, row.names = F)
 
 ```
 
@@ -86,30 +478,30 @@ rsync results/individual_peak_calls/bigBed/* mism6893@biof-trackhub.colorado.edu
 
 bb_fl <- list.files("results/individual_peak_calls/bigBed")
 conditions <- gsub("_IP_R1.bb", "", bb_fl)
-bw_fl <- list.files("/scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/bigwig", pattern = ".bigWig")
+bw_fl <- list.files("/scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/bwa/mergedLibrary/bigwig", pattern = ".bigWig")
 
 
 i <- 2
 track_lines <- c()
 for(i in 1:length(conditions)){
   
-
-tfl_bb <- bb_fl[grep(paste0(conditions[i], "_IP"),bb_fl)]
-
-ip_track <- bw_fl[grep(paste0(conditions[i], "_IP"), bw_fl)]
-input_track <- bw_fl[grepl(paste0(conditions[i], "_R1"), bw_fl)]
-
-
-names(tfl_bb) <- gsub("_R1.bb", "", tfl_bb)
-names(input_track) <- gsub("_R1.bigWig", "", input_track)
-names(ip_track) <- gsub("_R1.bigWig", "", ip_track)
-
-
-
-
-
-# Make the IP track
-ip <- paste0("track ", names(ip_track) ,"
+  
+  tfl_bb <- bb_fl[grep(paste0(conditions[i], "_IP"),bb_fl)]
+  
+  ip_track <- bw_fl[grep(paste0(conditions[i], "_IP"), bw_fl)]
+  input_track <- bw_fl[grepl(paste0(conditions[i], "_R1"), bw_fl)]
+  
+  
+  names(tfl_bb) <- gsub("_R1.bb", "", tfl_bb)
+  names(input_track) <- gsub("_R1.bigWig", "", input_track)
+  names(ip_track) <- gsub("_R1.bigWig", "", ip_track)
+  
+  
+  
+  
+  
+  # Make the IP track
+  ip <- paste0("track ", names(ip_track) ,"
 bigDataUrl https://biof-trackhub.colorado.edu/rinnlab/micahel/firre_timecourse/firre_h3k27me3_chipseq/", ip_track,"
 shortLabel ", names(ip_track) ,"
 longLabel ", names(ip_track) ,"
@@ -118,8 +510,8 @@ type bigWig
 visibility full
 
 ")
-
-input <- paste0("track ", names(input_track) ,"_input
+  
+  input <- paste0("track ", names(input_track) ,"_input
 bigDataUrl https://biof-trackhub.colorado.edu/rinnlab/micahel/firre_timecourse/firre_h3k27me3_chipseq/", input_track,"
 shortLabel ", names(input_track) ,"
 longLabel ", names(input_track) ,"
@@ -128,9 +520,9 @@ type bigWig
 visibility full
 
 ")
-
-# Peaks track
-peaks <- paste0("track ", names(tfl_bb) ,"_peaks
+  
+  # Peaks track
+  peaks <- paste0("track ", names(tfl_bb) ,"_peaks
 bigDataUrl https://biof-trackhub.colorado.edu/rinnlab/micahel/firre_timecourse/firre_h3k27me3_chipseq/", tfl_bb,"
 shortLabel ", names(tfl_bb) ,"_peaks
 longLabel ", names(tfl_bb) ,"_peaks
@@ -139,7 +531,7 @@ type bigBed
 visibility full
 
 ")
-track_lines <- c(track_lines, ip, input, peaks)
+  track_lines <- c(track_lines, ip, input, peaks)
 }
 
 write_lines(track_lines, "results/th.txt")
@@ -147,7 +539,7 @@ write_lines(track_lines, "results/th.txt")
 ```
 
 ```{r}
-bw_files <- list.files("/scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/bigwig/", pattern = ".bigWig")
+bw_files <- list.files("/scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/bwa/mergedLibrary/bigwig/", pattern = ".bigWig")
 bw_files
 names(bw_files) <- gsub("_R1.bigWig", "", bw_files)
 
@@ -169,8 +561,8 @@ source ~/anaconda3/bin/activate deeptools
 date; hostname
 
 computeMatrix reference-point \\
--S /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/bigwig/", bw_files[i]," \\
--R /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/genome/gencode.vM25.annotation.bed \\
+-S /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/bwa/mergedLibrary/bigwig/", bw_files[i]," \\
+-R /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/genome/gencode.vM25.annotation.bed \\
 --outFileName ", names(bw_files)[i], ".computeMatrix.mat.gz \\
 --outFileNameMatrix ", names(bw_files)[i],".computeMatrix.vals.mat.tab \\
 --outFileSortedRegions ", names(bw_files)[i],".sorted_regions.txt \\
@@ -180,8 +572,8 @@ computeMatrix reference-point \\
 
 date
 ")
-
-write_lines(script, paste0("bin/deeptools_profile/", names(bw_files)[i], ".sh"))
+  
+  write_lines(script, paste0("bin/deeptools_profile/", names(bw_files)[i], ".sh"))
 }
 
 submit_script <- c("#!/bin/bash", paste0("sbatch ", names(bw_files), ".sh"))
@@ -194,8 +586,8 @@ write_lines(submit_script, "bin/deeptools_profile/submit.sh")
 # Use deeptools to plot the TSS profile metaplot
 source ~/anaconda3/bin/activate deeptools
 
-# Gene bed file: /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/genome/gencode.vM25.annotation.bed
-# Test bigWig: /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/bigwig/KOiTg_48_IP_R1.bigWig
+# Gene bed file: /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/genome/gencode.vM25.annotation.bed
+# Test bigWig: /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/bwa/mergedLibrary/bigwig/KOiTg_48_IP_R1.bigWig
 
 
 #!/bin/bash
@@ -210,8 +602,8 @@ source ~/anaconda3/bin/activate deeptools
 #SBATCH --output=deeptools_profile1.out
 #SBATCH --error=deeptools_profile1.err
 computeMatrix reference-point \
---scoreFileName /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/bwa/mergedLibrary/bigwig/KOiTg_48_IP_R1.bigWig \
---regionsFileName /scratch/Shares/rinn/JR/FIRRE_KO_PRC2_CHIPSEQ/results/genome/gencode.vM25.annotation.bed \
+--scoreFileName /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/bwa/mergedLibrary/bigwig/KOiTg_48_IP_R1.bigWig \
+--regionsFileName /scratch/Shares/rinn/JR/FIRRE_KO_TG_K27me3_CHIPSEQ/results/genome/gencode.vM25.annotation.bed \
 --outFileName KOiTg_48_IP_R1.computeMatrix.mat.gz
 --outFileNameMatrix KOiTg_48_IP_R1.computeMatrix.vals.mat.tab
 --outFileSortedRegions KOiTg_48_IP_R1_sorted_regions \
@@ -222,6 +614,27 @@ computeMatrix reference-point \
 
 
 ```
+
+```{bash}
+plotHeatmap \
+-m WT_CTL_48.computeMatrix.mat.gz \
+-out WT_CTL_48_TSS_2kb.pdf \
+--colorMap jet \
+--missingDataColor "#FFF6EB" \
+--heatmapHeight 15 \
+--plotTitle 'WT_CTL_48_TSS_2kb'
+
+
+
+plotHeatmap \
+-m WTiTg_48.computeMatrix.mat.gz \
+-out WTiTg_48_TSS_2kb.pdf \
+--colorMap jet \
+--missingDataColor "#FFF6EB" \
+--heatmapHeight 15 \
+--plotTitle 'WTiTg_48_TSS_2kb'
+```
+
 
 ```{r}
 fl <- list.files("bin/deeptools_profile/", pattern = ".mat.tab",
