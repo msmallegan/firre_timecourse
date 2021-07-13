@@ -1,0 +1,35 @@
+---
+title: "Firre predictors"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+options(stringsAsFactors = FALSE)
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+```{bash}
+wget http://dee2.io/mx/hsapiens_accessions.tsv.bz2
+bzip2 -d hsapiens_accessions.tsv.bz2
+wget http://dee2.io/mx/hsapiens_ke.tsv.bz2
+wget http://dee2.io/mx/hsapiens_se.tsv.bz2
+wget http://dee2.io/mx/hsapiens_qc.tsv.bz2
+
+# Get annotation file
+wget ftp://ftp.ensembl.org/pub/release-90/gtf/homo_sapiens/Homo_sapiens.GRCh38.90.gtf.gz
+```
+
+```{r}
+genes <- rtracklayer::import("data/Homo_sapiens.GRCh38.90.gtf") %>%
+  as.data.frame()
+```
+
+```{r}
+
+```
+
+
+

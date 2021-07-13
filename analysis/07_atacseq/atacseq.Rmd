@@ -12,6 +12,8 @@ options(stringsAsFactors = F)
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(DESeq2)
+library(bamsignals)
+library(Rsamtools)
 source("../util/_plot_theme.R")
 ```
 
@@ -27,9 +29,6 @@ atac_c_fc <- read.table("../../atacseq/results/bwa/mergedLibrary/macs/broadPeak/
 ```
 
 ```{r}
-library(bamsignals)
-
-library(Rsamtools)
 
 atac_consensus_gr <- GRanges(seqnames = atac_consensus$Chr,
                              IRanges(start = atac_consensus$Start,
@@ -537,9 +536,18 @@ sig_in_last_timepoint <- fr %>% filter(padj < 0.05, grepl("firre_inducedfirre_in
 
 atac_peaks_gr <- GRanges(seqnames = atac_peaks$Chr,
                          IRanges(start = atac_peaks$Start, end = atac_peaks$End))
+genes <- rtracklayer::import("/scratch/Shares/rinn/genomes/Mus_musculus/Gencode/M25/gencode.vM25.annotation.gtf")
+table(genes$type)
+genes <- genes[genes$type == "gene"]
 
+g2s <- genes %>% as.data.frame() %>%
+  dplyr::select(gene_id, gene_name)
 sig_genes_gr <- genes[which(genes$gene_id %in% sig_in_last_timepoint$gene_id)]
 sig_genes_gr
+sig_genes_gr$score <- 0
+sig_genes_gr$name <- sig_genes_gr$gene_name
+rtracklayer::export(sig_genes_gr, "firre_responder_genes_minimal_set.bed")
+
 # sig_genes_gr
 sig_genes_gr_region <- resize(sig_genes_gr, width = width(sig_genes_gr) + 5e4, fix = "center")
 width(sig_genes_gr_region)
@@ -571,6 +579,14 @@ atac_peaks$firre_responder[!is.na(atac_peaks$matching_fr_gene_name)] <- TRUE
 # res_df$firre_responder <- FALSE
 # res_df$firre_responder[which(res_df$Gene.Name %in% unique(sig_in_last_timepoint$gene_name))] <- TRUE
 library(ggrepel)
+
+
+sig_atac <- res_df %>% filter(padj < 0.05)
+sig_atac_gr <- GRanges(seqnames = sig_atac$Chr, 
+                       ranges = IRanges(start = sig_atac$Start,
+                                        end = sig_atac$End))
+sig_atac_gr$score <- round(-log10(sig_atac$padj) * (1000 / max(-log10(sig_atac$padj))))
+rtracklayer::export(sig_atac_gr, "firre_responding_atac_peaks_pval0.05_mm10.bed")
 
 ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj))) +  
   geom_vline(xintercept = 0) +

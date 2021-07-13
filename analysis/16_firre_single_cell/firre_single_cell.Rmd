@@ -1,0 +1,44 @@
+---
+title: "Firre single cell"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+options(stringsAsFactors = FALSE)
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+```{r}
+# wget https://cran.r-project.org/src/contrib/Archive/Seurat/Seurat_3.2.3.tar.gz
+install.packages("Seurat")
+```
+
+```{r}
+library(Matrix)
+matrix_dir = "/opt/sample345/outs/filtered_feature_bc_matrix/"
+barcode.path <- paste0(matrix_dir, "barcodes.tsv.gz")
+features.path <- paste0(matrix_dir, "features.tsv.gz")
+matrix.path <- paste0(matrix_dir, "matrix.mtx.gz")
+mat <- readMM(file = matrix.path)
+feature.names = read.delim(features.path,
+                           header = FALSE,
+                           stringsAsFactors = FALSE)
+barcode.names = read.delim(barcode.path,
+                           header = FALSE,
+                           stringsAsFactors = FALSE)
+colnames(mat) = barcode.names$V1
+rownames(mat) = feature.names$V1
+```
+
+```{r}
+library(scater)
+library(scran)
+library(edgeR)
+options(digits=3)
+```
+
+
+

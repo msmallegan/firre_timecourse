@@ -42,3 +42,4 @@ work/*
 *.xls
 *.gappedPeak
 *.broadPeak
+*macs*
