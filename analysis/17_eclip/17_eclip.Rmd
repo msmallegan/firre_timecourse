@@ -1,0 +1,215 @@
+---
+title: "17_eclip"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+options(stringsAsFactors = FALSE)
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+source("../util/_plot_theme.R")
+```
+
+```{r}
+rnaseq_kd_files <- read.table("data/ENCSR413YAF_RNAseq_knockdowns.txt", skip = 1,
+                              col.names = "url") %>%
+  filter(grepl(".tsv", url))
+
+dat <- read_tsv("data/ENCFF061TRZ.tsv")
+
+# eCLIP processed files
+# https://www.encodeproject.org/publication-data/ENCSR456FVU/
+# eCLIP knockdowns
+# https://www.encodeproject.org/publication-data/ENCSR413YAF/
+
+```
+
+```{r}
+# Let's see which eCLIP datasets are binding Firre.
+encode_eclip_datasets <- read_tsv("data/encode_cell_line_eclip.tsv", skip = 1) %>%
+  clean_names()
+```
+
+```{r}
+library(httr)
+library(janitor)
+## This will generate a request URL in the format that ENCODE requires to retrieve each of the columns listed in the field default parameter (accession, read_count, md5sum, etc.)
+contstruct_query <- function(experiment_accession,
+                             base_url = "https://www.encodeproject.org/report.tsv?",
+                             file_format = "fastq",
+                             type = "File",
+                             status = "released",
+                             fields = c("accession", "read_count", "md5sum",
+                                        "controlled_by", "paired_end",
+                                        "paired_with", "replicate", "target")) {
+  query <- paste(list(paste0("type=", type),
+                      paste0("status=", status),
+                      paste0("file_format=", file_format),
+                      paste0("dataset=%2Fexperiments%2F", experiment_accession, "%2F"),
+                      map_chr(fields, ~paste0("field=", .))) %>%
+                   flatten(),
+                 collapse = "&")
+  url <- paste0(base_url, query)
+  return(url)
+}
+# This function actually makes the request and returns the data only (without the response headers) in a data.frame format.
+encode_file_info <- function(experiment_accession,
+                             base_url = "https://www.encodeproject.org/report.tsv?",
+                             file_format = "bigWig",
+                             type = "File",
+                             status = "released",
+                             fields = c("accession", "file_format", "file_format_type", "step_run", "filter_type", "filter_value", 
+                                        "genome_annotation", "assembly", "run_type",
+                                        "output_type", "biological_replicates", 
+                                        "technical_replicates", "assay_title", "assay_term_name", "annotation_type", "md5sum",
+                                        "controlled_by", "paired_end",
+                                        "paired_with", "replicate", "target")) {
+  path <- "report.tsv?"
+  base_url <- modify_url("https://www.encodeproject.org/", path = path)
+  url <- contstruct_query(experiment_accession,
+                          base_url = base_url,
+                          file_format,
+                          type,
+                          status,
+                          fields)
+  resp <- GET(url)
+  if (http_error(resp)) {
+    error_message <- content(resp, type = "text/html", encoding = "UTF-8") %>%
+      xml_find_all("//p") %>%
+      xml_text() %>%
+      first()
+    stop(
+      sprintf(
+        "ENCODE API request failed [%s]\n%s",
+        status_code(resp),
+        error_message
+      ),
+      call. = FALSE
+    )
+  }
+  
+  if (http_type(resp) != "text/tsv") {
+    stop("API did not return text/tsv", call. = FALSE)
+  }
+  body <- read_tsv(content(resp, "text"), skip = 1) %>%
+    clean_names()
+  return(body)
+}
+
+eclip_bam_info <- encode_eclip_datasets %>% 
+  dplyr::rename(experiment_accession = accession) %>%
+  dplyr::select(experiment_accession, target_of_assay, biosample_term_name) %>%
+  mutate(df = map(experiment_accession, ~ encode_file_info(.x, file_format = "bam"))) %>%
+  unnest(df)
+
+# Use the fastq info to get the paired endedness of the data.
+eclip_fastq_info <- encode_eclip_datasets %>% 
+  dplyr::rename(experiment_accession = accession) %>%
+  dplyr::select(experiment_accession, target_of_assay, biosample_term_name) %>%
+  mutate(df = map(experiment_accession, ~ encode_file_info(.x, file_format = "fastq"))) %>%
+  unnest(df)
+table(eclip_fastq_info$run_type)
+
+# Okay, it looks like they are all paired-ended so we don't really need to worry about that.
+eclip_bam_info <- eclip_bam_info %>% 
+  filter(genome_assembly == "GRCh38")
+
+eclip_bam_info <- eclip_bam_info %>%
+  mutate(download_cmd = paste0("wget https://www.encodeproject.org/files/", 
+                               accession, "/@@download/", accession, ".bam"))
+
+eclip_bam_info$download_cmd[[1]]
+writeLines(c("#!/bin/bash", eclip_bam_info %>% pull(download_cmd) %>% unique()), "data/eclip_bams/dl.sh")
+
+# Write out an md5sum check file
+eclip_bam_info <- eclip_bam_info %>%
+  mutate(md5_cmd = paste0(md5sum, "  ", accession, ".bam"))
+writeLines(eclip_bam_info %>% pull(md5_cmd) %>% unique(), "data/eclip_bams/md5.txt")
+```
+
+```{r}
+encode_rnaseq <- read_tsv("data/encode_hepg2_k562_polyA_rnaseq.tsv", skip = 1) %>%
+  clean_names()
+
+rnaseq_info <- encode_rnaseq %>% 
+  dplyr::rename(experiment_accession = accession) %>%
+  dplyr::select(experiment_accession, target_of_assay, biosample_term_name) %>%
+  mutate(df = map(experiment_accession, ~ encode_file_info(.x, file_format = "tsv"))) %>%
+  unnest(df)
+
+gene_quant <- rnaseq_info %>%
+  filter(genome_assembly == "GRCh38", genome_annotation == "V29", output_type == "gene quantifications") %>%
+  mutate(download_cmd = paste0("wget https://www.encodeproject.org/files/", 
+                               accession, "/@@download/", accession, ".tsv"))
+writeLines(c("#!/bin/bash", gene_quant %>% pull(download_cmd) %>% unique()), "data/rnaseq/gene_quant/dl.sh")
+
+
+  
+  # v29 annotation file
+  # https://www.encodeproject.org/files/ENCFF159KBI/@@download/ENCFF159KBI.gtf.gz
+  gtf <- rtracklayer::import("data/rnaseq/ENCFF159KBI.gtf")
+g2s <- gtf[gtf$type == "gene"] %>%
+  as.data.frame() %>%
+  dplyr::select(gene_id, gene_name)
+
+firre_gene_id <- g2s %>%
+  filter(gene_name == "FIRRE") %>%
+  pull(gene_id)
+
+firre_quant <- data.frame("filepath" = list.files("data/rnaseq/gene_quant", pattern = ".tsv", full.names = T)) %>%
+  mutate(accession = gsub("data/rnaseq/gene_quant/|.tsv", "", filepath)) %>%
+  left_join(gene_quant %>% dplyr::select(experiment_accession, accession, biosample_term_name, biological_replicates)) %>%
+  mutate(df = map(filepath, ~ read_tsv(.x) %>%
+                    clean_names() %>% filter(gene_id == firre_gene_id))) %>%
+  unnest(df) %>%
+  left_join(encode_rnaseq %>% dplyr::rename(experiment_accession = accession) %>% dplyr::select(experiment_accession, lab, biosample_treatment))
+
+firre_quant$biosample_treatment[is.na(firre_quant$biosample_treatment)] <- "untrt"
+
+table(firre_quant$biosample_treatment)
+firre_quant$biosample_treatment <- factor(firre_quant$biosample_treatment, levels = c("untrt", "interferon alpha", "Interferon gamma"))
+ggplot(firre_quant, aes(x = biosample_term_name, y = tpm, color = biosample_treatment, shape = biosample_treatment)) + 
+  geom_jitter(width = 0.05) +
+  ggtitle("FIRRE expression in HEPG2 and K562")
+ggsave("firre_encode_hepg2_k562_expression_interferon_trt.pdf", useDingbats = FALSE)
+
+firre_quant <- firre_quant %>% filter(biosample_treatment == "untrt")
+
+ggplot(firre_quant, aes(x = biosample_term_name, y = tpm)) + 
+  stat_boxplot(geom = "errorbar", width = 0.2) +
+  geom_jitter(width = 0.05) +
+  stat_summary(
+    geom = "point",
+    fun.y = "mean",
+    col = "red",
+    size = 2,
+    fill = "red"
+  ) +
+  ggtitle("FIRRE expression in HEPG2 and K562")
+ggsave("figures/firre_encode_hepg2_k562_expression.pdf", useDingbats = FALSE, height = 6, width = 4)
+library(ggpubr)
+ggerrorplot(firre_quant, x = "biosample_term_name", y = "tpm", desc_stat = "mean_sd", error.plot = "errorbar") +
+  geom_jitter(width = 0.05)
+firre_quant <- quant1 %>% filter(gene_id == firre_gene_id)
+
+transcript_quant <- rnaseq_info %>%
+  filter(genome_assembly == "GRCh38", genome_annotation == "V29", output_type == "transcript quantifications")
+```
+
+
+```{r}
+# Let's grab just the Firre RNA from the Gencode GTF.
+gtf <- rtracklayer::import("/scratch/Shares/rinn/genomes/Homo_sapiens/Gencode/v38/firre.gtf")
+hmm <- gtf %>% as.data.frame()
+
+library(Rsubread)
+counts <- featureCounts("data/eclip_bams/ENCFF086HIT.bam", 
+                        annot.ext = "/scratch/Shares/rinn/genomes/Homo_sapiens/Gencode/v38/firre.gtf",
+                        isGTFAnnotationFile = TRUE, isPairedEnd = TRUE)
+
+
+```
+
+
