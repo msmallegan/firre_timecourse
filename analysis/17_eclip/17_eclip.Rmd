@@ -120,6 +120,7 @@ eclip_bam_info <- eclip_bam_info %>%
   mutate(download_cmd = paste0("wget https://www.encodeproject.org/files/", 
                                accession, "/@@download/", accession, ".bam"))
 
+write_csv(eclip_bam_info, "results/eclip_bam_info.csv")
 eclip_bam_info$download_cmd[[1]]
 writeLines(c("#!/bin/bash", eclip_bam_info %>% pull(download_cmd) %>% unique()), "data/eclip_bams/dl.sh")
 
@@ -146,10 +147,10 @@ gene_quant <- rnaseq_info %>%
 writeLines(c("#!/bin/bash", gene_quant %>% pull(download_cmd) %>% unique()), "data/rnaseq/gene_quant/dl.sh")
 
 
-  
-  # v29 annotation file
-  # https://www.encodeproject.org/files/ENCFF159KBI/@@download/ENCFF159KBI.gtf.gz
-  gtf <- rtracklayer::import("data/rnaseq/ENCFF159KBI.gtf")
+
+# v29 annotation file
+# https://www.encodeproject.org/files/ENCFF159KBI/@@download/ENCFF159KBI.gtf.gz
+gtf <- rtracklayer::import("data/rnaseq/ENCFF159KBI.gtf")
 g2s <- gtf[gtf$type == "gene"] %>%
   as.data.frame() %>%
   dplyr::select(gene_id, gene_name)
@@ -164,7 +165,8 @@ firre_quant <- data.frame("filepath" = list.files("data/rnaseq/gene_quant", patt
   mutate(df = map(filepath, ~ read_tsv(.x) %>%
                     clean_names() %>% filter(gene_id == firre_gene_id))) %>%
   unnest(df) %>%
-  left_join(encode_rnaseq %>% dplyr::rename(experiment_accession = accession) %>% dplyr::select(experiment_accession, lab, biosample_treatment))
+  left_join(encode_rnaseq %>% dplyr::rename(experiment_accession = accession) %>% 
+              dplyr::select(experiment_accession, lab, biosample_treatment))
 
 firre_quant$biosample_treatment[is.na(firre_quant$biosample_treatment)] <- "untrt"
 
@@ -175,7 +177,16 @@ ggplot(firre_quant, aes(x = biosample_term_name, y = tpm, color = biosample_trea
   ggtitle("FIRRE expression in HEPG2 and K562")
 ggsave("firre_encode_hepg2_k562_expression_interferon_trt.pdf", useDingbats = FALSE)
 
+write_csv(firre_quant, "results/firre_rnaseq_hepg2_k562.csv")
+
+
+
 firre_quant <- firre_quant %>% filter(biosample_treatment == "untrt")
+
+
+firre_median_expression <- firre_quant %>% group_by(biosample_term_name) %>%
+  summarize(firre_median_expression = median(tpm))
+
 
 ggplot(firre_quant, aes(x = biosample_term_name, y = tpm)) + 
   stat_boxplot(geom = "errorbar", width = 0.2) +
@@ -211,5 +222,154 @@ counts <- featureCounts("data/eclip_bams/ENCFF086HIT.bam",
 
 
 ```
+
+```{r}
+# Read in the featurecounts that were run on fiji-viz
+library(tidyverse)
+firre_fc <- read_rds("results/eclip_firre_counts.rds")
+firre_eclip_counts <- firre_fc$counts %>%
+  as.data.frame() %>%
+  pivot_longer(1:ncol(.), names_to = "file_accession", values_to = "count") %>%
+  mutate(file_accession = gsub(".bam", "", file_accession))
+
+## Need to figure out the number of reads in each sample in order to normalize...
+```
+
+```{bash}
+ls bam_list.txt | while read f; do samtools view -c -F 260 ${f}; done;
+```
+
+```{r}
+# Read in the bam counts -- mapped reads only
+bam_order <- read.table("data/eclip_bams/bam_list.txt")
+bam_counts <- read.table("data/eclip_bams/read_counts.txt")
+colnames(bam_counts) <- "mapped_read_count"
+colnames(bam_order) <- "bam_file"
+read_counts <- bind_cols(bam_order, bam_counts)
+
+read_counts <- read_counts %>%
+  mutate(file_accession = gsub(".bam", "", bam_file)) %>%
+  dplyr::select(-bam_file)
+
+colnames(firre_eclip_counts)[2] <- "firre_count"
+
+firre_eclip_counts <- firre_eclip_counts %>% left_join(read_counts)
+
+
+info <- eclip_bam_info %>% dplyr::select(accession, target_of_assay, biosample_term_name) %>%
+  dplyr::rename(file_accession = accession,
+                rbp = target_of_assay,
+                cell_line = biosample_term_name)
+firre_eclip_counts <- firre_eclip_counts %>% left_join(info)
+
+
+
+firre_eclip_counts <- firre_eclip_counts %>%
+  mutate(cpm = firre_count / (mapped_read_count/1e6))
+
+
+firre_median_expression <- firre_median_expression %>%
+  dplyr::rename(cell_line = biosample_term_name)
+
+firre_eclip_counts <- firre_eclip_counts %>%
+  left_join(firre_median_expression)
+
+write_csv(firre_eclip_counts, "results/firre_eclip_counts.csv")
+
+
+ggplot(firre_eclip_counts, aes(x = cpm, color = cell_line)) + geom_density()
+
+firre_eclip_counts <- firre_eclip_counts %>%
+  group_by(cell_line) %>%
+  mutate(zscore = scale(cpm))
+
+# Get the TFs
+# wget https://ars.els-cdn.com/content/image/1-s2.0-S0092867418301065-mmc2.xlsx
+human_tfs <- read_csv("data/human_tfs.csv") %>%
+  dplyr::rename(rbp = gene_name)
+
+
+firre_eclip_counts <- firre_eclip_counts %>% left_join(human_tfs)
+firre_eclip_counts$is_tf[is.na(firre_eclip_counts$is_tf)] <- "No"
+
+firre_eclip_counts_w <- firre_eclip_counts %>%
+  dplyr::select(cell_line, rbp, zscore, is_tf, dbd) %>%
+  group_by(rbp, cell_line) %>%
+  summarize(zscore = mean(zscore),
+            is_tf = unique(is_tf),
+            dbd = unique(dbd)) %>%
+  pivot_wider(id_cols = c(is_tf, dbd, rbp), names_from = cell_line, values_from = zscore)
+
+firre_eclip_counts_w <- firre_eclip_counts_w %>%
+  mutate(mean_z = sum(K562, HepG2, na.rm = T) / 2)
+
+firre_eclip_counts_matrix <- firre_eclip_counts_w %>%
+  dplyr::select(rbp, K562, HepG2) %>%
+  arrange(-K562) %>%
+  column_to_rownames("rbp") %>%
+  as.matrix()
+firre_eclip_counts_matrix <- firre_eclip_counts_matrix[1:20,]
+pdf("figures/firre_eclip_binders_ranked_by_K562.pdf", height = 6, width = 2.5)
+pheatmap::pheatmap(firre_eclip_counts_matrix, cluster_rows = FALSE, cluster_column = FALSE)
+dev.off()
+
+firre_eclip_counts_matrix <- firre_eclip_counts_w %>%
+  dplyr::select(rbp, K562, HepG2) %>%
+  arrange(-HepG2) %>%
+  column_to_rownames("rbp") %>%
+  as.matrix()
+firre_eclip_counts_matrix <- firre_eclip_counts_matrix[1:20,]
+pdf("figures/firre_eclip_binders_ranked_by_HepG2.pdf", height = 6, width = 2.5)
+pheatmap::pheatmap(firre_eclip_counts_matrix, cluster_rows = FALSE, cluster_column = FALSE)
+dev.off()
+
+write_csv(firre_eclip_counts, "results/firre_eclip_counts.csv")
+```
+
+```{r}
+eclip_counts <- read_rds("results/eclip_counts.rds")
+counts <- eclip_counts$counts %>%
+  as.data.frame() %>%
+  rownames_to_column("gene_id") %>%
+  pivot_longer(2:ncol(.), names_to = "file_accession", values_to = "count") %>%
+  mutate(file_accession = gsub(".bam", "", file_accession))
+
+length <- eclip_counts$annotation %>% as.data.frame() %>%
+  dplyr::select(GeneID, Length) %>%
+  dplyr::rename(gene_id = GeneID,
+                gene_length = Length)
+
+bam_order <- read.table("data/eclip_bams/bam_list.txt")
+bam_counts <- read.table("data/eclip_bams/read_counts.txt")
+colnames(bam_counts) <- "mapped_read_count"
+colnames(bam_order) <- "bam_file"
+read_counts <- bind_cols(bam_order, bam_counts)
+
+read_counts <- read_counts %>%
+  mutate(file_accession = gsub(".bam", "", bam_file)) %>%
+  dplyr::select(-bam_file)
+
+
+counts <- counts %>% left_join(length)
+counts <- counts %>% left_join(read_counts)
+
+info <- eclip_bam_info %>% dplyr::select(accession, target_of_assay, biosample_term_name) %>%
+  dplyr::rename(file_accession = accession,
+                rbp = target_of_assay,
+                cell_line = biosample_term_name)
+
+counts <- counts %>% left_join(info)
+
+
+write_csv(counts, "results/encode_eclip_counts.csv")
+
+# Calculate the TPM
+# Divide the read counts by the length of each gene in kilobases. This gives you reads per kilobase (RPK).
+# Count up all the RPK values in a sample and divide this number by 1,000,000. This is your “per million” scaling factor.
+# Divide the RPK values by the “per million” scaling factor. This gives you TPM.
+# Might need to think about how to normalize this for eclip -- going to use total mapped reads instead.
+# Also the option of using the total reads -- need to think about this more.
+```
+
 
 
