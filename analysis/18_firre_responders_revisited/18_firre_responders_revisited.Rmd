@@ -27,6 +27,7 @@ counts <- read_rds("data/gene_counts_matrix.rds")
 
 # The gene that we're causing to change in expression with doxycycline is
 # Firre -- ENSMUSG00000085396.7
+
 ```
 
 
