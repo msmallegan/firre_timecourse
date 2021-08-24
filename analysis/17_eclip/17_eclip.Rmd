@@ -361,7 +361,7 @@ info <- eclip_bam_info %>% dplyr::select(accession, target_of_assay, biosample_t
 counts <- counts %>% left_join(info)
 
 
-write_csv(counts, "results/encode_eclip_counts.csv")
+
 
 # Calculate the TPM
 # Divide the read counts by the length of each gene in kilobases. This gives you reads per kilobase (RPK).
@@ -369,7 +369,78 @@ write_csv(counts, "results/encode_eclip_counts.csv")
 # Divide the RPK values by the “per million” scaling factor. This gives you TPM.
 # Might need to think about how to normalize this for eclip -- going to use total mapped reads instead.
 # Also the option of using the total reads -- need to think about this more.
+
+gtf <- rtracklayer::import("/scratch/Shares/rinn/genomes/Homo_sapiens/Gencode/v38/gencode.v38.annotation.gtf")
+
+g2s <- gtf[gtf$type == "gene"] %>%
+  as.data.frame() %>%
+  dplyr::select(gene_id, gene_name, gene_type)
+
+counts <- counts %>% left_join(g2s)
+
+counts <- counts %>%
+  mutate(rpk = count / (gene_length / 1e3),
+         tpm = rpk / (mapped_read_count / 1e6))
+
+ggplot(counts, aes(x = log10(tpm))) +
+  geom_density()
+
+# Let's remove all the zero counts. That will get rid of a bunch of genes
+counts <- counts %>% filter(count > 0)
+write_csv(counts, "results/encode_eclip_counts.csv")
+
+
+counts <- read_csv("results/encode_eclip_counts.csv")
 ```
+
+```{r}
+# Let's use a bound / unbound cutoff even though it's a pretty continuous distribution... I 
+# guess the usual cutoff is a tpm of 1
+bound <- counts %>% filter(tpm > 10)
+
+# let's just see how many RNAs are bound by each RBP
+rbp_summary <- bound %>% 
+  group_by(rbp) %>%
+  summarize(n_genes_bound = length(unique(gene_id)))
+
+# let's make a little plot just to show the number and types of RNA's bound.
+gt <- table(bound$gene_type)
+cat(gt[order(gt)])
+cat(names(gt[order(gt)]))
+# Let's read in a sanitized gene_type naming scheme
+gene_type_abbr <- read_csv("data/gene_type_map.csv")
+
+bound <- bound %>% left_join(gene_type_abbr)
+
+rbp_summary <- rbp_summary %>%
+  arrange(-n_genes_bound)
+bound$rbp <- factor(bound$rbp, levels = rbp_summary$rbp)
+
+gene_type_summary <- bound %>% 
+  group_by(rbp, gene_type_abbrev) %>%
+  summarize(count = length(unique(gene_id)))
+ggplot(gene_type_summary, aes(x = rbp, y = count, fill = gene_type_abbrev)) +
+  geom_bar(position = "stack", stat = "identity") + 
+  coord_flip() + 
+  ggtitle("eCLIP bound gene types",
+          subtitle = "TPM > 10; HepG2 and K562 combined") +
+  scale_fill_manual(values = rcartocolor::carto_pal(n = 11, name = "Bold"))
+ggsave("figures/eclip_bound_rna_gene_types.pdf", height = 20, width = 7)
+
+
+# KDM1A, HDAC1, RBFOX2, CTCF, SAFB2, HNRNPU, HNRNPL, HNRNPK, SAFB, EWSR1
+ggplot(gene_type_summary %>% filter(rbp %in% c("KDM1A", "HDAC1", "RBFOX2", "CTCF", "SAFB2", "HNRNPU", "HNRNPL", "HNRNPK", "SAFB", "EWSR1")), aes(x = rbp, y = count, fill = gene_type_abbrev)) +
+  geom_bar(position = "stack", stat = "identity") + 
+  coord_flip() + 
+  ggtitle("eCLIP bound gene types",
+          subtitle = "TPM > 10; HepG2 and K562 combined") +
+  scale_fill_manual(values = rcartocolor::carto_pal(n = 11, name = "Bold"))
+ggsave("figures/eclip_bound_rna_gene_types_subset.pdf", height = 7, width = 8)
+
+
+
+```
+
 
 
 
