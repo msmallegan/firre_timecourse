@@ -1,0 +1,28 @@
+---
+title: "Firre Responders Revisited"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+options(stringsAsFactors = FALSE)
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+## Purpose
+
+Here we'll start from a matrix of gene-level counts determined by RNA-seq and try to determine which genes are likely to be responsive to the Firre lncRNA. In brief, this data comes from four experiments performed in four different cell lines. In each cell line, Doxycycline is added to mouse embryonic stem cells and in response in the lines which are labeled ("firre_induced") the Firre RNA begins transcribing when we add Dox. We then have a rather long timecourse for the RNA expression levels of every gene (~50k genes).
+
+Here is the data you'll need and just let me know if there are other data sources that you think would help with this analysis.
+
+```{r}
+samples <- read_rds("data/samplesheet.rds")
+# To read up on TPM and see how it differs from the raw count data: (counts matrix)
+# https://www.rna-seqblog.com/rpkm-fpkm-and-tpm-clearly-explained/
+tpm <- read_rds("data/gene_tpm_df.rds")
+counts <- read_rds("data/gene_counts_matrix.rds")
+```
+
+
