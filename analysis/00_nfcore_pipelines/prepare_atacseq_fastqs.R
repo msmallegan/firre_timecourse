@@ -1,16 +1,24 @@
 library(tidyverse)
+
+# add user-agnostic options
+# if this gives errors, add user to _global.R
+source("../util/_global.R")
+outdir <- file.path(sharedir,mydir,proj,"atacseq/fastq")
+
 # Create a script to move files to scratch
-if(!dir.exists("../../atacseq/fastq")) {
-  cat("Creating fastq directory") 
-  dir.create("../../atacseq/fastq")
+if(!dir.exists(outdir)) {
+  cat("Creating aacseq/fastq directory") 
+  dir.create(outdir, recursive = TRUE)
+} else {
+  cat("Re-using atacseq/fastq data directory")
 }
 
-samples <- read.csv("../../atacseq/atacseq_samplesheet.csv")
-samples$dest_read1 <- paste0(file.path("/scratch/Shares/rinn/Michael",
-                                       "firre_timecourse/atacseq/fastq/"),
+samples <- read.csv(file.path(outdir,"..","atacseq_samplesheet.csv"))
+samples$dest_read1 <- paste0(file.path(sharedir,mydir,proj,
+                                       "atacseq/fastq/"),
                              samples$sample_id, "_read1.fastq.gz")
-samples$dest_read2 <- paste0(file.path("/scratch/Shares/rinn/Michael",
-                                       "firre_timecourse/atacseq/fastq/"),
+samples$dest_read2 <- paste0(file.path(sharedir,mydir,proj,
+                                       "atacseq/fastq/"),
                              samples$sample_id, "_read2.fastq.gz")
 
 cp_read1 <- samples %>% dplyr::select(raw_data_read1,
@@ -49,13 +57,27 @@ for(i in 1:length(dest)) {
   if(!file.exists(dest[i])) {
     cat("file doesn't exist: ", dest[i])
   }
+
 }
+
+# Check that no files were corrupted when copied
+# WARNING - THIS TAKES A LONG TIME
+
+cmd <- paste("md5sum --check", "atacseq_md5_list.txt")
+try(system(cmd, intern = TRUE))
 
 
 # Retrieve blacklist
-system(paste0("cd /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/; ",
-              "wget https://github.com/Boyle-Lab/Blacklist/raw/master/lists/mm10-blacklist.v2.bed.gz; ",
-              "gunzip mm10-blacklist.v2.bed.gz"))
+if(!file.exists(file.path(dirname(outdir),"mm10-blacklist.v2.bed"))){
+  cat("Retrieving blacklist file") 
+  system(paste0("cd ", dirname(outdir),";",
+                "wget --tries 3 https://github.com/Boyle-Lab/Blacklist/raw/master/lists/mm10-blacklist.v2.bed.gz && ",
+                "gunzip mm10-blacklist.v2.bed.gz"))
+} else {
+  cat("Using existing blacklist file")
+}
+
+
 
 
 

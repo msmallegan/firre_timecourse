@@ -24,6 +24,18 @@ samples <- read_rds("data/samplesheet.rds")
 tpm <- read_rds("data/gene_tpm_df.rds")
 counts <- read_rds("data/gene_counts_matrix.rds")
 
+table(samples$cell_type)
+#embryonic stem cells and neural precursor cells
+table(samples$firre_ko)
+# KO means Firre is deleted in those cells and WT is wild type
+table(samples$firre_induced)
+table(samples$timecourse_length)
+table(samples$timepoint)
+table(samples$replicate)
+table(samples$experiment_replicate)
+# Just ignore this column exp replicate
+samples %>% group_by(cell_type, firre_ko, firre_induced) %>% summarize(count = n())
+
 
 # The gene that we're causing to change in expression with doxycycline is
 # Firre -- ENSMUSG00000085396.7
