@@ -1,0 +1,264 @@
+---
+title: "Sept 2021 Progress Report"
+author: "Laurette Hamlin"
+output:
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(DESeq2)
+```
+
+
+## Firre_timestamp First Look
+
+Michael (very intelligently) knew I would approach learning everthing from a stats point of view, so he gave me three related results tables and sent me off to explore on my own.
+
+I learned a bit about the pipeline.  I discovered the sequencing data comes in as FAFSA files and gets processed through slurm jobs.  NextFlow is the tool used.  Gene-specific data are stored as *.gtf files. There is more information in the coursework.  The data was then further processed in BioConductor::DESeq2 into a dataset object which summarized the data into a count matrix and a metadata matrix (more on that below).
+
+### Naive first look
+
+I came knowing absolutely nothing about the lab, the data, the analysis to be done, or even BioChemistry. It was a complete naive (as in Bayesian first estimator) approach.  The first place my quantitative analysis began was the data model - I wanted to know what data looked like, how it was formatted, how it fit together, etc.  This is what I saw initially:
+
+samples description table:
+
+```{r }
+samples <- read_rds("analysis/18_firre_responders_revisited/data/samplesheet.rds")
+dim(samples)
+colnames(samples)
+
+# prune unused data
+samples <- samples[,1:7]
+
+samples[1:10,]
+summary(samples)
+#embryonic stem cells and neural precursor cells
+table(samples$cell_type)
+samples$cell_type <- as.factor(samples$cell_type)
+
+###################
+# custom set reference levels on factors (default is alphabetical order), if needed
+# this is where control comes first
+###################
+# KO means Firre is deleted in those cells and WT is wild type
+table(samples$firre_ko)
+levels(samples$firre_ko)
+# samples$firre_ko <- factor(samples$firre_ko, levels=c("control","firre_induced") )
+# note below:  letters, numbers, underscore, and period are allowed.
+# to remove others, use something like this:
+# levels(samples$firre_induced) <- sub("-","",levels(samples$firre_induced))
+table(samples$firre_induced)
+levels(samples$firre_induced)
+
+# Just ignore this column exp replicate
+#table(samples$replicate)
+#table(samples$experiment_replicate)
+table(samples$timepoint)
+levels(samples$timepoint)
+samples$timepoint <- as.factor(samples$timepoint)
+
+
+samples$replicate <- as.factor(samples$replicate)
+samples$experiment_replicate <- as.factor(samples$experiment_replicate)
+
+# cleaned sample column metadata
+summary(samples)
+
+# get a look at the cubism
+samples %>% 
+  filter(timepoint==0) %>%
+  group_by(cell_type, firre_ko, firre_induced) %>% 
+  summarize(sample_count = n()) 
+
+```
+
+From my point of view, I saw this:
+
+The 'samplesheet' data tables describes 144 lab samples.  It describes four variables used to differentiate the experiments:
+
+ * cell_type : categorical, non-ordered.  Suggests blocking.
+ * firre_ko  : categorical, non-ordered.  Suggests blocking.
+ * firre_induced : categrorical, non-ordered.  Suggests blocking and causality.
+ * timepoint : binned distance measure.  Only dependent variable.
+
+The first three factors are assumed to be independent.  That is, changes to one experiment
+do not affect another experiment in any way (YAY lab work!!!!)
+
+Note: I ignored the following for now:
+
+ * replicate : ordered factor.  Suggests using estimates (mean, var, etc).
+ * experiment_replicate : ordered factor.  Suggests using estimates (mean, var, etc).
+
+
+### counts/tpm tables:
+
+```{r }
+tpm <- read_rds("analysis/18_firre_responders_revisited/data/gene_tpm_df.rds")
+counts <- read_rds("analysis/18_firre_responders_revisited/data/gene_counts_matrix.rds")
+
+dim(counts)
+counts[1:10,1:6]
+# To read up on TPM and see how it differs from the raw count data: (counts matrix)
+# https://www.rna-seqblog.com/rpkm-fpkm-and-tpm-clearly-explained/
+dim(tpm)
+tpm[1:10,1:6]
+```
+
+From my point of view, I saw this:
+
+ * A relational data link needs to be created between the samples table and counts/tpm tables. 
+ * The data is in 'raw count' form, meaning no transform has been performed yet.
+ * We are clearly look for relationships between counts in different blocks, but I still have not added in any knowledge of the factors (KO/WT, ESC/NPC, control/firre_induced, etc.)
+ 
+```{r }
+# set up relational links for full data
+
+manual_counts <- rbind(counts, sample_id=colnames(counts))
+combined <- samples %>% left_join(as.data.frame(t(manual_counts)))
+dim(combined)
+combined[1:8,1:10]
+
+```
+
+ * Statistical possibilities:
+
+     * Hypothesis testing of total counts between factors
+     * Hypothesis testing of indiv gene counts between factors
+     * Regression model predicting indiv gene response given certain factors
+     * Time Series analysis on blocked counts (this is the good one)
+
+But rather than doing any of this by hand, I went on to the BioConductor package.
+
+## BioConductor first look
+
+I spent some significant time necessarily learning the BioConductor package basics,
+starting with the data structure.  BioConductor is a huge package, but it wisely
+shares a common structure.  I learned it has a fully formed object-oriented structure (using S4, which surprisingly is still somewhat rare in R).  This means there is a common logical architecture under the hood that I can use to seriously speed up computational work (and here I thought Michael was just a superhero) by instantiation and 'get/sets'.
+
+We work in DESeq2 and RNASeq.
+
+  * The DESeq2 packages expects sequencing experiment count data as a matrix of integer values.
+    * There is a common data structure (DESeqDataSet class) that extends the RangedSummarizedExperiment class (ranged refers to genomic ranges), thus data streams seamlessly without manual setup, as opposed to my manual data joins above.
+    * There are important data matching steps that must be taken when constructing the data object from cvs files.
+    * DESeqDataSet requires a design formula to specify the modeling variables (this is typical of most R modeling packages).  Here the model estimates the dispersions and the log2 fold changes.  
+      * Specifying the model formula was my first foray into piecing together what I am starting to learn about BioChem in terms of how we are analyzing it.
+      * I learned it is important to put the control as the first level of the model and the variable of interest as the last level.
+    * The data model also taught me to interpret the genomic data into subclasses:
+      * GRange data objects (Genomic Ranges, strands, etc), 
+      * DFrames (data frames), and 
+      * SimpleAssays objects
+
+```{r}
+# vignette used below
+# https://bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html#input-data
+
+# installation of tools 
+
+# http://master.bioconductor.org/packages/release/workflows/html/rnaseqGene.html
+#if (!requireNamespace("BiocManager", quietly = TRUE))
+#  install.packages("BiocManager")
+
+#BiocManager::install("rnaseqGene")
+#library("rnaseqGene")
+#library("DESeq2")  # for differential expression analysis
+
+
+# Prepare BioConductor data object
+
+# sample matrix and count matrix have to be in same order
+all(rownames(samples) == colnames(counts))
+samples <- samples[colnames(counts),]
+all(rownames(samples) == colnames(counts))
+
+# also make sure 'a complete natural join' works
+all(rownames(samples) %in% colnames(counts))
+
+# dds stands for DeSeq Data Set object
+# ddsMat <- DESeqDataSetFromMatrix(countData=counts,colData=samples[colnames(counts),], design = ~ firre_ko + firre_induced)
+# make control first factor
+
+
+# Just look at timpoint == 0 for now
+
+sample_time0 <- samples %>%
+  group_by(timepoint) %>%
+  filter(timepoint == 0) 
+# or use group_on??  Issue with rownames/colnames not preserved.
+
+counts0 <- counts[,sample_time0$sample_id]
+
+ddsMat0 <- DESeqDataSetFromMatrix(countData=counts0,colData=sample_time0, design = ~ firre_induced + cell_type + firre_ko)
+ddsMat0
+
+# rows quantify individual gene records across samples
+# a good place to start analysis
+# 1.  Total counts across samples
+summary(rowSums(counts(ddsMat0)))
+boxplot(rowSums(counts(ddsMat0)))
+# this is a good indication we are on an exponential scale
+hist(log(rowSums(counts(ddsMat0))))
+# where to trim?  10? 75?
+
+###############
+# pre-filter low total counts
+# note:  this is a small pre-filter to free up memory
+# results function automatically does indep filtering on normalized mean
+###############
+summary(log(rowSums(counts(ddsMat0))))
+keep0 <- rowSums(counts(ddsMat0)) >= 7
+table(keep0)
+ddsMat0 <- ddsMat0[keep0,]
+
+# another way
+#tib_counts <- as_tibble(counts) %>% 
+#  mutate(total = rowSums(across(where(is.numeric)))) %>%
+#  arrange(-total)
+
+# single processor way
+timer.start <- proc.time()
+ddsModel0 <- DESeq(ddsMat0)
+ddsResults0 <- results(ddsModel0, alpha=0.05)
+timer.stop <- proc.time() - timer.start
+timer.stop
+head(ddsResults0)
+summary(ddsResults0)
+
+# order by p-value
+ddsResultsOrdered0 <- ddsResults0[order(ddsResults0$pvalue),]
+head(ddsResultsOrdered0)
+
+
+# parallel way
+# TO DO:  multiple cores on viz server???
+#  library("BiocParallel")
+#  register(MulticoreParam(4))
+
+#################
+# exploring plotting
+#################
+
+plotMA(ddsResults0) # ????  should be fold changes or mean of normalized counts
+# plot counts of a single gene across factor levels
+plotCounts(ddsModel0,gene=which.min(ddsResults0$padj),intgroup=c("firre_ko","firre_induced"))
+
+######################
+# exploring multivariate heatmapping
+######################
+
+library("pheatmap")
+select <- order(rowMeans(counts(ddsModel0,normalized=TRUE)),
+                decreasing=TRUE)[1:20]
+df <- as.data.frame(colData(ddsModel0)[,c("firre_ko","firre_induced")])
+ntd <- normTransform(ddsModel0)
+pheatmap(assay(ntd)[select,], cluster_rows=FALSE, show_rownames=FALSE,
+         cluster_cols=FALSE, annotation_col=df)
+
+
+```
+
+
