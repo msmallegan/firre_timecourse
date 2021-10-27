@@ -1,0 +1,123 @@
+---
+title: "19_chirp_ms"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+options(stringsAsFactors = FALSE)
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(janitor)
+```
+
+```{r}
+ms_data <- read_csv("data/bruker_mass_spec_data.csv") %>%
+  clean_names() %>%
+  pivot_longer(col = 9:ncol(.), names_to = "sample_id", values_to = "count") %>%
+  mutate(firre_ko = ifelse(grepl("wt", sample_id), "wt", "ko"),
+         parity = ifelse(grepl("even", sample_id), "even", "odd"),
+         timepoint = ifelse(grepl("2h", sample_id), "2h", "0h"))
+
+
+# needs to calculate FC values -- 2h WT vs KO, 0h WT vs KO -- separately for even and odd
+# and everything combined
+# Needs to calculate a t-test for each of these as well.
+
+ms_data_list <- ms_data %>% 
+  group_by(protein_id) %>%
+  group_split()
+
+
+dat <- ms_data %>% filter(protein_id == "P62960")
+calc_stats <- function(dat) {
+  
+
+# lfc
+WT2h_vs_KO_even_lfc <- log2((mean(dat$count[grepl("wt_2h_even", dat$sample_id)])+1)/
+                              (mean(dat$count[grepl("ko_even", dat$sample_id)])+1))
+
+WT2h_vs_KO_odd_lfc <- log2((mean(dat$count[grepl("wt_2h_odd", dat$sample_id)])+1)/
+                             (mean(dat$count[grepl("ko_odd", dat$sample_id)])+1))
+
+WT0h_vs_KO_even_lfc <- log2((mean(dat$count[grepl("wt_0h_even", dat$sample_id)])+1)/
+                              (mean(dat$count[grepl("ko_even", dat$sample_id)])+1))
+
+WT0h_vs_KO_odd_lfc <- log2((mean(dat$count[grepl("wt_0h_odd", dat$sample_id)])+1)/
+                             (mean(dat$count[grepl("ko_odd", dat$sample_id)])+1))
+
+WT_vs_KO_even_lfc <- log2((mean(dat$count[grepl("wt_2h_even|wt_0h_even", dat$sample_id)])+1)/
+                            (mean(dat$count[grepl("ko_even", dat$sample_id)])+1))
+
+WT_vs_KO_odd_lfc <- log2((mean(dat$count[grepl("wt_2h_odd|wt_0h_odd", dat$sample_id)])+1)/
+                           (mean(dat$count[grepl("ko_odd", dat$sample_id)])+1))
+
+WT_vs_KO_lfc <- log2((mean(dat$count[grepl("wt_2h|wt_0h", dat$sample_id)])+1)/
+                       (mean(dat$count[grepl("ko", dat$sample_id)])+1))
+
+# t-tests
+WT2h_vs_KO_even_pval <- t.test(dat$count[grepl("wt_2h_even", dat$sample_id)],
+                              dat$count[grepl("ko_even", dat$sample_id)])$p.value
+
+WT2h_vs_KO_odd_pval <- t.test(dat$count[grepl("wt_2h_odd", dat$sample_id)],
+                             dat$count[grepl("ko_odd", dat$sample_id)])$p.value
+
+WT0h_vs_KO_even_pval <- t.test(dat$count[grepl("wt_0h_even", dat$sample_id)],
+                              dat$count[grepl("ko_even", dat$sample_id)])$p.value
+
+WT0h_vs_KO_odd_pval <- t.test(dat$count[grepl("wt_0h_odd", dat$sample_id)],
+                             dat$count[grepl("ko_odd", dat$sample_id)])$p.value
+
+WT_vs_KO_even_pval <- t.test(dat$count[grepl("wt_2h_even|wt_0h_even", dat$sample_id)],
+                            dat$count[grepl("ko_even", dat$sample_id)])$p.value
+
+WT_vs_KO_odd_pval <- t.test(dat$count[grepl("wt_2h_odd|wt_0h_odd", dat$sample_id)],
+                           dat$count[grepl("ko_odd", dat$sample_id)])$p.value
+
+WT_vs_KO_pval <- t.test(dat$count[grepl("wt_2h|wt_0h", dat$sample_id)],
+                       dat$count[grepl("ko", dat$sample_id)])$p.value
+
+prot_id <- unique(dat$protein_id)
+stopifnot(length(prot_id) == 1)
+
+# Assemble
+prot_dat <- data.frame("protein_id" = prot_id,
+                  "WT2h_vs_KO_even_lfc" = WT2h_vs_KO_even_lfc,
+                  "WT2h_vs_KO_odd_lfc" = WT2h_vs_KO_odd_lfc,
+                  "WT0h_vs_KO_even_lfc" = WT0h_vs_KO_even_lfc,
+                  "WT0h_vs_KO_odd_lfc" = WT0h_vs_KO_odd_lfc,
+                  "WT_vs_KO_even_lfc" = WT_vs_KO_even_lfc,
+                  "WT_vs_KO_odd_lfc" = WT_vs_KO_odd_lfc,
+                  "WT_vs_KO_lfc" = WT_vs_KO_lfc,
+                  "WT2h_vs_KO_even_pval" = WT2h_vs_KO_even_pval,
+                  "WT2h_vs_KO_odd_pval" = WT2h_vs_KO_odd_pval,
+                  "WT0h_vs_KO_even_pval" = WT0h_vs_KO_even_pval,
+                  "WT0h_vs_KO_odd_pval" = WT0h_vs_KO_odd_pval,
+                  "WT_vs_KO_even_pval" = WT_vs_KO_even_pval,
+                  "WT_vs_KO_odd_pval" = WT_vs_KO_odd_pval,
+                  "WT_vs_KO_pval" = WT_vs_KO_pval)
+return(prot_dat)
+}
+
+ms_stats <- lapply(ms_data_list, calc_stats) %>%
+  bind_rows()
+colnames(ms_stats)[colnames(ms_stats) %in% colnames(ms_data)]
+ms_data <- read_csv("data/bruker_mass_spec_data.csv") %>%
+  clean_names() %>%
+  left_join(ms_stats)
+
+# padj
+ms_data$WT2h_vs_KO_even_padj <- p.adjust(ms_data$WT2h_vs_KO_even_pval)
+ms_data$WT2h_vs_KO_odd_padj <- p.adjust(ms_data$WT2h_vs_KO_odd_pval)
+ms_data$WT0h_vs_KO_even_padj <- p.adjust(ms_data$WT0h_vs_KO_even_pval)
+ms_data$WT0h_vs_KO_odd_padj <- p.adjust(ms_data$WT0h_vs_KO_odd_pval)
+ms_data$WT_vs_KO_even_padj <- p.adjust(ms_data$WT_vs_KO_even_pval)
+ms_data$WT_vs_KO_odd_padj <- p.adjust(ms_data$WT_vs_KO_odd_pval)
+ms_data$WT_vs_KO_padj <- p.adjust(ms_data$WT_vs_KO_pval)
+
+ggplot(ms_data, aes(x = WT_vs_KO_lfc, y = -log10(WT_vs_KO_padj))) +
+  geom_point()
+
+```
+
