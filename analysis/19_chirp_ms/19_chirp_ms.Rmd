@@ -119,5 +119,6 @@ ms_data$WT_vs_KO_padj <- p.adjust(ms_data$WT_vs_KO_pval)
 ggplot(ms_data, aes(x = WT_vs_KO_lfc, y = -log10(WT_vs_KO_padj))) +
   geom_point()
 
+write_csv(ms_data, "results/firre_chirpms_bruker.csv")
 ```
 

@@ -744,6 +744,73 @@ fr_tfs <- data.frame(count = rowSums(fr_motif_peaks)) %>%
 ```
 
 
+# JASPAR motifs retrieved from UCSC table browser overlapping atac-peaks 
+
+```{r}
+library(janitor)
+
+# Let's take the 55 atac peaks and create 1000 randomly permuted peaks
+# of the same sizes. 
+library(valr)
+atac_peaks <- rtracklayer::import("firre_responding_atac_peaks_pval0.05_mm10.bed") %>% gr_to_bed()
+mm10_genome <- read_genome("data/mm10.chrom.sizes")
+set.seed(70987)
+rnd_seeds <- sample(1:1e6, size = 1000)
+shuf_peaks <- lapply(rnd_seeds, function(x) bed_shuffle(atac_peaks,
+                                                        mm10_genome, 
+                                                        within = T, 
+                                                        seed = x)) %>%
+  bind_rows() %>% 
+  dplyr::select(chrom, start, end)
+
+write.table(shuf_peaks[1:1000,],
+            "results/permuted_atac_peaks1.txt", quote = F, sep = "\t", 
+            col.names = F, row.names = F)
+write.table(shuf_peaks[1001:2000,],
+            "results/permuted_atac_peaks2.txt", quote = F, sep = "\t", 
+            col.names = F, row.names = F)
+write.table(shuf_peaks[2001:3000,],
+            "results/permuted_atac_peaks3.txt", quote = F, sep = "\t", 
+            col.names = F, row.names = F)
+write.table(shuf_peaks[3001:4000,],
+            "results/permuted_atac_peaks4.txt", quote = F, sep = "\t", 
+            col.names = F, row.names = F)
+write.table(shuf_peaks[4001:5000,],
+            "results/permuted_atac_peaks5.txt", quote = F, sep = "\t", 
+            col.names = F, row.names = F)
+write.table(shuf_peaks[5001:6000,],
+            "results/permuted_atac_peaks6.txt", quote = F, sep = "\t", 
+            col.names = F, row.names = F)
+  ?bed_shuffle
+jaspar_motifs <- read_table("data/jaspar_atac_mm10.txt") %>%
+  clean_names()
+
+jaspar_motifs_summary <- jaspar_motifs %>% group_by(tf_name) %>%
+  summarize(count= n())
+```
+
+Let's grab some of the ATAC-seq peaks that aren't changing for comparison with
+those that are changing significantly.
+
+```{r}
+res_df <- read_csv("results/atac_merged_deseq.csv")
+
+sig_df <- res_df %>% filter(padj < 0.05)
+write_csv(sig_df, "atac_sig_peaks.csv")
+
+ns_df <- res_df %>% 
+  filter(padj > 0.5, abs(log2FoldChange) < 0.01)
+write.table(ns_df %>% dplyr::select(Chr, Start, End),
+            "ns_atac_control_peaks.bed",
+            sep = "\t", quote = FALSE, row.names = FALSE,
+            col.names = FALSE)
+summary(ns_df$End - ns_df$Start)
+summary(sig_df$End - sig_df$Start)
+```
+
+
+
+
 
 
 
