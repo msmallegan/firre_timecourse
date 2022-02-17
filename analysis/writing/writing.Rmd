@@ -1,0 +1,27 @@
+---
+title: "Writing"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(stringsAsFactors = FALSE)
+library(tidyverse)
+```
+
+```{r}
+# http://bioinfo.life.hust.edu.cn/hTFtarget#!/download
+# http://bioinfo.life.hust.edu.cn/static/hTFtarget/file_download/tf-target-infomation.txt
+# doi:10.1016/j.gpb.2019.09.006
+tf_target <- read_tsv("data/tf-target-infomation.txt")
+
+tft_summary <- tf_target %>% 
+  group_by(TF, tissue) %>%
+  summarize(count = n())
+summary(tft_summary$count)
+
+```
+
+

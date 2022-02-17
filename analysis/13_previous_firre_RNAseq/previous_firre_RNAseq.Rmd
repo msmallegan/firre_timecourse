@@ -26,3 +26,162 @@ summary(sig$mESC_WT_mESC_KO_q_value)
 summary(abs(sig$mESC_WT_mESC_KO_log2_fold_change))
 ```
 
+```{r}
+andergassen <- read_csv("data/andergassen_2019_deg.csv")
+```
+
+```{r}
+# # Let's read in all the gene lists. That'll be the first step in any analysis.
+# res <- list.files("results/", full.names = TRUE, recursive = TRUE)
+# res <- res[grep("_all", res)]
+# 
+# dat <- read.csv(gzfile(res[[1]]))
+# dat$contrast <- res[[1]]
+# dat <- dat[ ,c("contrast", "baseMean", "log2FoldChange", "lfcSE", "stat", "pvalue", "padj",
+#                "geneID", "gene_id", "gene_name")]
+# 
+# 
+# for(i in 2:length(res)) {
+#   tdat <- read.csv(gzfile(res[[i]]))
+#   tdat$contrast <- res[[i]]
+#   tdat <- tdat[ ,c("contrast", "baseMean", "log2FoldChange", "lfcSE", "stat", "pvalue", "padj",
+#                "geneID", "gene_id", "gene_name")]
+#   dat <- rbind(dat, tdat)
+# }
+# 
+# dat$contrast <- unlist(lapply(dat$contrast, function(x) {
+#   gsub("_all", "", gsub("condition_", "", unlist(strsplit(unlist(strsplit(x, "//"))[[2]], ".csv"))[[1]]))
+# }))
+# 
+# write.csv(dat, "combined_deg_results.csv", row.names = FALSE)
+
+dat <- read.csv("data/combined_deg_results.csv") %>%
+  # let's remove the dzx4 only kos
+  filter(contrast != "andergassen/liver_dxz4_ko_vs_liver_wt",
+         contrast != "andergassen/spleen_dxz4_ko_vs_spleen_wt")
+dat <- dat[which(!grepl("wt_dox", dat$contrast)), ]
+dat <- dat[which(!grepl("ko_dox", dat$contrast)), ]
+```
+
+```{r}
+# let's see where firre is in all this
+firre <- dat %>% filter(gene_name == "Firre")
+firre$contrast <- unlist(lapply(firre$contrast, function(x) {
+  unlist(strsplit(x, "/timepoint"))[[1]]
+}))
+firre <- firre %>% group_by(contrast) %>% 
+  summarize(l2fc = log2FoldChange[which.max(abs(log2FoldChange))],
+            padj = min(padj, na.rm = T))
+```
+
+
+```{r}
+
+
+# first let's make some cutoff and see how many contrasts genes appear in.
+datf <- dat %>% filter(padj < 0.05, abs(log2FoldChange) >= 1)
+datf <- datf[which(!grepl("wt_firre", datf$contrast)), ]
+datf <- datf[which(!grepl("ko_firre", datf$contrast)), ]
+
+length(unique(datf$gene_id))
+unique(datf$contrast)
+# let's collapse the timepoints into one.
+dat_sum <- datf %>%
+  mutate(direction = ifelse(log2FoldChange > 0, "up", "down"))
+
+length(unique(dat_sum$contrast))
+
+
+gsum <- dat_sum %>% group_by(gene_id, gene_name, contrast) %>%
+  distinct() %>%
+  summarize(count = n()) %>%
+  group_by(gene_id, gene_name) %>%
+  summarize(count = n()) %>%
+  arrange(-count)
+
+gcount_sum <- gsum %>% group_by(count) %>% summarize(num_genes = n())
+
+775 / length(unique(dat_sum$gene_id))
+
+
+gsum2 <- dat_sum %>% 
+  rowwise() %>%
+  mutate(tissue = unlist(strsplit(unlist(strsplit(contrast, "/"))[[2]], "_"))[[1]]) %>%
+  dplyr::select(gene_id, gene_name, direction, tissue) %>%
+  distinct() %>%
+  group_by(gene_id, gene_name) %>%
+  summarize(count = n())
+  table(gsum2$count)
+  # group_by(gene_id, gene_name, contrast)
+# source("_setup.R")
+
+gsum2 <- dat_sum %>% 
+  rowwise() %>%
+  mutate(tissue = unlist(strsplit(unlist(strsplit(contrast, "/"))[[2]], "_"))[[1]]) %>%
+  dplyr::select(gene_id, gene_name, direction, tissue) %>%
+  distinct() %>%
+  group_by(gene_id, gene_name, direction) %>%
+  summarize(count = n())
+# plotit
+g <- ggplot(gcount_sum, aes(x = count, y = num_genes)) + 
+  geom_bar(stat = "identity") 
+g + scale_y_log10(expand = c(0, 0), limits = c(1,10000)) + scale_x_continuous(breaks = 1:6, limits = c(0,7), expand = c(0, 0)) +
+  theme(axis.text.x = element_text(angle = 0),
+        text=element_text(size=16,  family="Helvetica", face = "plain"),
+        axis.line = element_line(colour = "black"),
+        panel.border = element_blank()) + 
+  ylab("DE Genes") +
+  xlab("Num experiments significant")
+ggsave(filename = "deg_counts_histogram.pdf", height = 4.5, width = 5.5)
+
+# let's see which datasets the significant genes are in. 
+sigs <- gsum %>% filter(count > 5)
+sigdf <- datf %>% 
+  filter(gene_name != "Firre") %>%
+  filter(gene_id %in% sigs$gene_id) %>% select(gene_id, gene_name, contrast) %>%
+  mutate(sig = 1) %>%
+  spread(key = "contrast", value = "sig", fill = 0)
+
+colSums(sigdf[,3:ncol(sigdf)])
+```
+
+
+```{r}
+# let's do gsea with the gene sets identified in the timecourse experiments.
+# first let's retrieve those gene sets. 
+wt_firre <- read.csv("results/firre_responders_firre_wt_mesc.csv") %>%
+  # for this we'll remove the genes that were flagged in the dox experiment.
+  filter(flagged_in_dox == FALSE) 
+ko_firre <- read.csv("results/firre_responders_firre_ko_mesc.csv") %>%
+  filter(flagged_in_dox == FALSE) 
+
+# now let's just take the list of genes that was significant in any one time point.
+ko_ftc_genes <- unique(ko_firre$gene_id)
+wt_ftc_genes <- unique(wt_firre$gene_id)
+
+
+# now let's do gsea for just one of the other datasets.
+dat <- dat[which(!grepl("wt_firre", dat$contrast)), ]
+dat <- dat[which(!grepl("ko_firre", dat$contrast)), ]
+contrasts <- unique(dat$contrast)
+
+
+
+
+```
+
+```{r}
+# rank aggregation because I can't exactly figure out what john had in mind with gsea.
+# i suppose I could take the sig genes from the timecourse and compare them to each experiment
+# to see which tissue is most similar. Alternatively I could get a pairwise distance measure of
+# each dataset to each other dataset using comparison of two ranked lists. 
+# This analysis however will pull out the genes that are near the top of the lists
+# across all experiments.
+# library(RankAggreg)
+# data(geneLists)
+```
+
+
+
+
+

@@ -551,7 +551,7 @@ choose_best_model <- function(bic_list) {
 curve_fits$best_model <- apply(curve_fits[,c("lm_bic","sigmoid_bic", "impulse_bic")],
                             1, choose_best_model)
 
-
+fit_df <- curve_fitsl %>% filter(gene_name == "Firre")
 plot_timecourse_fits <- function(gene, fit_df) {
   
 og <- fit_df %>%
@@ -592,6 +592,7 @@ return(g)
 
 hmm <- curve_fitsl %>% filter(gene_name == "Firre")
 plot_timecourse_fits("Nanog", curve_fitsl)
+plot_timecourse_fits("Firre", curve_fitsl)
 # Lars2 outlier in sample JR2432
 # Also RN7sk in sample JR2432
 ```
