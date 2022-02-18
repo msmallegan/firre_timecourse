@@ -37,19 +37,27 @@ g2s <- genes %>% as.data.frame() %>%
 
 tx2gene <- read.csv("../../rnaseq/results/salmon/tx2gene.csv")
 
+
 ### COUNTS
 tpm <- read.csv("../../rnaseq/results/salmon/salmon_merged_gene_tpm.csv") %>%
   merge(g2s) %>%
-  dplyr::select(gene_id, gene_name, everything())
+  dplyr::select(gene_id, gene_name, everything()) %>%
+  filter(gene_id %in% genes$gene_id)
+
+# There are some genes in this list which were not quantified by salmon. 
+genes <- genes[genes$gene_id %in% tpm$gene_id,]
 
 salmon_gene_counts <- read.csv(file.path("../../rnaseq/results/salmon/",
                                          "salmon_merged_gene_counts.csv")) %>%
   column_to_rownames("gene_id") %>%
   as.matrix()
 mode(salmon_gene_counts) <- "integer"
+
+# Filter to relevant genes
+salmon_gene_counts <- salmon_gene_counts[rownames(salmon_gene_counts) %in% genes$gene_id,]
 # Put in order
 genes <- genes[rownames(salmon_gene_counts)]
-unique(samples$timepoint)
+
 ### SAMPLE INFO
 samples <- read.csv("../../rnaseq/rnaseq_samplesheet.csv") %>%
   filter(cell_type != "pMEF",
@@ -58,14 +66,18 @@ samples <- read.csv("../../rnaseq/rnaseq_samplesheet.csv") %>%
          timepoint = factor(timepoint, 
                                     levels = c(seq(0,360,30), 720, 1440, 2880, 5760)),
          firre_induced = factor(firre_induced, 
-                                levels = c("control", "firre_induced"))) %>%
+                                levels = c("control", "firre_induced")),
+         timecourse_length = factor(timecourse_length, levels = c("long", "short")),
+         cell_type = factor(cell_type, levels = c("ESC", "NPC")),
+         experiment_replicate = factor(experiment_replicate, levels = c(1,2))) %>%
   unite(experiment, cell_type, firre_ko, remove = FALSE)
 rownames(samples) <- samples$sample_id
 
 counts <- salmon_gene_counts[,as.character(samples$sample_id)]
 stopifnot(all(rownames(samples) == colnames(counts)))
-
+stopifnot(all(rownames(salmon_gene_counts) == genes$gene_id))
 # Save as a bundle of objects.
-save(genes, g2s, tx2gene, tpm, salmon_gene_counts, samples, counts, file = "results/rnaseq_data.RData")
+save(genes, g2s, tx2gene, tpm, salmon_gene_counts, samples, counts, 
+     file = "results/rnaseq_data.RData")
 ```
 
