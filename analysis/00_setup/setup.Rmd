@@ -1,0 +1,71 @@
+---
+title: "Setup"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(stringsAsFactors = FALSE,
+        dplyr.summarise.inform = FALSE,
+        tidyverse.quiet = TRUE)
+library(tidyverse)
+```
+
+# RNA-seq count data setup
+
+```{r}
+### ANNOTATIONS
+if(!file.exists("../util/gencode.vM25.annotation.genes.gtf")) {
+  gencode <- rtracklayer::import(file.path("../../../../genomes/Mus_musculus/",
+                                           "Gencode/M25/",
+                                           "gencode.vM25.annotation.gtf"))
+  genes <- gencode[gencode$type == "gene"]
+  rtracklayer::export(genes, 
+                      "../util/gencode.vM25.annotation.genes.gtf")
+}
+genes <- rtracklayer::import(file.path("../util/",
+                                       "gencode.vM25.annotation.genes.gtf"))
+names(genes) <- genes$gene_id
+# Remove pseudogenes
+genes <- genes[!grepl("pseudogene", genes$gene_type), ]
+
+
+g2s <- genes %>% as.data.frame() %>%
+  dplyr::select(gene_id, gene_name)
+
+tx2gene <- read.csv("../../rnaseq/results/salmon/tx2gene.csv")
+
+### COUNTS
+tpm <- read.csv("../../rnaseq/results/salmon/salmon_merged_gene_tpm.csv") %>%
+  merge(g2s) %>%
+  dplyr::select(gene_id, gene_name, everything())
+
+salmon_gene_counts <- read.csv(file.path("../../rnaseq/results/salmon/",
+                                         "salmon_merged_gene_counts.csv")) %>%
+  column_to_rownames("gene_id") %>%
+  as.matrix()
+mode(salmon_gene_counts) <- "integer"
+# Put in order
+genes <- genes[rownames(salmon_gene_counts)]
+unique(samples$timepoint)
+### SAMPLE INFO
+samples <- read.csv("../../rnaseq/rnaseq_samplesheet.csv") %>%
+  filter(cell_type != "pMEF",
+         date_sequenced != "2018-09") %>%
+  mutate(firre_ko = factor(firre_ko, levels = c("WT", "KO")),
+         timepoint = factor(timepoint, 
+                                    levels = c(seq(0,360,30), 720, 1440, 2880, 5760)),
+         firre_induced = factor(firre_induced, 
+                                levels = c("control", "firre_induced"))) %>%
+  unite(experiment, cell_type, firre_ko, remove = FALSE)
+rownames(samples) <- samples$sample_id
+
+counts <- salmon_gene_counts[,as.character(samples$sample_id)]
+stopifnot(all(rownames(samples) == colnames(counts)))
+
+# Save as a bundle of objects.
+save(genes, g2s, tx2gene, tpm, salmon_gene_counts, samples, counts, file = "results/rnaseq_data.RData")
+```
+
