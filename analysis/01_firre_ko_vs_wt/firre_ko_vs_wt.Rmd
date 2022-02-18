@@ -180,14 +180,14 @@ dev.off()
 ```
 
 ```{r rescue_pca}
-pca_dat <- prcomp(t(comb_matrix_scaled))
-proportion_of_variance <- summary(pc_dat)$importance[2,1:2]
+pca_dat <- prcomp(t(comb_matrix))
+proportion_of_variance <- summary(pca_dat)$importance[2,1:2]
 
-pca_df <- pc_dat$x[,1:2] %>%
+pca_df <- pca_dat$x[,1:2] %>%
   as.data.frame() %>%
   rownames_to_column("sample")
 
-ggplot(pc_df, aes(x = PC1, y = PC2, label = sample)) +
+ggplot(pca_df, aes(x = PC1, y = PC2, label = sample)) +
   geom_point() +
   geom_text_repel() +
   xlab(paste0("PC1: ", round(proportion_of_variance["PC1"]*100), "%")) +
@@ -213,5 +213,113 @@ ggplot(firre_ko_rescue,
        aes(x = as.numeric(as.character(timepoint)), y = tpm, color = firre_induced)) +
   geom_point()
 ```
+
+```{r long_timecourse}
+# Filter to ESC KO long timecourse
+ko_rescue_samples <- samples %>%
+  filter(cell_type == "ESC",
+         firre_ko == "KO")
+ko_rescue_counts <- salmon_gene_counts[,ko_rescue_samples$sample_id]
+
+# Check ordering
+stopifnot(all(rownames(ko_rescue_samples) == colnames(ko_rescue_counts)))
+stopifnot(all(rownames(ko_rescue_counts) == genes$gene_id))
+
+# DESeq2 -- controlling for doxycycline; likelihood ratio test
+ko_rescue_dds <- DESeqDataSetFromMatrix(countData = ko_rescue_counts, 
+                                        colData = ko_rescue_samples, 
+                                        design = ~ firre_induced + timepoint + timecourse_length + timepoint*firre_induced)
+ko_rescue_dds <- DESeq(ko_rescue_dds, test = "LRT", reduced = ~ firre_induced + timepoint + timecourse_length)
+
+# Compile results
+res_names <- resultsNames(ko_rescue_dds)
+dynamic_res <- res_names[grepl("firre_inducedfirre_induced.timepoint", res_names)]
+
+ko_rescue_res <- lapply(dynamic_res, function(x) {
+  results(ko_rescue_dds, 
+          name = x) %>%
+    as.data.frame() %>%
+    rownames_to_column("gene_id") %>% 
+    merge(g2s) %>%
+    mutate(result_name = x,
+           timepoint = as.numeric(gsub("firre_inducedfirre_induced.timepoint", "", result_name)))
+}) %>% bind_rows()
+
+# Calculate the maximum fold-change in any one timepoint
+ko_rescue_maxfc <-  ko_rescue_res %>%
+  group_by(gene_id) %>%
+  summarize(max_fc = max(abs(log2FoldChange))) 
+ko_rescue_res <- ko_rescue_res %>%
+  left_join(ko_rescue_maxfc) %>%
+  mutate(sig = padj <= pval_thresh & abs(log2FoldChange) > l2fc_thresh)
+
+ko_rescue_sig <- ko_rescue_res %>% 
+  filter(sig == TRUE)
+```
+
+# Steady state
+
+```{r}
+esc_ko_tpm <- tpm %>%
+  filter(gene_id %in% ko_rescue_sig$gene_id) %>%
+  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
+  left_join(samples) %>%
+  filter(cell_type == "ESC", firre_ko == "KO", firre_induced == "firre_induced") %>%
+  group_by(gene_id, timepoint) %>%
+  summarize(tpm = mean(tpm)) %>%
+  pivot_wider(names_from = "timepoint", values_from = "tpm", names_sort = TRUE) %>%
+  column_to_rownames("gene_id") %>%
+  as.matrix()
+# expressed <- rowMax(esc_ko_tpm)
+# esc_ko_tpm <- esc_ko_tpm[expressed > 1,]
+
+wt_tpm <- tpm %>%
+  filter(gene_id %in% ko_rescue_sig$gene_id) %>%
+  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
+  left_join(samples) %>%
+  filter(cell_type == "ESC", firre_ko == "WT") %>%
+  group_by(gene_id, timepoint) %>%
+  summarize(tpm = mean(tpm)) %>%
+  pivot_wider(names_from = "timepoint", values_from = "tpm", names_sort = TRUE) %>%
+  column_to_rownames("gene_id") %>%
+  as.matrix()
+
+esc_ko_scaled <- t(scale(t(esc_ko_tpm)))
+pheatmap::pheatmap(esc_ko_scaled, cluster_cols = FALSE, show_rownames = FALSE)
+
+# esc_ko_tpm_log10
+table(is.infinite(esc_ko_tpm_log10))
+esc_ko_tpm_log10 <- log10(esc_ko_tpm + 0.1)
+var_rows <- apply(esc_ko_tpm_log10, 1, var)
+summary(var_rows)
+esc_ko_tpm_log10_var <- esc_ko_tpm_log10[var_rows > 0.09,]
+# esc_ko_tpm_log10 <- esc_ko_tpm_log10 [rowSums(is.na(esc_ko_tpm_log10 )) , ]
+pca_dat <- prcomp(t(esc_ko_tpm))
+proportion_of_variance <- summary(pca_dat)$importance[2,1:2]
+
+pca_df <- pca_dat$x[,1:2] %>%
+  as.data.frame() %>%
+  rownames_to_column("sample")
+
+ggplot(pca_df, aes(x = PC1, y = PC2, label = sample)) +
+  geom_point() +
+  geom_text_repel() +
+  xlab(paste0("PC1: ", round(proportion_of_variance["PC1"]*100), "%")) +
+  ylab(paste0("PC2: ", round(proportion_of_variance["PC2"]*100), "%"))
+
+esc_ko_tpm_log10 <- log10(esc_ko_tpm)
+esc_ko_var <- apply(esc_ko_tpm_log10, 1, var, na.rm = TRUE)
+
+var_esc_ko <- esc_ko_tpm_log10[which(esc_ko_var > 0.02),]
+var_esc_ko_scaled <- t(scale(t(var_esc_ko)))
+pheatmap::pheatmap(var_esc_ko_scaled, cluster_cols = FALSE, show_rownames = FALSE)
+
+summary(esc_ko_var)
+hmm <- esc_ko_tpm[is.na(esc_ko_var),]
+
+length(which(esc_ko_var))
+hist(esc_ko_var)
+```
+
 
 
