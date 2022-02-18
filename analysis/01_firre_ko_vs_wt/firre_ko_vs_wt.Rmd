@@ -33,13 +33,13 @@ stopifnot(all(rownames(esc_samples) == colnames(esc_counts)))
 esc_samples$experiment_replicate <- factor(esc_samples$experiment_replicate)
 
 esc_dds <- DESeqDataSetFromMatrix(countData = esc_counts, 
-                                colData = esc_samples, 
-                                design = ~ firre_ko + firre_induced)
+                                  colData = esc_samples, 
+                                  design = ~ firre_ko + firre_induced)
 esc_dds <- DESeq(esc_dds)
 
 res_names <- resultsNames(esc_dds)
 esc_res <- results(esc_dds, 
-               name = "firre_ko_KO_vs_WT")
+                   name = "firre_ko_KO_vs_WT")
 
 
 esc_resdf <- esc_res %>% as.data.frame() %>%
@@ -84,24 +84,48 @@ stopifnot(all(rownames(ltc_samples) == colnames(ltc_counts)))
 ltc_samples$experiment_replicate <- factor(ltc_samples$experiment_replicate)
 
 ltc_dds <- DESeqDataSetFromMatrix(countData = ltc_counts, 
-                                colData = ltc_samples, 
-                                design = ~ firre_induced + timepoint + timepoint*firre_induced)
+                                  colData = ltc_samples, 
+                                  design = ~ firre_induced + timepoint + timepoint*firre_induced)
 ltc_dds <- DESeq(ltc_dds, test = "LRT", reduced = ~ firre_induced + timepoint)
 # ltc_dds <- DESeq(ltc_dds)
 # ltc_dds <- DESeq(ltc_dds, test = "LRT", reduced = ~ 1)
 res_names <- resultsNames(ltc_dds)
+
+# Compile results
+dynamic_res <- res_names[grepl("firre_inducedfirre_induced.timepoint", res_names)]
+
+
 ltc_res <- results(ltc_dds, 
-               name = "timepoint_5760_vs_0")
-
-
-ltc_resdf <- ltc_res %>% as.data.frame() %>%
+                   name = dynamic_res[1]) %>%
+  as.data.frame() %>%
   rownames_to_column("gene_id") %>% 
-  merge(g2s)
+  merge(g2s) %>%
+  mutate(result_name = dynamic_res[1])
 
-ggplot(ltc_resdf %>% filter(!is.na(padj)), aes(x = log2FoldChange, y = -log10(padj))) +
-  geom_point()
+for(i in 2:length(dynamic_res)) {
+  tmp_ltc_res <- results(ltc_dds, 
+                   name = dynamic_res[i]) %>%
+  as.data.frame() %>%
+  rownames_to_column("gene_id") %>% 
+  merge(g2s) %>%
+  mutate(result_name = dynamic_res[i])
+  ltc_res <- bind_rows(ltc_res, tmp_ltc_res)
+}
 
-ltc_sig_res <- ltc_resdf %>% filter(padj < 0.05)
+
+
+# ggplot(ltc_resdf %>% filter(!is.na(padj)), aes(x = log2FoldChange, y = -log10(padj))) +
+#   geom_point()
+
+ltc_sig_res <- ltc_res %>% filter(padj < 0.05)
+
+max_fc <- ltc_sig_res %>%
+  group_by(gene_id) %>%
+  summarize(max_fc = max(abs(log2FoldChange))) 
+
+ltc_sig_res <- ltc_sig_res %>%
+  left_join(max_fc) 
+
 
 
 length(which(ltc_sig_res$gene_id %in% long_zero_res$gene_id))
@@ -131,7 +155,7 @@ goi_names <- ltc_sig_res$gene_name[ltc_sig_res$gene_id %in% long_zero_res$gene_i
 tpm_goi <- tpm %>% filter(gene_id %in% goi) %>%
   pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
   left_join(esc_samples) %>%
-filter(!is.na(experiment_replicate)) 
+  filter(!is.na(experiment_replicate)) 
 wtko_matrix <- tpm_goi %>%
   group_by(gene_name, firre_ko) %>%
   summarize(tpm = mean(tpm)) %>%
@@ -146,7 +170,7 @@ ltc_last_samples <- samples %>%
 tpm_goi_ltc <- tpm %>% filter(gene_id %in% goi) %>%
   pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
   left_join(ltc_last_samples) %>%
-filter(!is.na(experiment_replicate)) 
+  filter(!is.na(experiment_replicate)) 
 ltc_matrix <- tpm_goi_ltc %>%
   group_by(gene_name, timepoint) %>%
   summarize(tpm = mean(tpm)) %>%
@@ -163,12 +187,12 @@ library(seriation)
 ?olo
 
 cl_cb <- function(hcl, mat){
-    # Recalculate manhattan distances for reorder method
-    dists <- dist(mat, method = "euclidean")
-
-    # Perform reordering according to OLO method
-    hclust_olo <- reorder(hcl, dists)
-    return(hclust_olo)
+  # Recalculate manhattan distances for reorder method
+  dists <- dist(mat, method = "euclidean")
+  
+  # Perform reordering according to OLO method
+  hclust_olo <- reorder(hcl, dists)
+  return(hclust_olo)
 }
 pdf("figures/longtimecourse_rescue.pdf", width = 3.5, height = 4)
 pheatmap::pheatmap(comb_matrix_scaled, cluster_cols = FALSE, cluster_rows = TRUE, show_rownames = TRUE,
@@ -176,7 +200,7 @@ pheatmap::pheatmap(comb_matrix_scaled, cluster_cols = FALSE, cluster_rows = TRUE
                    clustering_callback = cl_cb,
                    clustering_distance_rows = "euclidean",
                    border_color = NA,
-                    fontsize_row = 8,
+                   fontsize_row = 8,
                    breaks = seq(-1.5, 1.5, length.out = length(col_pal10)),
                    treeheight_row = 25)
 dev.off()
@@ -212,14 +236,14 @@ stopifnot(all(rownames(ltc_samples) == colnames(ltc_counts)))
 ltc_samples$experiment_replicate <- factor(ltc_samples$experiment_replicate)
 
 ltc_dds <- DESeqDataSetFromMatrix(countData = ltc_counts, 
-                                colData = ltc_samples, 
-                                design = ~ firre_induced + timepoint + timepoint*firre_induced)
+                                  colData = ltc_samples, 
+                                  design = ~ firre_induced + timepoint + timepoint*firre_induced)
 ltc_dds <- DESeq(ltc_dds, test = "LRT", reduced = ~ firre_induced + timepoint)
 # ltc_dds <- DESeq(ltc_dds)
 # ltc_dds <- DESeq(ltc_dds, test = "LRT", reduced = ~ 1)
 res_names <- resultsNames(ltc_dds)
 ltc_res <- results(ltc_dds, 
-               name = "firre_inducedfirre_induced.timepoint720")
+                   name = "firre_inducedfirre_induced.timepoint720")
 
 
 ltc_resdf <- ltc_res %>% as.data.frame() %>%
