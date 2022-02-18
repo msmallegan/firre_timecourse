@@ -20,39 +20,9 @@ source("../util/_plot_theme.R")
 # Question: Does the firre induction rescue the genes changed in the knockout?
 
 ```{r}
-genes <- rtracklayer::import(file.path("../util/",
-                                       "gencode.vM25.annotation.genes.gtf"))
-names(genes) <- genes$gene_id
-
-g2s <- genes %>% as.data.frame() %>%
-  dplyr::select(gene_id, gene_name)
-
-tx2gene <- read.csv("../../rnaseq/results/salmon/tx2gene.csv")
 
 
-salmon_gene_counts <- read.csv(file.path("../../rnaseq/results/salmon/",
-                                         "salmon_merged_gene_counts.csv")) %>%
-  column_to_rownames("gene_id") %>%
-  as.matrix()
-mode(salmon_gene_counts) <- "integer"
 
-# Put in order
-genes <- genes[rownames(salmon_gene_counts)]
-
-samples <- read.csv("../../rnaseq/rnaseq_samplesheet.csv") %>%
-  filter(cell_type != "pMEF",
-         date_sequenced != "2018-09",
-         timepoint == 0) %>%
-  mutate(firre_ko = factor(firre_ko, levels = c("WT", "KO")),
-         timepoint = factor(timepoint, 
-                                    levels = c(seq(0,360,30))),
-         firre_induced = factor(firre_induced, 
-                                levels = c("control", "firre_induced"))) %>%
-  unite(experiment, cell_type, firre_ko, remove = FALSE)
-rownames(samples) <- samples$sample_id
-
-counts <- salmon_gene_counts[,as.character(samples$sample_id)]
-stopifnot(all(rownames(samples) == colnames(counts)))
 ```
 
 ```{r}
