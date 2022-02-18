@@ -271,4 +271,14 @@ get_dynamic_comparison_df <- function(res) {
 }
 
 
+olo_seriate <- function(hcl, mat){
+  # Recalculate manhattan distances for reorder method
+  dists <- dist(mat, method = "euclidean")
+  
+  # Perform reordering according to OLO method
+  hclust_olo <- reorder(hcl, dists)
+  return(hclust_olo)
+}
+
+
 
