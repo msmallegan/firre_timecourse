@@ -37,28 +37,28 @@ For this experiment, we induced the expression of Firre with an rTTA element by 
 if(!file.exists("results/ko_rescue_short.RData")) {
   
   # Filter to ESC KO long timecourse
-  ko_rescue_samples <- samples %>%
+  ko_rescue_short_samples <- samples %>%
     filter(cell_type == "ESC",
            timecourse_length == "short",
            firre_ko == "KO")
-  ko_rescue_counts <- salmon_gene_counts[,ko_rescue_samples$sample_id]
+  ko_rescue_short_counts <- salmon_gene_counts[,ko_rescue_short_samples$sample_id]
   
   # Check ordering
-  stopifnot(all(rownames(ko_rescue_samples) == colnames(ko_rescue_counts)))
-  stopifnot(all(rownames(ko_rescue_counts) == genes$gene_id))
+  stopifnot(all(rownames(ko_rescue_short_samples) == colnames(ko_rescue_short_counts)))
+  stopifnot(all(rownames(ko_rescue_short_counts) == genes$gene_id))
   
   # DESeq2 -- controlling for doxycycline; likelihood ratio test
-  ko_rescue_dds <- DESeqDataSetFromMatrix(countData = ko_rescue_counts, 
-                                          colData = ko_rescue_samples, 
-                                          design = ~ firre_induced + timepoint + timepoint*firre_induced)
-  ko_rescue_dds <- DESeq(ko_rescue_dds, test = "LRT", reduced = ~ firre_induced + timepoint)
+  ko_rescue_short_dds <- DESeqDataSetFromMatrix(countData = ko_rescue_short_counts, 
+                                                colData = ko_rescue_short_samples, 
+                                                design = ~ firre_induced + timepoint + timepoint*firre_induced)
+  ko_rescue_short_dds <- DESeq(ko_rescue_short_dds, test = "LRT", reduced = ~ firre_induced + timepoint)
   
   # Compile results
-  res_names <- resultsNames(ko_rescue_dds)
+  res_names <- resultsNames(ko_rescue_short_dds)
   dynamic_res <- res_names[grepl("firre_inducedfirre_induced.timepoint", res_names)]
   
-  ko_rescue_lfc <- lapply(dynamic_res, function(x) {
-    results(ko_rescue_dds, 
+  ko_rescue_short_lfc <- lapply(dynamic_res, function(x) {
+    results(ko_rescue_short_dds, 
             name = x) %>%
       as.data.frame() %>%
       rownames_to_column("gene_id") %>% 
@@ -68,8 +68,8 @@ if(!file.exists("results/ko_rescue_short.RData")) {
   }) %>% bind_rows()
   
   # Shrunken LFC results
-  ko_rescue_shrnklfc <- lapply(dynamic_res, function(x) {
-    lfcShrink(ko_rescue_dds, 
+  ko_rescue_short_shrnklfc <- lapply(dynamic_res, function(x) {
+    lfcShrink(ko_rescue_short_dds, 
               coef = x,
               type = "apeglm") %>%
       as.data.frame() %>%
@@ -80,23 +80,17 @@ if(!file.exists("results/ko_rescue_short.RData")) {
   }) %>% bind_rows()
   
   # Calculate the maximum fold-change in any one timepoint
-  ko_rescue_maxfc <- ko_rescue_shrnklfc %>%
+  ko_rescue_short_maxfc <- ko_rescue_short_shrnklfc %>%
     group_by(gene_id) %>%
     summarize(max_fc = max(abs(log2FoldChange))) 
   
-  ko_rescue_shrnklfc <- ko_rescue_shrnklfc %>%
-    left_join(ko_rescue_maxfc)
+  ko_rescue_short_shrnklfc <- ko_rescue_short_shrnklfc %>%
+    left_join(ko_rescue_short_maxfc)
   
-  save(ko_rescue_lfc, ko_rescue_shrnklfc, file = "results/ko_rescue_short.RData")
+  save(ko_rescue_short_lfc, ko_rescue_short_shrnklfc, file = "results/ko_rescue_short.RData")
 }
 
 load("results/ko_rescue_short.RData")
-
-ko_rescue_shrnklfc <- ko_rescue_shrnklfc %>%
-  mutate(sig = padj <= pval_thresh & max_fc > l2fc_thresh)
-
-ko_rescue_sig <- ko_rescue_shrnklfc %>% 
-  filter(sig == TRUE)
 ```
 
 ### Fold changes vs zero timepoint
@@ -108,7 +102,7 @@ if(!file.exists("results/ko_rescue_short_vs_zero.RData")) {
   
   ko_rescue_short_vszero_samples <- samples %>%
     filter(cell_type == "ESC",
-           timecourse_length == "long",
+           timecourse_length == "short",
            firre_ko == "KO",
            firre_induced == "firre_induced")
   ko_rescue_short_vszero_counts <- salmon_gene_counts[,ko_rescue_short_vszero_samples$sample_id]
@@ -119,8 +113,8 @@ if(!file.exists("results/ko_rescue_short_vs_zero.RData")) {
   
   # DESeq2 -- controlling for doxycycline; likelihood ratio test
   ko_rescue_short_vszero_dds <- DESeqDataSetFromMatrix(countData = ko_rescue_short_vszero_counts,
-                                                 colData = ko_rescue_short_vszero_samples,
-                                                 design = ~ timepoint)
+                                                       colData = ko_rescue_short_vszero_samples,
+                                                       design = ~ timepoint)
   ko_rescue_short_vszero_dds <- DESeq(ko_rescue_short_vszero_dds)
   res_names <- resultsNames(ko_rescue_short_vszero_dds)
   
@@ -158,7 +152,7 @@ wtko_sig <- wtko_res_shrnklfc %>%
 
 # Let's figure out which genes are rescued
 rescued_genes <- wtko_sig$gene_id[wtko_sig$gene_id %in% 
-                                    (ko_rescue_shrnklfc %>%
+                                    (ko_rescue_short_shrnklfc %>%
                                        filter(padj <= pval_thresh) %>% 
                                        pull(gene_id))]
 
@@ -184,21 +178,6 @@ rescued_df_closest <- rescued_df %>%
          max_fc = max(abs(l2fc_ltc)) == abs(l2fc_ltc)) %>%
   filter(closest == TRUE)
 
-# mod <- lm(l2fc_ltc ~ 1 + offset(-1*l2fc_wtko), data=rescued_df_closest)
-# summary(mod)
-# cooksd <- cooks.distance(mod)
-# plot(cooksd, pch="*", cex=2, main="Influential Obs by Cooks distance")
-# abline(h = 4*mean(cooksd, na.rm=T), col="red")  # add cutoff line
-# text(x=1:length(cooksd)+1, y=cooksd, labels=ifelse(cooksd>4*mean(cooksd, na.rm=T),names(cooksd),""), col="red")  # add labels
-# 
-# cooksd_cutoff <-0.5*mean(cooksd, na.rm=T)
-# 
-# rescued_df_closest$cooks_dist <- cooksd
-# rescued_df_closest$residual <- residuals(mod)
-# rescued_df_closest <- rescued_df_closest %>%
-#   mutate(cooks_cut = cooks_dist < cooksd_cutoff,
-#          resid_cut = abs(residual) < 0.5)
-
 rescued_df_closest <-  rescued_df_closest %>%
   mutate(twenty_percent = l2fc_wtko * 0.2,
          rescued = (-1*l2fc_wtko - twenty_percent)>= l2fc_ltc & l2fc_ltc>= (-1*l2fc_wtko + twenty_percent) |
@@ -220,33 +199,57 @@ ggplot(rescued_df_closest, aes(x = l2fc_wtko, y = l2fc_ltc, color = rescued)) +
 ggsave("figures/rescue_lfc_scatter.pdf", height = 3, width = 3, useDingbats = FALSE)
 ```
 
-### Long timecourse Firre responders heatmap
+### Short timecourse call significant genes
+
+We'll make the p-value cutoff based on the dox controlled model and the l2fc cutoff
+based on the fold change vs zero.
+
+```{r}
+ko_rescue_short_dox_sig <- ko_rescue_short_shrnklfc %>% 
+  filter(padj <= pval_thresh)
+
+ko_rescue_short_vszero_sig <- ko_rescue_short_vszero_shrnklfc %>%
+  filter(gene_id %in% ko_rescue_short_dox_sig$gene_id)
+
+ko_rescue_short_vszero_maxfc <- ko_rescue_short_vszero_sig %>%
+  group_by(gene_id) %>%
+  summarize(max_fc = max(abs(log2FoldChange))) 
+
+ko_rescue_short_vszero_sig <- ko_rescue_short_vszero_sig %>%
+  left_join(ko_rescue_short_vszero_maxfc)
+
+ko_rescue_short_vszero_sig <- ko_rescue_short_vszero_sig %>%
+  filter(max_fc > l2fc_thresh)
+```
+
+
+### Short timecourse Firre responders heatmap
 
 ```{r}
 # Heatmap of fold-changes for DEGs in the rescue
 # Check that there are no duplicate row names.
-stopifnot(all(length(unique(ko_rescue_sig$gene_id)) == length(unique(ko_rescue_sig$gene_name))))
+stopifnot(all(length(unique(ko_rescue_short_vszero_sig$gene_id)) == length(unique(ko_rescue_short_vszero_sig$gene_name))))
 
-ko_rescue_lfc <- ko_rescue_sig %>% 
+ko_rescue_short_lfc <- ko_rescue_short_vszero_sig %>%
   dplyr::select(gene_name, timepoint, log2FoldChange) %>%
   pivot_wider(names_from = timepoint, names_sort = TRUE, values_from = log2FoldChange) %>%
   column_to_rownames("gene_name") %>%
   as.matrix()
 
 # Add a zero column.
-ko_rescue_lfc <- cbind(matrix(0, nrow = nrow(ko_rescue_lfc), ncol = 1), ko_rescue_lfc)
-colnames(ko_rescue_lfc)[[1]] <- "0"
+ko_rescue_short_lfc <- cbind(matrix(0, nrow = nrow(ko_rescue_short_lfc), ncol = 1), ko_rescue_short_lfc)
+colnames(ko_rescue_short_lfc)[[1]] <- "0"
 
-row_ha = rowAnnotation(sig_in_ko = as.numeric(rownames(ko_rescue_lfc) %in% wtko_sig$gene_name),
-                       rescued = as.numeric(rownames(ko_rescue_lfc) %in% rescued_genes_20),
+row_ha = rowAnnotation(sig_in_ko = as.numeric(rownames(ko_rescue_short_lfc) %in% wtko_sig$gene_name),
+                       rescued = as.numeric(rownames(ko_rescue_short_lfc) %in% rescued_genes_20),
                        col = list(sig_in_ko = c("1" = "black", "0" = "white"),
                                   rescued = c("1" = "black", "0" = "white")))
 
-table(as.numeric(rownames(ko_rescue_lfc) %in% wtko_sig$gene_name))
-table(as.numeric(rownames(ko_rescue_lfc) %in% rescued_genes_20))
-rownames(ko_rescue_lfc)[rownames(ko_rescue_lfc) %in% rescued_genes_20]
+table(as.numeric(rownames(ko_rescue_short_lfc) %in% wtko_sig$gene_name))
+table(as.numeric(rownames(ko_rescue_short_lfc) %in% rescued_genes_20))
+rownames(ko_rescue_short_lfc)[rownames(ko_rescue_short_lfc) %in% rescued_genes_20]
 pdf("figures/stc_firre_responders_heatmap.pdf", width = 4, height = 3.5)
-Heatmap(ko_rescue_lfc, 
+Heatmap(ko_rescue_short_lfc, 
         name = "l2fc",
         cluster_columns = FALSE, show_row_names = FALSE, 
         col = colorRamp2(seq(-2,2,length.out = 100), col_pal10),
