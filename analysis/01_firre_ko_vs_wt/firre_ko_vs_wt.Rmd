@@ -36,37 +36,37 @@ The cell lines derived from the mouse have had a lot of time to equilibrate to t
 # Better to use the results of the long timecourse
 # to compare KO vs WT.
 if(!file.exists("results/wtko.RData")) {
-
-wtko_samples <- samples %>% 
-  filter(cell_type == "ESC", 
-         timepoint == 0, 
-         timecourse_length == "long")
-
-wtko_counts <- salmon_gene_counts[,wtko_samples$sample_id]
-
-# Check the ordering
-stopifnot(all(rownames(wtko_samples) == colnames(wtko_counts)))
-stopifnot(all(rownames(wtko_counts) == genes$gene_id))
-
-# DESeq2
-wtko_dds <- DESeqDataSetFromMatrix(countData = wtko_counts, 
-                                   colData = wtko_samples, 
-                                   design = ~ firre_ko)
-wtko_dds <- DESeq(wtko_dds)
-
-# Results
-wtko_res_lfc <- results(wtko_dds, name = "firre_ko_KO_vs_WT") %>% 
-  as.data.frame() %>%
-  rownames_to_column("gene_id") %>% 
-  merge(g2s) 
   
-
-wtko_res_shrnklfc <- lfcShrink(wtko_dds, coef = "firre_ko_KO_vs_WT", type = "apeglm") %>%
-  as.data.frame() %>%
-  rownames_to_column("gene_id") %>%
-  merge(g2s)
-
-save(wtko_res_lfc, wtko_res_shrnklfc, file = "results/wtko.RData")
+  wtko_samples <- samples %>% 
+    filter(cell_type == "ESC", 
+           timepoint == 0, 
+           timecourse_length == "long")
+  
+  wtko_counts <- salmon_gene_counts[,wtko_samples$sample_id]
+  
+  # Check the ordering
+  stopifnot(all(rownames(wtko_samples) == colnames(wtko_counts)))
+  stopifnot(all(rownames(wtko_counts) == genes$gene_id))
+  
+  # DESeq2
+  wtko_dds <- DESeqDataSetFromMatrix(countData = wtko_counts, 
+                                     colData = wtko_samples, 
+                                     design = ~ firre_ko)
+  wtko_dds <- DESeq(wtko_dds)
+  
+  # Results
+  wtko_res_lfc <- results(wtko_dds, name = "firre_ko_KO_vs_WT") %>% 
+    as.data.frame() %>%
+    rownames_to_column("gene_id") %>% 
+    merge(g2s) 
+  
+  
+  wtko_res_shrnklfc <- lfcShrink(wtko_dds, coef = "firre_ko_KO_vs_WT", type = "apeglm") %>%
+    as.data.frame() %>%
+    rownames_to_column("gene_id") %>%
+    merge(g2s)
+  
+  save(wtko_res_lfc, wtko_res_shrnklfc, file = "results/wtko.RData")
 }
 
 
@@ -99,9 +99,9 @@ ggplot(wtko_res_shrnklfc %>% filter(!is.na(padj)),
   geom_point(data = wtko_res_shrnklfc %>% filter(sig == TRUE), size = 1)  +
   geom_point(data = wtko_res_shrnklfc %>% filter(sig == FALSE, !is.na(padj)), size = 1, alpha = 0.7) +
   annotate("text", x = 2, y = 100, label = paste0("n = ", wtko_num_deg %>% filter(direction == "up") %>%
-             pull(num_deg))) +
-   annotate("text", x = -2, y = 100, label = paste0("n = ", wtko_num_deg %>% filter(direction == "down") %>%
-             pull(num_deg))) +
+                                                    pull(num_deg))) +
+  annotate("text", x = -2, y = 100, label = paste0("n = ", wtko_num_deg %>% filter(direction == "down") %>%
+                                                     pull(num_deg))) +
   geom_text_repel(data = wtko_res_shrnklfc %>% filter(gene_name == "Firre"), aes(label = gene_name)) +
   theme(legend.position = "none") +
   xlim(-3.5,3.5) +
