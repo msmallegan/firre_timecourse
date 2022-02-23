@@ -136,7 +136,7 @@ ggplot(ko_dox_long_deg, aes(x = tp_adjust, y = log2FoldChange, group = gene_id))
            label = paste0("n = ", ko_dox_long_num_deg %>% 
                             filter(direction == "down") %>%
                             pull(num_deg)))
-ggsave("figures/ko_long_dox_lfc.pdf", height = 3, width = 3.5, useDingbats = FALSE)
+ggsave("figures/ko_dox_long_lfc.pdf", height = 3, width = 3.5, useDingbats = FALSE)
 ```
 
 ### Short timecourse dox effect
