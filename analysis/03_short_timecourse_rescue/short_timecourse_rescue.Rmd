@@ -249,7 +249,7 @@ pdf("figures/stc_firre_responders_heatmap.pdf", width = 4, height = 3.5)
 Heatmap(ko_rescue_lfc, 
         name = "l2fc",
         cluster_columns = FALSE, show_row_names = FALSE, 
-        col = colorRamp2(seq(-3,3,length.out = 100), col_pal10),
+        col = colorRamp2(seq(-2,2,length.out = 100), col_pal10),
         left_annotation = row_ha)
 dev.off()
 ```
