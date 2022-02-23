@@ -1,0 +1,97 @@
+---
+title: "Firre's expression profile"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(stringsAsFactors = FALSE,
+        dplyr.summarise.inform = FALSE,
+        tidyverse.quiet = TRUE)
+library(tidyverse)
+library(ggrepel)
+source("../util/_plot_theme.R")
+source("../util/_util.R")
+```
+
+```{r load, include=FALSE}
+load("../00_setup/results/rnaseq_data.RData")
+```
+
+# Firre's induction
+
+We would like to check that Firre's expression is actually induced by the addition of
+doxycycline. 
+
+### Long timecourse
+
+```{r firre_profile}
+firre_ko_rescue <- tpm %>%
+  filter(gene_name == "Firre") %>%
+  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
+  left_join(samples) %>%
+  filter(cell_type == "ESC", firre_ko == "KO", timecourse_length == "long")
+
+firre_means <- firre_ko_rescue %>%
+  group_by(timepoint, firre_induced) %>%
+  summarize(tpm = mean(tpm)) %>%
+  mutate(timepoint = as.numeric(as.character(timepoint)))
+ggplot(firre_ko_rescue, 
+       aes(x = as.numeric(as.character(timepoint)), y = tpm, color = firre_induced)) +
+  geom_line(data = firre_means, aes(x = timepoint, y = tpm, color = firre_induced,
+                                    group = firre_induced)) +
+  geom_point() + 
+  theme(legend.position = "none") +
+  xlab("T (min)")
+ggsave("figures/firre_esc_ko_profile_long.pdf", height = 3, width = 3, useDingbats = FALSE)
+
+```
+
+### Short timecourse
+
+```{r}
+firre_ko_rescue <- tpm %>%
+  filter(gene_name == "Firre") %>%
+  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
+  left_join(samples) %>%
+  filter(cell_type == "ESC", firre_ko == "KO", timecourse_length == "short")
+
+firre_means <- firre_ko_rescue %>%
+  group_by(timepoint, firre_induced) %>%
+  summarize(tpm = mean(tpm)) %>%
+  mutate(timepoint = as.numeric(as.character(timepoint)))
+ggplot(firre_ko_rescue, 
+       aes(x = as.numeric(as.character(timepoint)), y = tpm, color = firre_induced)) +
+  geom_line(data = firre_means, aes(x = timepoint, y = tpm, color = firre_induced,
+                                    group = firre_induced)) +
+  geom_point() + 
+  theme(legend.position = "none") +
+  xlab("T (min)")
+ggsave("figures/firre_esc_ko_profile_short.pdf", height = 3, width = 3, useDingbats = FALSE)
+```
+
+### Combined
+
+```{r}
+firre_ko_rescue <- tpm %>%
+  filter(gene_name == "Firre") %>%
+  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
+  left_join(samples) %>%
+  filter(cell_type == "ESC", firre_ko == "KO")
+
+firre_means <- firre_ko_rescue %>%
+  group_by(timepoint, firre_induced) %>%
+  summarize(tpm = mean(tpm)) %>%
+  mutate(timepoint = as.numeric(as.character(timepoint)))
+ggplot(firre_ko_rescue, 
+       aes(x = as.numeric(as.character(timepoint)), y = tpm, color = firre_induced)) +
+  geom_line(data = firre_means, aes(x = timepoint, y = tpm, color = firre_induced,
+                                    group = firre_induced)) +
+  geom_point() + 
+  theme(legend.position = "none") +
+  xlab("T (min)")
+ggsave("figures/firre_esc_ko_profile.pdf", height = 3, width = 3, useDingbats = FALSE)
+```
+
