@@ -220,6 +220,8 @@ ko_rescue_short_vszero_sig <- ko_rescue_short_vszero_sig %>%
 
 ko_rescue_short_vszero_sig <- ko_rescue_short_vszero_sig %>%
   filter(max_fc > l2fc_thresh)
+
+save(ko_rescue_short_vszero_sig, file = "results/ko_rescue_short_vszero_sig.RData")
 ```
 
 
