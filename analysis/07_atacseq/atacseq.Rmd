@@ -183,6 +183,32 @@ ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj), color = firre_responder
   geom_text_repel(data = res_df %>% filter(firre_responder == TRUE,
                                            padj < 0.05), aes(label = gene_name))
 
+
+
+sig_atac_peaks <- res_df %>%
+  filter(padj <= 0.05, log2FoldChange > 0)
+rownames(counts)
+sig_counts <- counts[sig_atac_peaks$interval_id,] %>%
+  as.data.frame() %>%
+  rownames_to_column("interval_id") %>%
+  pivot_longer(2:ncol(.), names_to = "sample", values_to = "count") %>%
+  mutate(firre_induced = ifelse(grepl("control", sample), "control", "firre_induced"),
+         firre_ko = ifelse(grepl("KO", sample), "KO", "WT")) %>%
+  rowwise() %>%
+  mutate(timepoint = as.numeric(gsub("ESC_KO_firre_induced_|ESC_KO_control_|ESC_WT_firre_induced_|ESC_WT_control_|_R1", "", sample)))
+
+sum_counts <- sig_counts %>%
+  group_by(firre_induced, timepoint, firre_ko) %>%
+  summarize(sum_counts = sum(count))
+  
+source("../util/_plot_theme.R")
+ggplot(sum_counts %>% filter(firre_ko == "KO", firre_induced == "firre_induced"), 
+       aes(x = timepoint, y = sum_counts)) +
+  geom_smooth(se = FALSE) +
+  geom_point()
+ggsave("figures/atac_timing.pdf", width = 3, height = 3, useDingbats = FALSE)
+
+
 wt_dds <- DESeqDataSetFromMatrix(countData = round(wt_counts), 
                                colData = wt_samples, 
                                design = ~ firre_induced)
