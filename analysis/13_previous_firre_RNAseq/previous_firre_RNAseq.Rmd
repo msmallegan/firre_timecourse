@@ -79,7 +79,7 @@ firre <- firre %>% group_by(contrast) %>%
 
 
 # first let's make some cutoff and see how many contrasts genes appear in.
-datf <- dat %>% filter(padj < 0.05, abs(log2FoldChange) >= 1)
+datf <- dat %>% filter(padj < 0.05, abs(log2FoldChange) >= log2(1.5))
 datf <- datf[which(!grepl("wt_firre", datf$contrast)), ]
 datf <- datf[which(!grepl("ko_firre", datf$contrast)), ]
 
@@ -92,36 +92,71 @@ dat_sum <- datf %>%
 length(unique(dat_sum$contrast))
 
 
-gsum <- dat_sum %>% group_by(gene_id, gene_name, contrast) %>%
+gsum <- dat_sum %>%
+  group_by(gene_id, gene_name, tissue) %>%
   distinct() %>%
-  summarize(count = n()) %>%
-  group_by(gene_id, gene_name) %>%
   summarize(count = n()) %>%
   arrange(-count)
 
-gcount_sum <- gsum %>% group_by(count) %>% summarize(num_genes = n())
+gcount_sum <- gsum %>%
+  group_by(count) %>%
+  summarize(num_genes = n())
 
-775 / length(unique(dat_sum$gene_id))
+gcount_sum$cumgenes <- rev(cumsum(rev(gcount_sum$num_genes)))
+
+# Add Firre entries
+firre_gcount <- tibble(count = 7:15,
+                       num_genes = 1,
+                       cumgenes = 1)
+
+gcount <- bind_rows(gcount_sum, firre_gcount)
+
+gcount <- gcount %>%
+  mutate(firre_only = cumgenes == 1)
 
 
-gsum2 <- dat_sum %>% 
-  rowwise() %>%
-  mutate(tissue = unlist(strsplit(unlist(strsplit(contrast, "/"))[[2]], "_"))[[1]]) %>%
-  dplyr::select(gene_id, gene_name, direction, tissue) %>%
-  distinct() %>%
-  group_by(gene_id, gene_name) %>%
-  summarize(count = n())
-  table(gsum2$count)
-  # group_by(gene_id, gene_name, contrast)
-# source("_setup.R")
+ggplot(gcount, aes(x = count, y = cumgenes, color = firre_only)) + 
+  geom_bar(stat = "identity") +
+# scale_y_log10(expand = c(0, 0), limits = c(1,10000)) + scale_x_continuous(breaks = 1:6, limits = c(0,7), expand = c(0, 0)) +
+  # theme(axis.text.x = element_text(angle = 0),
+  #       text=element_text(size=16,  family="Arial", face = "plain"),
+  #       axis.line = element_line(colour = "black"),
+  #       panel.border = element_blank()) + 
+  ylab("DE Genes") +
+  xlab("Num experiments significant")
+ggsave("figures/previous_firre_ko_mouse_deg.pdf", height = 3, width = 4)
 
-gsum2 <- dat_sum %>% 
-  rowwise() %>%
-  mutate(tissue = unlist(strsplit(unlist(strsplit(contrast, "/"))[[2]], "_"))[[1]]) %>%
-  dplyr::select(gene_id, gene_name, direction, tissue) %>%
-  distinct() %>%
-  group_by(gene_id, gene_name, direction) %>%
-  summarize(count = n())
+
+# gsum <- dat_sum %>% group_by(gene_id, gene_name, contrast) %>%
+#   distinct() %>%
+#   summarize(count = n()) %>%
+#   group_by(gene_id, gene_name) %>%
+#   summarize(count = n()) %>%
+#   arrange(-count)
+# 
+# gcount_sum <- gsum %>% group_by(count) %>% summarize(num_genes = n())
+# 
+# 775 / length(unique(dat_sum$gene_id))
+# 
+# 
+# gsum2 <- dat_sum %>% 
+#   rowwise() %>%
+#   mutate(tissue = unlist(strsplit(unlist(strsplit(contrast, "/"))[[2]], "_"))[[1]]) %>%
+#   dplyr::select(gene_id, gene_name, direction, tissue) %>%
+#   distinct() %>%
+#   group_by(gene_id, gene_name) %>%
+#   summarize(count = n())
+#   table(gsum2$count)
+# # group_by(gene_id, gene_name, contrast)
+# # source("_setup.R")
+# 
+# gsum2 <- dat_sum %>% 
+#   rowwise() %>%
+#   mutate(tissue = unlist(strsplit(unlist(strsplit(contrast, "/"))[[2]], "_"))[[1]]) %>%
+#   dplyr::select(gene_id, gene_name, direction, tissue) %>%
+#   distinct() %>%
+#   group_by(gene_id, gene_name, direction) %>%
+#   summarize(count = n())
 # plotit
 g <- ggplot(gcount_sum, aes(x = count, y = num_genes)) + 
   geom_bar(stat = "identity") 
