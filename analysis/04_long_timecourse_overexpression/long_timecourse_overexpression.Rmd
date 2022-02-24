@@ -92,7 +92,7 @@ library(DESeq2)
   save(wt_overexp_long_lfc, wt_overexp_long_shrnklfc, file = "results/wt_overexp_long.RData")
 }
 
-load("results/wt_overexp_long.RData")
+load("results/wt_overexp_long.RData", verbose = TRUE)
 ```
 
 ### Fold changes vs zero timepoint
@@ -145,7 +145,7 @@ These are the genes that are reciprocally regulated in the KO vs WT and the Firr
 
 ```{r}
 # We need the KO vs WT data
-load("../01_firre_wt_vs_wt/results/wtko.RData")
+load("../01_firre_ko_vs_wt/results/wtko.RData")
 
 wtko_res_shrnklfc <- wtko_res_shrnklfc %>%
   mutate(sig = padj <= pval_thresh & abs(log2FoldChange) > l2fc_thresh)
@@ -252,7 +252,7 @@ row_ha = rowAnnotation(sig_in_ko = as.numeric(rownames(wt_overexp_long_lfc) %in%
 table(as.numeric(rownames(wt_overexp_long_lfc) %in% wtko_sig$gene_name))
 table(as.numeric(rownames(wt_overexp_long_lfc) %in% rescued_genes_20))
 
-pdf("figures/ltc_firre_responders_heatmap.pdf", width = 3, height = 5)
+pdf("figures/ltc_wt_firre_responders_heatmap.pdf", width = 3, height = 5)
 Heatmap(wt_overexp_long_lfc, 
         name = "l2fc",
         cluster_columns = FALSE, show_row_names = FALSE, 
