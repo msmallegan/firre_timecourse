@@ -144,7 +144,7 @@ These are the genes that are reciprocally regulated in the KO vs WT and the Firr
 
 ```{r}
 # We need the KO vs WT data
-load("../01_firre_wt_vs_wt/results/wtko.RData")
+load("../01_firre_ko_vs_wt/results/wtko.RData")
 
 wtko_res_shrnklfc <- wtko_res_shrnklfc %>%
   mutate(sig = padj <= pval_thresh & abs(log2FoldChange) > l2fc_thresh)
@@ -260,3 +260,16 @@ Heatmap(wt_overexp_short_lfc,
         left_annotation = row_ha)
 dev.off()
 ```
+
+```{r}
+load("../03_short_timecourse_rescue/results/ko_rescue_short_vszero_sig.RData",
+     verbose = TRUE)
+load("results/wt_overexp_short_vszero_sig.RData",
+     verbose = TRUE)
+
+length(which(unique(wt_overexp_short_vszero_sig$gene_id) %in% unique(ko_rescue_short_vszero_sig$gene_id)))
+length(unique(wt_overexp_short_vszero_sig$gene_id))
+length(unique(ko_rescue_short_vszero_sig$gene_id))
+
+```
+
