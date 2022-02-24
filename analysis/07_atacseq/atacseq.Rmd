@@ -20,6 +20,7 @@ source("../util/_plot_theme.R")
 ```{r}
 # Import data
 atac_consensus <- read.table("../../atacseq/results/bwa/mergedLibrary/macs/broadPeak/consensus/consensus_peaks.mLb.clN.annotatePeaks.txt", sep = "\t", header = T)
+colnames(atac_consensus)[[1]] <- "interval_id"
 atac_consensus_boolean <- read.table("../../atacseq/results/bwa/mergedLibrary/macs/broadPeak/consensus/consensus_peaks.mLb.clN.boolean.annotatePeaks.txt", sep = "\t", header = T)
 colnames(atac_consensus_boolean)
 atac_consensus_boolean$ESC_KO_control_120_R1.mLb.clN.fc
@@ -44,8 +45,8 @@ peak_coverage_df <- data.frame(counts = peak_coverage) %>%
          sample_name = gsub(".mLb.clN.sorted.bam", "", sample_name)) %>%
   merge(samples)
 
-hmm <- merge(peak_coverage_df, test_counts)
-plot(hmm$feature_counts, hmm$counts)
+# hmm <- merge(peak_coverage_df, test_counts)
+# plot(hmm$feature_counts, hmm$counts)
 # plot(peak_coverage[[1]]@signals[[1]])
 # plot(peak_coverage[[4]]@signals[[1]])
 
@@ -121,9 +122,10 @@ test_counts <- counts_df %>% filter(interval_id == "Interval_76872") %>%
 
 # 132119
 # 76872
-ggplot(roi, aes(x = counts, y = cpm)) + geom_point()
 
 roi <- counts_df %>% filter(grepl("76872", interval_id))
+ggplot(roi, aes(x = counts, y = cpm)) + geom_point()
+
 ggplot(roi, aes(x = timepoint_minutes, y = cpm, group = interval_id)) + 
   geom_point() + 
   facet_grid(firre_ko~firre_induced) + 
