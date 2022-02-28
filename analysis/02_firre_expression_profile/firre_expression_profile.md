@@ -1,33 +1,14 @@
----
-title: "Firre's expression profile"
-output: github_document
-editor_options: 
-  chunk_output_type: console
----
+Firre’s expression profile
+================
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-options(stringsAsFactors = FALSE,
-        dplyr.summarise.inform = FALSE,
-        tidyverse.quiet = TRUE)
-library(tidyverse)
-library(ggrepel)
-source("../util/_plot_theme.R")
-source("../util/_util.R")
-```
-
-```{r load, include=FALSE}
-load("../01_setup/results/rnaseq_data.RData")
-```
-
-We would like to check that Firre's expression is actually induced by the addition of
-doxycycline.
+We would like to check that Firre’s expression is actually induced by
+the addition of doxycycline.
 
 ## ESC KO (rescue)
 
 ### ESC KO long timecourse
 
-```{r esc_ko_long_firre_profile, message=FALSE}
+``` r
 firre_tpm <- tpm %>%
   filter(gene_name == "Firre") %>%
   pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
@@ -45,13 +26,17 @@ ggplot(firre_tpm,
   geom_point() + 
   theme(legend.position = "none") +
   xlab("T (min)")
-ggsave("figures/firre_esc_ko_profile_long.pdf", height = 3, width = 3, useDingbats = FALSE)
+```
 
+![](firre_expression_profile_files/figure-gfm/esc_ko_long_firre_profile-1.png)<!-- -->
+
+``` r
+ggsave("figures/firre_esc_ko_profile_long.pdf", height = 3, width = 3, useDingbats = FALSE)
 ```
 
 ### ESC KO short timecourse
 
-```{r esc_ko_short_firre_profile, message=FALSE}
+``` r
 firre_tpm <- tpm %>%
   filter(gene_name == "Firre") %>%
   pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
@@ -69,12 +54,17 @@ ggplot(firre_tpm,
   geom_point() + 
   theme(legend.position = "none") +
   xlab("T (min)")
+```
+
+![](firre_expression_profile_files/figure-gfm/esc_ko_short_firre_profile-1.png)<!-- -->
+
+``` r
 ggsave("figures/firre_esc_ko_profile_short.pdf", height = 3, width = 3, useDingbats = FALSE)
 ```
 
 ### ESC KO Combined
 
-```{r esc_ko_combined_firre_profile, message=FALSE}
+``` r
 firre_tpm <- tpm %>%
   filter(gene_name == "Firre") %>%
   pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
@@ -92,6 +82,11 @@ ggplot(firre_tpm,
   geom_point() + 
   theme(legend.position = "none") +
   xlab("T (min)")
+```
+
+![](firre_expression_profile_files/figure-gfm/esc_ko_combined_firre_profile-1.png)<!-- -->
+
+``` r
 ggsave("figures/firre_esc_ko_profile.pdf", height = 3, width = 3, useDingbats = FALSE)
 ```
 
@@ -99,7 +94,7 @@ ggsave("figures/firre_esc_ko_profile.pdf", height = 3, width = 3, useDingbats = 
 
 ### ESC WT long timecourse
 
-```{r esc_wt_long_firre_profile, message=FALSE}
+``` r
 firre_tpm <- tpm %>%
   filter(gene_name == "Firre") %>%
   pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
@@ -117,13 +112,17 @@ ggplot(firre_tpm,
   geom_point() + 
   theme(legend.position = "none") +
   xlab("T (min)")
-ggsave("figures/firre_esc_wt_profile_long.pdf", height = 3, width = 3, useDingbats = FALSE)
+```
 
+![](firre_expression_profile_files/figure-gfm/esc_wt_long_firre_profile-1.png)<!-- -->
+
+``` r
+ggsave("figures/firre_esc_wt_profile_long.pdf", height = 3, width = 3, useDingbats = FALSE)
 ```
 
 ### ESC WT short timecourse
 
-```{r esc_wt_short_firre_profile, message=FALSE}
+``` r
 firre_tpm <- tpm %>%
   filter(gene_name == "Firre") %>%
   pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
@@ -141,12 +140,17 @@ ggplot(firre_tpm,
   geom_point() + 
   theme(legend.position = "none") +
   xlab("T (min)")
+```
+
+![](firre_expression_profile_files/figure-gfm/esc_wt_short_firre_profile-1.png)<!-- -->
+
+``` r
 ggsave("figures/firre_esc_wt_profile_short.pdf", height = 3, width = 3, useDingbats = FALSE)
 ```
 
 ### ESC WT Combined
 
-```{r esc_wt_combined_firre_profile, message=FALSE}
+``` r
 firre_tpm <- tpm %>%
   filter(gene_name == "Firre") %>%
   pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
@@ -164,6 +168,11 @@ ggplot(firre_tpm,
   geom_point() + 
   theme(legend.position = "none") +
   xlab("T (min)")
+```
+
+![](firre_expression_profile_files/figure-gfm/esc_wt_combined_firre_profile-1.png)<!-- -->
+
+``` r
 ggsave("figures/firre_esc_wt_profile.pdf", height = 3, width = 3, useDingbats = FALSE)
 ```
 
@@ -171,7 +180,7 @@ ggsave("figures/firre_esc_wt_profile.pdf", height = 3, width = 3, useDingbats = 
 
 ### NPC KO short timecourse
 
-```{r npc_ko_short_firre_profile, message=FALSE}
+``` r
 firre_tpm <- tpm %>%
   filter(gene_name == "Firre") %>%
   pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
@@ -189,6 +198,11 @@ ggplot(firre_tpm,
   geom_point() + 
   theme(legend.position = "none") +
   xlab("T (min)")
+```
+
+![](firre_expression_profile_files/figure-gfm/npc_ko_short_firre_profile-1.png)<!-- -->
+
+``` r
 ggsave("figures/firre_npc_ko_profile_short.pdf", height = 3, width = 3, useDingbats = FALSE)
 ```
 
@@ -196,7 +210,7 @@ ggsave("figures/firre_npc_ko_profile_short.pdf", height = 3, width = 3, useDingb
 
 ### NPC WT short timecourse
 
-```{r npc_wt_short_firre_profile, message=FALSE}
+``` r
 firre_tpm <- tpm %>%
   filter(gene_name == "Firre") %>%
   pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
@@ -214,5 +228,10 @@ ggplot(firre_tpm,
   geom_point() + 
   theme(legend.position = "none") +
   xlab("T (min)")
+```
+
+![](firre_expression_profile_files/figure-gfm/npc_wt_short_firre_profile-1.png)<!-- -->
+
+``` r
 ggsave("figures/firre_npc_wt_profile_short.pdf", height = 3, width = 3, useDingbats = FALSE)
 ```

@@ -1,36 +1,14 @@
----
-title: "Short timecourse rescue"
-output: github_document
-editor_options: 
-  chunk_output_type: console
----
+Short timecourse rescue
+================
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-options(stringsAsFactors = FALSE,
-        dplyr.summarise.inform = FALSE,
-        tidyverse.quiet = TRUE)
-library(tidyverse)
-library(DESeq2)
-library(ggrepel)
-library(ComplexHeatmap)
-library(circlize)
-library(seriation)
-source("../util/_plot_theme.R")
-source("../util/_util.R")
-source("../01_setup/assumptions.R")
+For this experiment, we induced the expression of Firre with an rTTA
+element by adding doxycycline to the cells. We see that Firre is indeed
+expressed in the KO background after the addition of doxycycline. The
+drug does instigate some gene expression changes on its own, so we will
+control for the effects by using a linear model which accounts for the
+effect of dox.
 
-# Keep track of thresholds for figure naming
-thresh <- paste0("pval", pval_thresh, "_l2fc", round(l2fc_thresh, 2))
-```
-
-```{r load, include=FALSE}
-load("../01_setup/results/rnaseq_data.RData")
-```
-
-For this experiment, we induced the expression of Firre with an rTTA element by adding doxycycline to the cells. We see that Firre is indeed expressed in the KO background after the addition of doxycycline. The drug does instigate some gene expression changes on its own, so we will control for the effects by using a linear model which accounts for the effect of dox.
-
-```{r long_timecourse}
+``` r
 if(!file.exists("results/ko_rescue_short.RData")) {
   
   # Filter to ESC KO long timecourse
@@ -94,7 +72,7 @@ load("results/ko_rescue_short.RData")
 
 This is without considering the control cell line.
 
-```{r}
+``` r
 if(!file.exists("results/ko_rescue_short_vs_zero.RData")) {
   
   ko_rescue_short_vszero_samples <- samples %>%
@@ -135,9 +113,10 @@ load("results/ko_rescue_short_vs_zero.RData")
 
 ### Rescued genes
 
-These are the genes that are reciprocally regulated in the KO vs WT and the Firre induced line.
+These are the genes that are reciprocally regulated in the KO vs WT and
+the Firre induced line.
 
-```{r}
+``` r
 # We need the KO vs WT data
 load("../04_firre_ko_vs_wt/results/wtko.RData")
 
@@ -165,7 +144,11 @@ rescue_ltc <- ko_rescue_short_vszero_shrnklfc %>%
 
 rescued_df <- rescue_wtko %>%
   left_join(rescue_ltc)
+```
 
+    ## Joining, by = c("gene_id", "gene_name")
+
+``` r
 rescued_df <- rescued_df %>%
   mutate(dist = abs((l2fc_wtko * -1) - l2fc_ltc))
 
@@ -193,16 +176,25 @@ ggplot(rescued_df_closest, aes(x = l2fc_wtko, y = l2fc_ltc, color = rescued)) +
   geom_abline(slope = -1.2, lty = 2) +
   xlim(-2,2) +
   ylim(-2,2)
+```
+
+    ## Warning: Removed 1 rows containing missing values (geom_point).
+
+![](short_timecourse_rescue_files/figure-gfm/unnamed-chunk-2-1.png)<!-- -->
+
+``` r
 ggsave(paste0("figures/short_rescue_lfc_scatter_", thresh, ".pdf"), 
        height = 3, width = 3, useDingbats = FALSE)
 ```
 
+    ## Warning: Removed 1 rows containing missing values (geom_point).
+
 ### Short timecourse call significant genes
 
-We'll make the p-value cutoff based on the dox controlled model and the l2fc cutoff
-based on the fold change vs zero.
+We’ll make the p-value cutoff based on the dox controlled model and the
+l2fc cutoff based on the fold change vs zero.
 
-```{r}
+``` r
 ko_rescue_short_dox_sig <- ko_rescue_short_shrnklfc %>% 
   filter(padj <= pval_thresh)
 
@@ -215,17 +207,20 @@ ko_rescue_short_vszero_maxfc <- ko_rescue_short_vszero_sig %>%
 
 ko_rescue_short_vszero_sig <- ko_rescue_short_vszero_sig %>%
   left_join(ko_rescue_short_vszero_maxfc)
+```
 
+    ## Joining, by = "gene_id"
+
+``` r
 ko_rescue_short_vszero_sig <- ko_rescue_short_vszero_sig %>%
   filter(max_fc > l2fc_thresh)
 
 save(ko_rescue_short_vszero_sig, file = "results/ko_rescue_short_vszero_sig.RData")
 ```
 
-
 ### Short timecourse Firre responders heatmap
 
-```{r}
+``` r
 # Heatmap of fold-changes for DEGs in the rescue
 # Check that there are no duplicate row names.
 stopifnot(all(length(unique(ko_rescue_short_vszero_sig$gene_id)) == length(unique(ko_rescue_short_vszero_sig$gene_name))))
@@ -246,8 +241,27 @@ row_ha = rowAnnotation(sig_in_ko = as.numeric(rownames(ko_rescue_short_lfc) %in%
                                   rescued = c("1" = "black", "0" = "white")))
 
 table(as.numeric(rownames(ko_rescue_short_lfc) %in% wtko_sig$gene_name))
+```
+
+    ## 
+    ##  0  1 
+    ## 14  5
+
+``` r
 table(as.numeric(rownames(ko_rescue_short_lfc) %in% rescued_genes_20))
+```
+
+    ## 
+    ##  0  1 
+    ## 17  2
+
+``` r
 rownames(ko_rescue_short_lfc)[rownames(ko_rescue_short_lfc) %in% rescued_genes_20]
+```
+
+    ## [1] "Slc16a3" "Firre"
+
+``` r
 pdf(paste0("figures/short_firre_responders_heatmap_", thresh, ".pdf"), 
     width = 4, height = 3.5)
 h1 <- Heatmap(ko_rescue_short_lfc, 
@@ -257,5 +271,13 @@ h1 <- Heatmap(ko_rescue_short_lfc,
         left_annotation = row_ha)
 draw(h1)
 dev.off()
+```
+
+    ## png 
+    ##   2
+
+``` r
 draw(h1)
 ```
+
+![](short_timecourse_rescue_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->

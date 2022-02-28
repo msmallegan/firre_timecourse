@@ -1,36 +1,14 @@
----
-title: "Long timecourse overexpression"
-output: github_document
-editor_options: 
-  chunk_output_type: console
----
+Long timecourse overexpression
+================
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-options(stringsAsFactors = FALSE,
-        dplyr.summarise.inform = FALSE,
-        tidyverse.quiet = TRUE)
-library(tidyverse)
-library(DESeq2)
-library(ggrepel)
-library(ComplexHeatmap)
-library(circlize)
-library(seriation)
-source("../util/_plot_theme.R")
-source("../util/_util.R")
-source("../01_setup/assumptions.R")
+For this experiment, we induced the expression of Firre with an rTTA
+element by adding doxycycline to the cells. We see that Firre is indeed
+expressed in the KO background after the addition of doxycycline. The
+drug does instigate some gene expression changes on its own, so we will
+control for the effects by using a linear model which accounts for the
+effect of dox.
 
-# Keep track of thresholds for figure naming
-thresh <- paste0("pval", pval_thresh, "_l2fc", round(l2fc_thresh, 2))
-```
-
-```{r load, include=FALSE}
-load("../01_setup/results/rnaseq_data.RData")
-```
-
-For this experiment, we induced the expression of Firre with an rTTA element by adding doxycycline to the cells. We see that Firre is indeed expressed in the KO background after the addition of doxycycline. The drug does instigate some gene expression changes on its own, so we will control for the effects by using a linear model which accounts for the effect of dox.
-
-```{r long_timecourse}
+``` r
 if(!file.exists("results/wt_overexp_long.RData")) {
 
   # Filter to ESC KO long timecourse
@@ -90,11 +68,15 @@ if(!file.exists("results/wt_overexp_long.RData")) {
 load("results/wt_overexp_long.RData", verbose = TRUE)
 ```
 
+    ## Loading objects:
+    ##   wt_overexp_long_lfc
+    ##   wt_overexp_long_shrnklfc
+
 ### Fold changes vs zero timepoint
 
 This is without considering the control cell line.
 
-```{r}
+``` r
 if(!file.exists("results/wt_overexp_long_vs_zero.RData")) {
 
   wt_overexp_long_vszero_samples <- samples %>%
@@ -133,12 +115,15 @@ if(!file.exists("results/wt_overexp_long_vs_zero.RData")) {
 load("results/wt_overexp_long_vs_zero.RData", verbose = T)
 ```
 
+    ## Loading objects:
+    ##   wt_overexp_long_vszero_shrnklfc
+
 ### Long timecourse call significant genes
 
-We'll make the p-value cutoff based on the dox controlled model and the l2fc cutoff
-based on the fold change vs zero.
+We’ll make the p-value cutoff based on the dox controlled model and the
+l2fc cutoff based on the fold change vs zero.
 
-```{r}
+``` r
 wt_overexp_long_dox_sig <- wt_overexp_long_shrnklfc %>% 
   filter(padj <= pval_thresh)
 
@@ -151,7 +136,11 @@ wt_overexp_long_vszero_maxfc <- wt_overexp_long_vszero_sig %>%
 
 wt_overexp_long_vszero_sig <- wt_overexp_long_vszero_sig %>%
   left_join(wt_overexp_long_vszero_maxfc)
+```
 
+    ## Joining, by = "gene_id"
+
+``` r
 wt_overexp_long_vszero_sig <- wt_overexp_long_vszero_sig %>%
   filter(max_fc > l2fc_thresh)
 
@@ -160,7 +149,7 @@ save(wt_overexp_long_vszero_sig, file = "results/wt_overexp_long_vszero_sig.RDat
 
 ### Long timecourse Firre responders heatmap
 
-```{r fig.width=3, fig.height=5}
+``` r
 # Heatmap of fold-changes for DEGs in the rescue
 # Check that there are no duplicate row names.
 stopifnot(all(length(unique(wt_overexp_long_vszero_sig$gene_id)) == length(unique(wt_overexp_long_vszero_sig$gene_name))))
@@ -183,5 +172,13 @@ ht1 <- Heatmap(wt_overexp_long_lfc,
         col = colorRamp2(seq(-3,3,length.out = 100), col_pal10))
 draw(ht1)
 dev.off()
+```
+
+    ## png 
+    ##   2
+
+``` r
 draw(ht1)
 ```
+
+![](long_timecourse_overexpression_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->

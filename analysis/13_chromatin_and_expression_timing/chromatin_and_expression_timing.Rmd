@@ -1,0 +1,43 @@
+---
+title: "Chromatin and expression timing"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r}
+# Sum up the reads
+sig_genes <- unique(short_vszero_sig$gene_id)
+short_samples <- samples %>%
+  filter(cell_type == "ESC",
+         timecourse_length == "short")
+short_counts <- salmon_gene_counts[,short_samples$sample_id]
+
+sig_counts_df <- tpm %>%
+  filter(gene_id %in% sig_genes,
+         gene_name != "Firre") %>%
+  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
+  left_join(short_samples) %>%
+  filter(!is.na(timepoint))
+
+sig_counts_summary <- sig_counts_df %>%
+  group_by(gene_id, timepoint, firre_induced) %>%
+  summarize(mean_counts = mean(tpm, na.rm = T))
+
+
+sig_counts_sum <- sig_counts_summary %>%
+  group_by(timepoint, firre_induced) %>%
+  summarize(sum_counts = sum(mean_counts))
+
+
+ggplot(sig_counts_sum %>%
+         filter(timepoint %in% seq(0,150,by = 30),
+                firre_induced == "firre_induced"), 
+       aes(x = timepoint, y = sum_counts, color = firre_induced, group = firre_induced)) +
+  geom_smooth(se = FALSE) +
+  geom_point()
+
+ggsave("figures/firre_induced_tpm_short_sig.pdf", width = 3, height = 3, useDingbats = FALSE)
+```
+

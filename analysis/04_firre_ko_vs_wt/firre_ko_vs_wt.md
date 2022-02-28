@@ -1,33 +1,11 @@
----
-title: "Firre knockout vs wildtype"
-output: github_document
-editor_options: 
-  chunk_output_type: console
----
+Firre knockout vs wildtype
+================
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-options(stringsAsFactors = FALSE,
-        dplyr.summarise.inform = FALSE,
-        tidyverse.quiet = TRUE)
-library(tidyverse)
-library(DESeq2)
-library(ggrepel)
-source("../util/_plot_theme.R")
-source("../util/_util.R")
-source("../01_setup/assumptions.R")
+The cell lines derived from the mouse have had a lot of time to
+equilibrate to the effect of the loss of the Firre locus. This is a true
+static snapshot of the state of the cell without Firre.
 
-# Keep track of thresholds for figure naming
-thresh <- paste0("pval", pval_thresh, "_l2fc", round(l2fc_thresh, 2))
-```
-
-```{r load, include=FALSE}
-load("../01_setup/results/rnaseq_data.RData")
-```
-
-The cell lines derived from the mouse have had a lot of time to equilibrate to the effect of the loss of the Firre locus. This is a true static snapshot of the state of the cell without Firre.
-
-```{r wtko}
+``` r
 # NOTE: The short timecourse had WT and KO cell lines
 # sequenced at different times. Therefore, it is 
 # Better to use the results of the long timecourse
@@ -76,11 +54,15 @@ wtko_sig <- wtko_res_shrnklfc %>%
   filter(sig == TRUE)
 ```
 
-```{r wtko_plots}
+``` r
 ggplot(wtko_res_shrnklfc %>% filter(!is.na(padj)), 
        aes(x = padj)) +
   geom_histogram(bins = 30)
+```
 
+![](firre_ko_vs_wt_files/figure-gfm/wtko_plots-1.png)<!-- -->
+
+``` r
 # Number of DEG
 wtko_num_deg <- wtko_res_shrnklfc %>%
   filter(sig == TRUE) %>%
@@ -103,9 +85,24 @@ ggplot(wtko_res_shrnklfc %>% filter(!is.na(padj)),
   theme(legend.position = "none") +
   xlim(-3.5,3.5) +
   ylim(0,125)
+```
+
+    ## Warning: Removed 1 rows containing missing values (geom_point).
+
+    ## Warning: Removed 1 rows containing missing values (geom_text_repel).
+
+![](firre_ko_vs_wt_files/figure-gfm/wtko_plots-2.png)<!-- -->
+
+``` r
 ggsave(paste0("figures/firre_ko_wt_volcano_", thresh, ".pdf"), 
        height = 3, width = 3, useDingbats = FALSE)
+```
 
+    ## Warning: Removed 1 rows containing missing values (geom_point).
+
+    ## Warning: Removed 1 rows containing missing values (geom_text_repel).
+
+``` r
 ggplot(wtko_res_shrnklfc %>% filter(!is.na(padj)), 
        aes(x = log10(baseMean), y = log2FoldChange, color = sig)) +
   geom_hline(yintercept = 0) +
@@ -113,7 +110,11 @@ ggplot(wtko_res_shrnklfc %>% filter(!is.na(padj)),
   geom_point(data = wtko_res_shrnklfc %>% filter(sig == FALSE, !is.na(padj)), size = 1, alpha = 0.7) +
   geom_text_repel(data = wtko_res_shrnklfc %>% filter(gene_name == "Firre"), aes(label = gene_name)) +
   theme(legend.position = "none")
+```
+
+![](firre_ko_vs_wt_files/figure-gfm/wtko_plots-3.png)<!-- -->
+
+``` r
 ggsave(paste0("figures/firre_ko_wt_ma_", thresh, ".pdf"), 
        height = 3, width = 3, useDingbats = FALSE)
 ```
-
