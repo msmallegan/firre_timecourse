@@ -14,18 +14,19 @@ library(tidyverse)
 library(DESeq2)
 library(bamsignals)
 library(Rsamtools)
-source("../util/_plot_theme.R")
+source("../../util/_plot_theme.R")
 ```
 
 ```{r}
 # Import data
-atac_consensus <- read.table("../../atacseq/results/bwa/mergedLibrary/macs/broadPeak/consensus/consensus_peaks.mLb.clN.annotatePeaks.txt", sep = "\t", header = T)
+atac_consensus <- read.table("../../../atacseq/results/bwa/mergedLibrary/macs/broadPeak/consensus/consensus_peaks.mLb.clN.annotatePeaks.txt", 
+                             sep = "\t", header = T)
 colnames(atac_consensus)[[1]] <- "interval_id"
-atac_consensus_boolean <- read.table("../../atacseq/results/bwa/mergedLibrary/macs/broadPeak/consensus/consensus_peaks.mLb.clN.boolean.annotatePeaks.txt", sep = "\t", header = T)
+atac_consensus_boolean <- read.table("../../../atacseq/results/bwa/mergedLibrary/macs/broadPeak/consensus/consensus_peaks.mLb.clN.boolean.annotatePeaks.txt", sep = "\t", header = T)
 colnames(atac_consensus_boolean)
 atac_consensus_boolean$ESC_KO_control_120_R1.mLb.clN.fc
 
-atac_c_fc <- read.table("../../atacseq/results/bwa/mergedLibrary/macs/broadPeak/consensus/consensus_peaks.mLb.clN.featureCounts.txt", skip = 1, sep = "\t", header = T)
+atac_c_fc <- read.table("../../../atacseq/results/bwa/mergedLibrary/macs/broadPeak/consensus/consensus_peaks.mLb.clN.featureCounts.txt", skip = 1, sep = "\t", header = T)
 
 ```
 
@@ -47,7 +48,7 @@ peak_coverage_df <- data.frame(counts = peak_coverage) %>%
 
 # hmm <- merge(peak_coverage_df, test_counts)
 # plot(hmm$feature_counts, hmm$counts)
-# plot(peak_coverage[[1]]@signals[[1]])
+plot(peak_coverage[[1]]@signals[[1]])
 # plot(peak_coverage[[4]]@signals[[1]])
 
 ?bamProfile
@@ -73,7 +74,6 @@ samples <- data.frame("sample_name" = colnames(counts)) %>%
   mutate(sample_name = gsub("firreinduced", "firre_induced", sample_name),
          firre_induced = gsub("firreinduced", "firre_induced", firre_induced)) %>%
   dplyr::select(-replicate)
-
 samples$firre_ko <- factor(samples$firre_ko, levels = c("WT", "KO"))
 samples$firre_induced <- factor(samples$firre_induced, levels = c("control", "firre_induced"))
 samples$timepoint_minutes <- factor(samples$timepoint_minutes, 
@@ -178,15 +178,16 @@ res_df$gene_name[which(res_df$interval_id == "Interval_76872")] <- "Rapgef4"
 res_df$gene_name[which(res_df$interval_id == "Interval_43032")] <- "Ddhd1"
 res_df$firre_responder <- FALSE
 res_df$firre_responder[which(res_df$gene_name %in% unique(sig_fr$gene_name))] <- TRUE
-
-ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj), color = firre_responder)) + geom_point() + 
+library(ggrepel)
+ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj), color = firre_responder)) + 
+  geom_point() + 
   geom_text_repel(data = res_df %>% filter(firre_responder == TRUE,
                                            padj < 0.05), aes(label = gene_name))
 
 
 
 sig_atac_peaks <- res_df %>%
-  filter(padj <= 0.05, log2FoldChange > 0)
+  filter(padj <= 0.05, abs(log2FoldChange) > log2(1.5))
 rownames(counts)
 sig_counts <- counts[sig_atac_peaks$interval_id,] %>%
   as.data.frame() %>%
@@ -201,14 +202,14 @@ sum_counts <- sig_counts %>%
   group_by(firre_induced, timepoint, firre_ko) %>%
   summarize(sum_counts = sum(count))
   
-source("../util/_plot_theme.R")
+source("../../util/_plot_theme.R")
 ggplot(sum_counts %>% filter(firre_ko == "KO", firre_induced == "firre_induced"), 
        aes(x = timepoint, y = sum_counts)) +
   geom_smooth(se = FALSE) +
   geom_point()
 ggsave("figures/atac_timing.pdf", width = 3, height = 3, useDingbats = FALSE)
 
-
+stopifnot(all(wt_samples$sample_name == colnames(wt_counts)))
 wt_dds <- DESeqDataSetFromMatrix(countData = round(wt_counts), 
                                colData = wt_samples, 
                                design = ~ firre_induced)
