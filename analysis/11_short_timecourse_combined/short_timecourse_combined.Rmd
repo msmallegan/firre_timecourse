@@ -134,6 +134,7 @@ load("results/short_vs_zero.RData", verbose = T)
 # short_vszero_shrnklfc <- short_vszero_shrnklfc_notadjust_for_firreko
 ```
 
+
 ### Short timecourse call significant genes
 
 We'll make the p-value cutoff based on the dox controlled model and the l2fc cutoff
@@ -157,6 +158,68 @@ short_vszero_sig <- short_vszero_sig %>%
   filter(max_fc > l2fc_thresh)
 
 save(short_vszero_sig, file = "results/short_vszero_sig.RData")
+```
+
+```{r}
+load("results/short_vszero_sig.RData", verbose = T)
+short_vszero_sig <- short_vszero_sig %>%
+  mutate(l2fc_shrunken = log2FoldChange)
+make_timecourse_lfc_plot(deseq_res = short_vszero_sig,
+                         genes_to_include = unique(short_vszero_sig$gene_id),
+                         y_lim = c(-6,6),
+                         draw_plot = FALSE)
+
+ggsave(paste0("figures/short_lfc_", thresh, ".pdf"),
+       height = 3, width = 3.5, useDingbats = FALSE)
+```
+
+```{r}
+load("results/short_vszero_sig.RData", verbose = T)
+load("../09_short_timecourse_overexpression/results/wt_overexp_short_vszero_sig.RData", verbose = T)
+load("../06_short_timecourse_rescue/results/ko_rescue_short_vszero_sig.RData")
+
+ko_rescue_1 <- unique(ko_rescue_short_vszero_sig$gene_name)
+wt_overexp_2 <- unique(wt_overexp_short_vszero_sig$gene_name)
+short_3 <- unique(short_vszero_sig$gene_name)
+
+individual_overlaps_12 <- intersect(ko_rescue_1, wt_overexp_2)
+length(individual_overlaps)
+
+length(ko_rescue) - length(individual_overlaps)
+length(wt_overexp) - length(individual_overlaps)
+
+all_overlaps_123 <- intersect(individual_overlaps_12, short_3)
+ov_23 <- intersect(wt_overexp_2, short_3)
+ov_13 <- intersect(ko_rescue_1, short_3)
+library(VennDiagram)
+
+
+draw.triple.venn(area1 = length(ko_rescue_1), 
+                 area2 = length(wt_overexp_2), 
+                 area3 = length(short_3),
+                 n12 = length(individual_overlaps_12),
+                 n23 = length(ov_23), 
+                 n13 = length(ov_13),
+                 n123 = length(all_overlaps_123))
+
+library(eulerr)
+
+set.seed(1)
+mat <- cbind(
+  A = sample(c(TRUE, TRUE, FALSE), 50, TRUE),
+  B = sample(c(TRUE, FALSE), 50, TRUE),
+  C = sample(c(TRUE, FALSE, FALSE, FALSE), 50, TRUE)
+)
+all_genes <- unique(c(ko_rescue_1, wt_overexp_2, short_3))
+ov_mat <- cbind(
+  rescue = all_genes %in% ko_rescue_1,
+  overexpr = all_genes %in% wt_overexp_2,
+  combined = all_genes %in% short_3
+)
+fit2 <- euler(ov_mat)
+pdf("figures/short_timecourse_overlap_venn.pdf")
+plot(fit2, quantities = TRUE)
+dev.off()
 ```
 
 

@@ -55,7 +55,7 @@ mode(counts) <- "integer"
 dds <- DESeqDataSetFromMatrix(countData = counts, 
                               colData = samples, 
                               design = ~ condition)
-
+rownames(counts)
 dds <- DESeq(dds)
 res_df <- results(dds) %>%
   as.data.frame() %>%
@@ -68,18 +68,42 @@ res_df <- results(dds) %>%
 names(res_df)[8] <- "gene_name"
 names(res_df)[9] <- "gene_id"
 
+rlog_counts <- rlog(dds, blind = TRUE)
+
+
+rlog_df <- assay(rlog_counts) %>%
+  as.data.frame() %>%
+  rownames_to_column("interval_id") %>%
+  pivot_longer(2:ncol(.), names_to = "sample_name", values_to = "count") %>%
+  left_join(samples)
+
+ggplot(rlog_df %>% filter(interval_id == "Interval_76872", firre_induced == "firre_induced"), aes(x = timepoint, y = count, color = firre_ko)) +
+  geom_point()
+
+
+summary(mod1)
 sig_atac_peaks <- res_df %>%
   filter(padj <= 0.05)
 
- # abs(log2FoldChange) > log2(1.5)
+# abs(log2FoldChange) > log2(1.5)
 ```
 
 ```{r}
 load("../11_short_timecourse_combined/results/short_vszero_sig.RData")
-# short_vszero_sig <- short_vszero_sig %>% filter(max_fc > 1)
-sig_genes <- unique(short_vszero_sig$gene_id)
+load("../09_short_timecourse_overexpression/results/wt_overexp_short_vszero_sig.RData", verbose = T)
+load("../06_short_timecourse_rescue/results/ko_rescue_short_vszero_sig.RData")
+
+ko_rescue_1 <- unique(ko_rescue_short_vszero_sig$gene_name)
+wt_overexp_2 <- unique(wt_overexp_short_vszero_sig$gene_name)
+short_3 <- unique(short_vszero_sig$gene_name)
+
+individual_overlaps_12 <- intersect(ko_rescue_1, wt_overexp_2)
+all_overlaps_123 <- intersect(individual_overlaps_12, short_3)
+all_sig_genes <- unique(c(ko_rescue_1, wt_overexp_2, short_3))
 gencode_genes <- rtracklayer::import("../util/gencode.vM25.annotation.genes.gtf")
-sig_genes_gr <- gencode_genes[gencode_genes$gene_id %in% sig_genes]
+sig_genes_gr <- gencode_genes[gencode_genes$gene_name %in% all_sig_genes]
+length(sig_genes_gr)
+
 # Extend 10kb
 start(sig_genes_gr) <- start(sig_genes_gr) - 50000
 end(sig_genes_gr) <- end(sig_genes_gr) + 50000
@@ -89,19 +113,19 @@ atac_consensus_gr <- GRanges(seqnames = atac_consensus$Chr,
                                      end = atac_consensus$End),
                              interval_id = atac_consensus$interval_id)
 
-sig_atac_gr <- atac_consensus_gr[atac_consensus_gr$interval_id %in% sig_atac_peaks$interval_id]
+# sig_atac_gr <- atac_consensus_gr[atac_consensus_gr$interval_id %in% sig_atac_peaks$interval_id]
 
-peak_gene_overlaps <- findOverlaps(sig_genes_gr, sig_atac_gr)
+peak_gene_overlaps <- findOverlaps(sig_genes_gr, atac_consensus_gr)
 
 
-sig_atac_df <- sig_atac_gr %>% as.data.frame()
+atac_df <- atac_consensus_gr %>% as.data.frame()
 
 sig_genes_df <- sig_genes_gr %>% as.data.frame() %>% dplyr::select(gene_name, gene_id, seqnames, start, end)
 # What is the difference between the genes changing without an ATAC-seq peak change
 # and those that do? 
 # Are we over controlling for dox? Are there ATAC-seq windows in these regions that have 
 # linearly increasing trends, but are not significant when compared to the dox control? 
-overlapping_df <- sig_atac_df[peak_gene_overlaps@to, ]
+overlapping_df <- atac_df[peak_gene_overlaps@to, ]
 overlapping_df$gene_id <- sig_genes_df$gene_id[peak_gene_overlaps@from]
 overlapping_df$gene_name <- sig_genes_df$gene_name[peak_gene_overlaps@from]
 overlapping_df$gene_tss <- sig_genes_df$start[peak_gene_overlaps@from] + 50000
@@ -110,6 +134,164 @@ overlapping_df$gene_chr <- sig_genes_df$seqnames[peak_gene_overlaps@from]
 overlapping_df <- overlapping_df %>%
   mutate(peak_center = start + (end - start),
          dist_to_tss = peak_center - gene_tss)
+
+overlapping_df <- overlapping_df %>%
+  mutate(sig_peak = interval_id %in% sig_atac_peaks$interval_id)
+
+
+# Let's retrieve the peak counts for the ATAC-seq peaks in the region
+# of these genes.
+peaks_of_interest <- unique(overlapping_df$interval_id)
+
+library(broom)
+
+peak_id <- peaks_of_interest[[1]]
+# Run linear model
+peak_lm <- function(peak_id) {
+  peak1 <- rlog_df %>% filter(interval_id == peak_id, 
+                              firre_induced == "firre_induced")
+  mod1 <- lm(peak1$count~peak1$timepoint)
+  res1 <- tidy(mod1) 
+  res1$intercept <- res1$estimate[[1]]
+  res1 <- res1[2,2:ncol(res1)]
+  res1 <- res1 %>%
+    mutate(interval_id = peak_id) %>%
+    dplyr::rename(slope = estimate)
+  #WT
+  peak1 <- rlog_df %>% filter(interval_id == peak_id, 
+                              firre_induced == "firre_induced",
+                              firre_ko == "WT")
+  mod2 <- lm(peak1$count~peak1$timepoint)
+  res2 <- tidy(mod2) 
+  res2$intercept <- res2$estimate[[1]]
+  res2 <- res2[2,2:ncol(res2)]
+  res2 <- res2 %>%
+    dplyr::select(estimate, p.value, intercept) %>%
+    dplyr::rename(WT_slope = estimate,
+                  WT_pval = p.value,
+                  WT_intercept = intercept)
+  #KO
+  peak1 <- rlog_df %>% filter(interval_id == peak_id, 
+                              firre_induced == "firre_induced",
+                              firre_ko == "KO")
+  mod3 <- lm(peak1$count~peak1$timepoint)
+  res3 <- tidy(mod3) 
+  res3$intercept <- res3$estimate[[1]]
+  res3 <- res3[2,2:ncol(res3)]
+  res3 <- res3 %>%
+    dplyr::select(estimate, p.value, intercept) %>%
+    dplyr::rename(KO_slope = estimate,
+                  KO_pval = p.value,
+                  KO_intercept = intercept)
+  res <- cbind(res1, res2)
+  res <- cbind(res, res3)
+  return(res)
+  
+  
+}
+
+peak_lm_res <- lapply(peaks_of_interest, peak_lm) %>%
+  bind_rows()
+save(peak_lm_res, file = "results/peak_lm_res.RData")
+
+
+hmm <- overlapping_df %>%
+  left_join(peak_lm_res)
+max(peak_lm_res$p.value)
+max(hmm$p.value)
+hmm$padj <- p.adjust(hmm$p.value)
+
+huh <- hmm %>% filter(p.value < 0.05)
+```
+
+# Gene expresion changes vs atac-seq
+
+```{r}
+# Let's do rapgef4
+huh1 <- hmm %>% filter(gene_name %in% short_3)
+goi_atac_peaks <-huh1 %>% filter(gene_name == "Duox1") %>%
+  mutate(sig = p.value < 0.05)
+unique(goi_atac_peaks$interval_id)
+# goi_atac_slopes <- goi_atac_peaks %>%
+#   dplyr::select(interval_id, dist_to_tss, slope, p.value, )
+huh1_batch <- short_3[1:10]
+ggplot(huh1, aes(x = dist_to_tss, y = KO_slope, color = sig_peak)) +
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = 0) +
+  geom_point() +
+  facet_wrap(~gene_name, scales = "free_x")
+ggsave("figures/atacpeak_locations_ko.pdf", height = 7, width = 7)
+ggplot(goi_atac_slopes, aes(x = slope, y = -log10(p.value))) +
+  geom_point()
+
+poi <- goi_atac_peaks %>% arrange(p.value) %>%
+  dplyr::slice(1) %>%
+  pull(interval_id)
+
+poi_vals <- rlog_df %>% filter(interval_id == poi, 
+                              firre_induced == "firre_induced")
+
+ggplot(poi_vals, aes(x = timepoint, y = count)) +
+  geom_point()
+
+poi_mean <- poi_vals %>%
+  group_by(timepoint) %>%
+  summarize(count = mean(count))
+  ggplot(poi_mean, aes(x = timepoint, y = count)) +
+  geom_point()
+ggplot(short_vszero_sig %>% filter(gene_name == "Shf"), 
+       aes(x = timepoint, y = log2FoldChange)) +
+  geom_point()
+range01 <- function(x){(x-min(x))/(max(x)-min(x))}
+goi_vals <- short_vszero_sig %>% filter(gene_name == "Shf")
+goi_vals$relexp <- range01(goi_vals$log2FoldChange)
+
+ggplot(goi_vals, 
+       aes(x = timepoint, y = relexp)) +
+  geom_point()
+poi_mean$relexp <- range01(poi_mean$count)
+ggplot(poi_mean, 
+       aes(x = timepoint, y = relexp)) +
+  geom_point()
+
+
+# Combine
+combined_vals <- bind_rows(poi_mean %>% dplyr::select(timepoint, relexp) %>%
+  mutate(type = "atac_signal"),
+goi_vals %>% dplyr::select(timepoint, relexp) %>%
+  mutate(type = "gene_expression"))
+
+ggplot(combined_vals, aes(x = timepoint, y = relexp, color = type, group = type)) +
+  geom_point() +
+  geom_smooth(se = FALSE, span = 1.1)
+
+ggplot(combined_vals, aes(x = timepoint, y = type, fill = relexp)) +
+  geom_tile() +
+  scale_fill_gradientn(colors = col_pal10[50:100])
+
+```
+
+
+
+```{r}
+table(huh$gene_name)
+length(unique(huh$gene_name))
+
+table(short_3 %in% unique(huh$gene_name))
+
+
+huh2 <- hmm %>% filter(WT_pval < 0.05)
+table(wt_overexp_2 %in% huh2$gene_name)
+table(all_overlaps_123 %in% huh2$gene_name)
+
+huh3 <- hmm %>% filter(KO_pval < 0.05)
+table(ko_rescue_1 %in% huh3$gene_name)
+table(all_overlaps_123 %in% huh3$gene_name)
+
+
+table(all_overlaps_123 %in% unique(huh$gene_name))
+sig_ov_peaks <- hmm %>% filter(padj < 0.05)
+
 short_vszero_sig <- short_vszero_sig %>%
   mutate(has_atac_peak = gene_id %in% overlapping_df$gene_id)
 

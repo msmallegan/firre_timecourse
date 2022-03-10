@@ -19,7 +19,7 @@ library(seriation)
 source("../util/_plot_theme.R")
 source("../util/_util.R")
 source("../01_setup/assumptions.R")
-
+source("../util/figures.R")
 # Keep track of thresholds for figure naming
 thresh <- paste0("pval", pval_thresh, "_l2fc", round(l2fc_thresh, 2))
 ```
@@ -28,7 +28,7 @@ thresh <- paste0("pval", pval_thresh, "_l2fc", round(l2fc_thresh, 2))
 load("../01_setup/results/rnaseq_data.RData")
 ```
 
-For this experiment, we induced the expression of Firre with an rTTA element by adding doxycycline to the cells. We see that Firre is indeed expressed in the KO background after the addition of doxycycline. The drug does instigate some gene expression changes on its own, so we will control for the effects by using a linear model which accounts for the effect of dox.
+For this experiment, we induced the expression of Firre with an rTTA element by adding doxycycline to mouse embryonic stem cells. We see that Firre is indeed expressed in the KO background after the addition of doxycycline. The drug does instigate some gene expression changes on its own, so we will control for the effects by using a linear model which accounts for the effect of dox.
 
 ```{r long_timecourse}
 if(!file.exists("results/ko_rescue_long.RData")) {
@@ -218,8 +218,22 @@ ko_rescue_long_vszero_sig <- ko_rescue_long_vszero_sig %>%
 ko_rescue_long_vszero_sig <- ko_rescue_long_vszero_sig %>%
   filter(max_fc > l2fc_thresh)
 
+ko_rescue_long_vszero_sig <- ko_rescue_long_vszero_sig %>%
+  mutate(l2fc_shrunken = log2FoldChange)
+
 save(ko_rescue_long_vszero_sig, file = "results/ko_rescue_long_vszero_sig.RData")
 ```
+
+```{r}
+make_timecourse_lfc_plot(deseq_res = ko_rescue_long_vszero_sig,
+                         genes_to_include = unique(ko_rescue_long_vszero_sig$gene_id),
+                         y_lim = c(-6,6),
+                         draw_plot = FALSE)
+
+ggsave(paste0("figures/ko_rescue_long_lfc_", thresh, ".pdf"),
+       height = 3, width = 3.5, useDingbats = FALSE)
+```
+
 
 ### Long timecourse Firre responders heatmap
 

@@ -21,6 +21,10 @@ source("../01_setup/assumptions.R")
 
 # Keep track of thresholds for figure naming
 thresh <- paste0("pval", pval_thresh, "_l2fc", round(l2fc_thresh, 2))
+
+(0.045/0.0449)*100
+(0.045/0.0289)*100
+
 ```
 
 ### EC KO long timecourse dox effect

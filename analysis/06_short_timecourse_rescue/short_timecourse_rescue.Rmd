@@ -222,6 +222,20 @@ ko_rescue_short_vszero_sig <- ko_rescue_short_vszero_sig %>%
 save(ko_rescue_short_vszero_sig, file = "results/ko_rescue_short_vszero_sig.RData")
 ```
 
+```{r}
+load("results/ko_rescue_short_vszero_sig.RData", verbose = T)
+ko_rescue_short_vszero_sig <- ko_rescue_short_vszero_sig %>%
+  mutate(l2fc_shrunken = log2FoldChange)
+make_timecourse_lfc_plot(deseq_res = ko_rescue_short_vszero_sig,
+                         genes_to_include = unique(ko_rescue_short_vszero_sig$gene_id),
+                         y_lim = c(-6,6),
+                         draw_plot = FALSE)
+
+ggsave(paste0("figures/ko_rescue_short_lfc_", thresh, ".pdf"),
+       height = 3, width = 3.5, useDingbats = FALSE)
+```
+
+
 
 ### Short timecourse Firre responders heatmap
 

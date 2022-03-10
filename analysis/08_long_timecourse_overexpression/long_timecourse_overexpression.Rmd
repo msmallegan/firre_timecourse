@@ -158,6 +158,19 @@ wt_overexp_long_vszero_sig <- wt_overexp_long_vszero_sig %>%
 save(wt_overexp_long_vszero_sig, file = "results/wt_overexp_long_vszero_sig.RData")
 ```
 
+```{r}
+load("results/wt_overexp_long_vszero_sig.RData", verbose = T)
+wt_overexp_long_vszero_sig <- wt_overexp_long_vszero_sig %>%
+  mutate(l2fc_shrunken = log2FoldChange)
+make_timecourse_lfc_plot(deseq_res = wt_overexp_long_vszero_sig,
+                         genes_to_include = unique(wt_overexp_long_vszero_sig$gene_id),
+                         y_lim = c(-6,6),
+                         draw_plot = FALSE)
+
+ggsave(paste0("figures/wt_overexp_long_lfc_", thresh, ".pdf"),
+       height = 3, width = 3.5, useDingbats = FALSE)
+```
+
 ### Long timecourse Firre responders heatmap
 
 ```{r fig.width=3, fig.height=5}
