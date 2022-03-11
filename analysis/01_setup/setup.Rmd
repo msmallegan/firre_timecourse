@@ -77,7 +77,59 @@ counts <- salmon_gene_counts[,as.character(samples$sample_id)]
 stopifnot(all(rownames(samples) == colnames(counts)))
 stopifnot(all(rownames(salmon_gene_counts) == genes$gene_id))
 # Save as a bundle of objects.
-save(genes, g2s, tx2gene, tpm, salmon_gene_counts, samples, counts, 
+save(genes, g2s, tx2gene, tpm, salmon_gene_counts, samples, counts,
      file = "results/rnaseq_data.RData")
 ```
+
+## ATAC-seq data
+
+```{r}
+base_path <- "../../atacseq/results/bwa/mergedLibrary/macs/broadPeak/consensus/"
+atac_consensus <- read.table(paste0(base_path,
+                                    "consensus_peaks.mLb.clN.annotatePeaks.txt"),
+                             sep = "\t", header = T)
+colnames(atac_consensus)[[1]] <- "interval_id"
+
+atac_consensus_gr <- GRanges(seqnames = atac_consensus$Chr,
+                             IRanges(start = atac_consensus$Start,
+                                     end = atac_consensus$End),
+                             interval_id = atac_consensus$interval_id)
+
+atac_c_fc <- read.table(paste0(base_path,
+                               "consensus_peaks.mLb.clN.featureCounts.txt"), 
+                        skip = 1, sep = "\t", header = T)
+colnames(atac_c_fc) <- gsub(".mLb.clN.bam","",colnames(atac_c_fc))
+rownames(atac_c_fc) <- atac_c_fc$Geneid
+interval_table <- atac_c_fc[, 1:6]
+
+atac_counts <- atac_c_fc[, 7:ncol(atac_c_fc), drop = FALSE] %>% 
+  as.matrix()
+
+atac_samples <- data.frame("sample_name" = colnames(atac_counts)) %>%
+  mutate(sample_name = gsub("firre_induced", "firreinduced", sample_name)) %>%
+  separate(sample_name, 
+           into = c("cell_type", "firre_ko", "firre_induced", 
+                    "timepoint_minutes", "replicate"), remove = FALSE) %>%
+  mutate(sample_name = gsub("firreinduced", "firre_induced", sample_name),
+         firre_induced = gsub("firreinduced", "firre_induced", firre_induced),
+         firre_ko = factor(firre_ko, levels = c("WT", "KO")),
+         firre_induced = factor(firre_induced, levels = c("control", "firre_induced")),
+         timepoint_minutes = factor(timepoint_minutes, levels = seq(0, 150, 30))) %>%
+  dplyr::select(-replicate)
+rownames(atac_samples) <- atac_samples$sample_name
+stopifnot(all(colnames(atac_counts) == rownames(atac_samples)))
+atac_samples$condition <- "control"
+atac_samples$timepoint <- as.numeric(as.character(atac_samples$timepoint_minutes))
+atac_samples$condition[which(atac_samples$timepoint > 0 & 
+                          atac_samples$firre_induced == "firre_induced")] <- "firre"
+atac_samples$condition <- factor(atac_samples$condition, levels = c("control", "firre"))
+
+atac_counts <- atac_counts[,rownames(atac_samples)]
+stopifnot(all(colnames(atac_counts) == rownames(atac_samples)))
+mode(atac_counts) <- "integer"
+
+save(genes, g2s, tpm, atac_samples, atac_counts, atac_consensus, atac_consensus_gr,
+     file = "results/atacseq_data.RData")
+```
+
 
