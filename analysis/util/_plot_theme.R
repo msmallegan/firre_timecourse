@@ -47,7 +47,7 @@ theme_paperwhite <- function(
       aspect.ratio = aspect_ratio,
       axis.line = element_line(),
       axis.text = text,
-      axis.text.x = element_text(angle = 90L, hjust = 1L, vjust = 0.5),
+      # axis.text.x = element_text(angle = 90L, hjust = 1L, vjust = 0.5),
       axis.ticks = axis_ticks,
       panel.background = element_blank(),
       panel.border = panel_border,

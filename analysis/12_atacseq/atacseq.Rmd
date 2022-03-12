@@ -21,7 +21,7 @@ source("../util/_util.R")
 source("../01_setup/assumptions.R")
 
 # Keep track of thresholds for figure naming
-thresh <- paste0("pval", pval_thresh, "_l2fc", round(l2fc_thresh, 2))
+thresh <- paste0("pval", pval_thresh)
 ```
 
 ```{r load, include=FALSE}
@@ -102,6 +102,7 @@ if(!file.exists("results/atacseq_firre_vs_control.RData")) {
 load("results/atacseq_firre_vs_control.RData", verbose = T)
 ```
 
+# Call sigificantly changing ATAC-seq peaks
 
 ```{r}
 atac_dox_sig <- atac_lfc %>%
@@ -109,19 +110,71 @@ atac_dox_sig <- atac_lfc %>%
 
 atac_vszero_sig <- atac_vszero_lfc %>%
   filter(interval_id %in% atac_dox_sig$interval_id)
- 
-# atac_vszero_maxfc <- atac_vszero_sig %>%
-#   group_by(interval_id) %>%
-#   summarize(max_fc = max(abs(log2FoldChange))) 
-# 
-# atac_vszero_sig <- atac_vszero_sig %>%
-#   left_join(atac_vszero_maxfc)
-# 
-# atac_vszero_sig <- atac_vszero_sig %>%
-#   filter(max_fc > l2fc_thresh)
 
 save(atac_vszero_sig, file = "results/atac_vszero_sig.RData")
 ```
+
+# Look for overlaps of peaks and differentially expressed genes
+
+We're going to take a peak centric view and look for promoters that overlap within a window of the peak center.
+
+```{r}
+load("../11_short_timecourse_combined/results/short_vszero_sig.RData")
+sig_atac_gr <- atac_consensus_gr[atac_consensus_gr$interval_id %in% unique(atac_vszero_sig$interval_id)]
+
+promoters_gr <- promoters(genes, upstream = 1, downstream = 1)
+promoters_df <- promoters_gr %>% as.data.frame() %>%
+  filter(gene_type %in% c("protein_coding", "processed_transcript", "bidirectional_promoter_lncRNA",
+                          "antisense", "lincRNA", "sense_intronic"))
+
+promoters_gr <- promoters_gr[promoters_gr$gene_id %in%promoters_df$gene_id]
+
+peak_centers <- start(sig_atac_gr) + round(width(sig_atac_gr)/2)
+sig_atac_center <- GRanges(seqnames = seqnames(sig_atac_gr),
+                           ranges = IRanges(start = peak_centers,
+                                            end = peak_centers),
+                           interval_id = sig_atac_gr$interval_id)
+offset <- 1e6
+start(sig_atac_center) <- start(sig_atac_center) - offset
+end(sig_atac_center) <- end(sig_atac_center) + offset
+
+peak_tss_overlaps <- findOverlaps(promoters_gr, sig_atac_center)
+
+atac_df <- sig_atac_center %>% as.data.frame()
+promoters_df <- promoters_gr %>% as.data.frame()
+overlapping_df <- atac_df[peak_tss_overlaps@to, ]
+overlapping_df$gene_id <- promoters_df$gene_id[peak_tss_overlaps@from]
+overlapping_df$gene_name <- promoters_df$gene_name[peak_tss_overlaps@from]
+overlapping_df$gene_tss <- promoters_df$start[peak_tss_overlaps@from]
+overlapping_df$gene_chr <- promoters_df$seqnames[peak_tss_overlaps@from]
+overlapping_df$gene_strand <- promoters_df$strand[peak_tss_overlaps@from]
+
+
+overlapping_df <- overlapping_df %>%
+  mutate(dist_to_tss = gene_tss - (start+offset),
+         dist_to_peak = (start+offset) - gene_tss)
+# Flip the minus strand differences so that it's a TSS centric view
+overlapping_df[overlapping_df$gene_strand == "-", "dist_to_peak"] <- -1* overlapping_df[overlapping_df$gene_strand == "-", "dist_to_peak"] 
+
+overlapping_df$deg <- overlapping_df$gene_name %in%short_vszero_sig$gene_name
+overlapping_df$y <- runif(nrow(overlapping_df))
+
+# Gfap has a closer peak changes that explains its expression change.
+overlapping_df$deg[overlapping_df$interval_id == "Interval_26047" &
+                     overlapping_df$gene_name == "Gfap"] <- FALSE
+
+ggplot(overlapping_df %>% filter(gene_name != "Firre", deg == TRUE), aes(x = dist_to_peak, fill = deg)) +
+  geom_density(adjust = 1.2) +
+  geom_vline(xintercept = 0, lty = 2) +
+  geom_rug() +
+  scale_fill_manual(values = c("#424242","#a8404c")) +
+  scale_x_continuous(breaks = seq(from = -1e5, to = 1e5, by = 5e4),
+                     labels = c("-100", "-50", "TSS", "50", "100"),
+                     limits = c(-1e5,1e5))
+ggsave("figures/atac_peak_tss_density.pdf", height = 2, width = 2.5)
+# Intergenic cutoff
+```
+
 
 ```{r}
 atac_lfc_matrix <- atac_vszero_sig %>%
@@ -142,12 +195,19 @@ colnames(atac_lfc_matrix)[[1]] <- "0"
 
 atac_lfc_matrix <- atac_lfc_matrix[ordering$interval_id,]
 
+row_ha = rowAnnotation(deg = as.numeric(rownames(atac_lfc_matrix) %in% overlapping_df$interval_id[overlapping_df$deg == TRUE]),
+                       col = list(deg = c("1" = "black", "0" = "white")))
+
+table(as.numeric(rownames(atac_lfc_matrix) %in% overlapping_df$interval_id[overlapping_df$deg == TRUE]))
+
+
 pdf(paste0("figures/atac_peaks_heatmap_", thresh, ".pdf"), 
     width = 4, height = 3.5)
 ht1 <- Heatmap(atac_lfc_matrix, 
                name = "l2fc",
                cluster_columns = FALSE, show_row_names = FALSE, 
                cluster_rows = TRUE,
+               left_annotation = row_ha,
                col = colorRamp2(seq(-2,2,length.out = 100), col_pal10))
 draw(ht1)
 dev.off()
