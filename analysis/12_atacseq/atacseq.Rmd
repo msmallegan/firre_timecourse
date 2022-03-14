@@ -172,7 +172,6 @@ ggplot(overlapping_df %>% filter(gene_name != "Firre", deg == TRUE), aes(x = dis
                      labels = c("-100", "-50", "TSS", "50", "100"),
                      limits = c(-1e5,1e5))
 ggsave("figures/atac_peak_tss_density.pdf", height = 2, width = 2.5)
-# Intergenic cutoff
 ```
 
 
@@ -182,6 +181,7 @@ atac_lfc_matrix <- atac_vszero_sig %>%
   pivot_wider(names_from = timepoint, names_sort = TRUE, values_from = log2FoldChange) %>%
   column_to_rownames("interval_id") %>%
   as.matrix()
+
 ordering <- atac_vszero_sig %>%
   filter(abs(log2FoldChange) > 0.2) %>%
   group_by(interval_id) %>%
@@ -200,7 +200,6 @@ row_ha = rowAnnotation(deg = as.numeric(rownames(atac_lfc_matrix) %in% overlappi
 
 table(as.numeric(rownames(atac_lfc_matrix) %in% overlapping_df$interval_id[overlapping_df$deg == TRUE]))
 
-
 pdf(paste0("figures/atac_peaks_heatmap_", thresh, ".pdf"), 
     width = 4, height = 3.5)
 ht1 <- Heatmap(atac_lfc_matrix, 
@@ -213,6 +212,159 @@ draw(ht1)
 dev.off()
 draw(ht1)
 ```
+
+# ATAC-seq vs. gene expression timing
+
+
+```{r}
+load("../01_setup/results/rnaseq_data.RData")
+
+peak_gene_overlaps <- overlapping_df %>% filter(deg == TRUE)
+
+peak2gene <- peak_gene_overlaps %>%
+  dplyr::select(interval_id, gene_name)
+
+expr <- tpm %>% 
+  filter(gene_name %in% peak_gene_overlaps$gene_name) %>%
+  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
+  left_join(samples) %>%
+  filter(cell_type == "ESC", timecourse_length == "short", firre_induced == "firre_induced") %>%
+  group_by(timepoint, gene_name) %>%
+  summarize(tpm = mean(tpm)) %>%
+  mutate(timepoint = as.numeric(as.character(timepoint))) %>%
+  left_join(peak2gene)
+
+peak <- atac_rlog_counts %>%
+  filter(interval_id %in% peak_gene_overlaps$interval_id,
+         firre_induced == "firre_induced") %>%
+  group_by(timepoint, interval_id) %>%
+  summarize(atac_peak_count = mean(count)) %>%
+  left_join(peak2gene)
+
+
+combined_expr_peak <- expr %>% left_join(peak)
+
+# Normalize values between min and max
+range01 <- function(x){(x-min(x, na.rm = TRUE))/(max(x, na.rm = TRUE)-min(x, na.rm = TRUE))}
+
+combined_expr_peak <- combined_expr_peak %>%
+  group_by(gene_name) %>%
+  mutate(rel_tpm = range01(tpm),
+         rel_atac = range01(atac_peak_count),
+         scaled_tpm = scale(tpm),
+         scaled_atac = scale(atac_peak_count))
+
+ggplot(combined_expr_peak, aes(x = timepoint, y = rel_tpm)) +
+  geom_point(color = "#a8404c") +
+  geom_line(color = "#a8404c") +
+  geom_point(data = combined_expr_peak, aes(x = timepoint, y = rel_atac),
+             color = "#424242") +
+  geom_line(data = combined_expr_peak, aes(x = timepoint, y = rel_atac),
+              color = "#424242") +
+  facet_wrap(~gene_name)
+
+
+
+expr_peak_l <- combined_expr_peak %>%
+  dplyr::select(timepoint, gene_name, rel_tpm, rel_atac) %>%
+  pivot_longer(3:4, names_to = "signal_type", values_to = "rel_signal") %>%
+  mutate(signal_type = gsub("rel_tpm", "expr", signal_type),
+         signal_type = gsub("rel_atac", "atac", signal_type))
+
+
+
+
+ggplot(expr_peak_l, aes(x = timepoint, y = signal_type, fill = rel_signal)) +
+  geom_tile() +
+  facet_wrap(~gene_name) +
+   scale_fill_gradientn(colors = col_pal10[50:100])+
+  scale_x_continuous(breaks = seq(0,300, by = 60),
+                     labels = 0:5)
+ggsave("figures/firre_responder_atac_timing_heatmap.pdf", height = 3.5, width = 4)
+
+expr_peak_l <- combined_expr_peak %>%
+  dplyr::select(timepoint, gene_name, scaled_tpm, scaled_atac) %>%
+  pivot_longer(3:4, names_to = "signal_type", values_to = "rel_signal") %>%
+  mutate(signal_type = gsub("scaled_tpm", "expr", signal_type),
+         signal_type = gsub("scaled_atac", "atac", signal_type))
+
+ggplot(expr_peak_l, aes(x = timepoint, y = signal_type, fill = rel_signal)) +
+  geom_tile() +
+  facet_wrap(~gene_name) +
+   scale_fill_gradientn(colors = col_pal10) +
+  scale_x_continuous(breaks = seq(0,300, by = 60),
+                     labels = 0:5)
+ggsave("figures/firre_responder_atac_timing_heatmap_zscaled.pdf", height = 3.5, width = 4)
+
+
+ggplot(peak %>% filter(interval_id == "Interval_126933"), aes(x = timepoint, y = atac_peak_count)) +
+  geom_point()
+
+
+# Let's do rapgef4
+huh1 <- hmm %>% filter(gene_name %in% short_3)
+goi_atac_peaks <-huh1 %>% filter(gene_name == "Duox1") %>%
+  mutate(sig = p.value < 0.05)
+unique(goi_atac_peaks$interval_id)
+# goi_atac_slopes <- goi_atac_peaks %>%
+#   dplyr::select(interval_id, dist_to_tss, slope, p.value, )
+huh1_batch <- short_3[1:10]
+ggplot(huh1, aes(x = dist_to_tss, y = KO_slope, color = sig_peak)) +
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = 0) +
+  geom_point() +
+  facet_wrap(~gene_name, scales = "free_x")
+ggsave("figures/atacpeak_locations_ko.pdf", height = 7, width = 7)
+ggplot(goi_atac_slopes, aes(x = slope, y = -log10(p.value))) +
+  geom_point()
+
+poi <- goi_atac_peaks %>% arrange(p.value) %>%
+  dplyr::slice(1) %>%
+  pull(interval_id)
+
+poi_vals <- rlog_df %>% filter(interval_id == poi, 
+                               firre_induced == "firre_induced")
+
+ggplot(poi_vals, aes(x = timepoint, y = count)) +
+  geom_point()
+
+poi_mean <- poi_vals %>%
+  group_by(timepoint) %>%
+  summarize(count = mean(count))
+ggplot(poi_mean, aes(x = timepoint, y = count)) +
+  geom_point()
+ggplot(short_vszero_sig %>% filter(gene_name == "Shf"), 
+       aes(x = timepoint, y = log2FoldChange)) +
+  geom_point()
+
+goi_vals <- short_vszero_sig %>% filter(gene_name == "Shf")
+goi_vals$relexp <- range01(goi_vals$log2FoldChange)
+
+ggplot(goi_vals, 
+       aes(x = timepoint, y = relexp)) +
+  geom_point()
+poi_mean$relexp <- range01(poi_mean$count)
+ggplot(poi_mean, 
+       aes(x = timepoint, y = relexp)) +
+  geom_point()
+
+
+# Combine
+combined_vals <- bind_rows(poi_mean %>% dplyr::select(timepoint, relexp) %>%
+                             mutate(type = "atac_signal"),
+                           goi_vals %>% dplyr::select(timepoint, relexp) %>%
+                             mutate(type = "gene_expression"))
+
+ggplot(combined_vals, aes(x = timepoint, y = relexp, color = type, group = type)) +
+  geom_point() +
+  geom_smooth(se = FALSE, span = 1.1)
+
+ggplot(combined_vals, aes(x = timepoint, y = type, fill = relexp)) +
+  geom_tile() +
+  scale_fill_gradientn(colors = col_pal10[50:100])
+```
+
+
 
 ```{r}
 # Let's check out how many ATAC peaks are near genes
