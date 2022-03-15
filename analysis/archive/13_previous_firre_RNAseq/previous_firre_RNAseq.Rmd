@@ -8,6 +8,7 @@ editor_options:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
+source("../../util/_plot_theme.R")
 ```
 
 
@@ -58,9 +59,16 @@ andergassen <- read_csv("data/andergassen_2019_deg.csv")
 dat <- read.csv("data/combined_deg_results.csv") %>%
   # let's remove the dzx4 only kos
   filter(contrast != "andergassen/liver_dxz4_ko_vs_liver_wt",
-         contrast != "andergassen/spleen_dxz4_ko_vs_spleen_wt")
+         contrast != "andergassen/spleen_dxz4_ko_vs_spleen_wt",
+         !grepl("dko", contrast))
+
+dat <- dat %>%
+  filter(!grepl("dko", contrast))
+
 dat <- dat[which(!grepl("wt_dox", dat$contrast)), ]
 dat <- dat[which(!grepl("ko_dox", dat$contrast)), ]
+unique(dat$contrast)
+
 ```
 
 ```{r}
@@ -83,9 +91,17 @@ datf <- dat %>% filter(padj < 0.05, abs(log2FoldChange) >= log2(1.5))
 datf <- datf[which(!grepl("wt_firre", datf$contrast)), ]
 datf <- datf[which(!grepl("ko_firre", datf$contrast)), ]
 
+
+datf <- datf[!grepl("andergassen/liver_firre_ko_vs_liver_wt", datf$contrast),]
 length(unique(datf$gene_id))
 unique(datf$contrast)
+
+table(datf$contrast)
 # let's collapse the timepoints into one.
+datf <- datf %>%
+  rowwise() %>%
+  mutate(tissue = unlist(strsplit(unlist(strsplit(contrast, "/"))[[2]], "_"))[[1]])
+
 dat_sum <- datf %>%
   mutate(direction = ifelse(log2FoldChange > 0, "up", "down"))
 
@@ -93,7 +109,7 @@ length(unique(dat_sum$contrast))
 
 
 gsum <- dat_sum %>%
-  group_by(gene_id, gene_name, tissue) %>%
+  group_by(gene_id, gene_name) %>%
   distinct() %>%
   summarize(count = n()) %>%
   arrange(-count)
@@ -105,7 +121,7 @@ gcount_sum <- gsum %>%
 gcount_sum$cumgenes <- rev(cumsum(rev(gcount_sum$num_genes)))
 
 # Add Firre entries
-firre_gcount <- tibble(count = 7:15,
+firre_gcount <- tibble(count = 4:8,
                        num_genes = 1,
                        cumgenes = 1)
 
@@ -123,8 +139,9 @@ ggplot(gcount, aes(x = count, y = cumgenes, color = firre_only)) +
   #       axis.line = element_line(colour = "black"),
   #       panel.border = element_blank()) + 
   ylab("DE Genes") +
-  xlab("Num experiments significant")
-ggsave("figures/previous_firre_ko_mouse_deg.pdf", height = 3, width = 4)
+  xlab("Num experiments significant") +
+  geom_text(aes(label=cumgenes), position=position_dodge(width=0.9), vjust=-0.25)
+ggsave("figures/previous_firre_ko_mouse_deg.pdf", height = 2, width = 3)
 
 
 # gsum <- dat_sum %>% group_by(gene_id, gene_name, contrast) %>%
