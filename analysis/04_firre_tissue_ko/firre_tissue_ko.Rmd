@@ -1,0 +1,63 @@
+---
+title: "Firre tissue KO"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+source("../util/_plot_theme.R")
+source("../01_setup/assumptions.R")
+```
+
+```{r}
+dat <- read.csv("data/combined_deg_results.csv") 
+
+dat <- dat %>%
+  # let's remove the dzx4 only kos
+  filter(!grepl("dko|dxz4|wt_dox|ko_dox|wt_firre|ko_firre|andergassen/liver", contrast))
+
+# first let's make some cutoff and see how many contrasts genes appear in.
+datf <- dat %>% 
+  filter(padj < pval_thresh, abs(log2FoldChange) >= l2fc_thresh) %>%
+  rowwise() %>%
+  mutate(tissue = unlist(strsplit(unlist(strsplit(contrast, "/"))[[2]], "_"))[[1]])
+
+gsum <- datf %>%
+  group_by(gene_id, gene_name) %>%
+  distinct() %>%
+  summarize(count = n()) %>%
+  arrange(-count)
+
+gcount_sum <- gsum %>%
+  group_by(count) %>%
+  summarize(num_genes = n())
+
+gcount_sum$cumgenes <- rev(cumsum(rev(gcount_sum$num_genes)))
+
+# Add Firre entries
+firre_gcount <- tibble(count = 4:8,
+                       num_genes = 1,
+                       cumgenes = 1)
+
+gcount <- bind_rows(gcount_sum, firre_gcount)
+
+gcount <- gcount %>%
+  mutate(firre_only = cumgenes == 1)
+
+
+ggplot(gcount, aes(x = count, y = cumgenes, color = firre_only)) + 
+  geom_bar(stat = "identity") +
+  scale_x_continuous(breaks = 1:9) +
+  # theme(axis.text.x = element_text(angle = 0),
+  #       text=element_text(size=16,  family="Arial", face = "plain"),
+  #       axis.line = element_line(colour = "black"),
+  #       panel.border = element_blank()) + 
+  ylab("DE Genes") +
+  xlab("Num experiments significant") +
+  geom_text(aes(label=cumgenes), position=position_dodge(width=0.9), vjust=-0.25)
+ggsave("figures/previous_firre_ko_mouse_deg.pdf", height = 2, width = 3)
+```
+
