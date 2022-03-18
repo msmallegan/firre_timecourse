@@ -19,6 +19,7 @@ library(seriation)
 source("../util/_plot_theme.R")
 source("../util/_util.R")
 source("../01_setup/assumptions.R")
+source("../util/figures.R")
 
 # Keep track of thresholds for figure naming
 thresh <- paste0("pval", pval_thresh, "_l2fc", round(l2fc_thresh, 2))
@@ -135,6 +136,47 @@ load("results/short_vs_zero.RData", verbose = T)
 ```
 
 
+```{r}
+if(!file.exists("results/combined_vs_zero.RData")) {
+  
+  combined_vszero_samples <- samples %>%
+    filter(cell_type == "ESC",
+           firre_induced == "firre_induced")
+  combined_vszero_counts <- salmon_gene_counts[,combined_vszero_samples$sample_id]
+  
+  # Check ordering
+  stopifnot(all(rownames(combined_vszero_samples) == colnames(combined_vszero_counts)))
+  stopifnot(all(rownames(combined_vszero_counts) == genes$gene_id))
+  
+  # DESeq2 -- controlling for doxycycline; likelihood ratio test
+  combined_vszero_dds <- DESeqDataSetFromMatrix(countData = combined_vszero_counts,
+                                             colData = combined_vszero_samples,
+                                             design = ~ firre_ko + timepoint)
+  combined_vszero_dds <- DESeq(combined_vszero_dds)
+  res_names <- resultsNames(combined_vszero_dds)
+  
+  vs_zero_res <- res_names[grepl("_vs_0", res_names)]
+  
+  library(tidyverse)
+  library(DESeq2)
+  combined_vszero_shrnklfc <- lapply(vs_zero_res, function(x) {
+    lfcShrink(combined_vszero_dds, 
+              coef = x,
+              type = "apeglm") %>%
+      as.data.frame() %>%
+      rownames_to_column("gene_id") %>% 
+      merge(g2s) %>%
+      mutate(result_name = x,
+             timepoint = as.numeric(gsub("timepoint_|_vs_0", "", result_name)))
+  }) %>% bind_rows()
+  # combined_vszero_shrnklfc_notadjust_for_firreko <- combined_vszero_shrnklfc 
+  # save(combined_vszero_shrnklfc_notadjust_for_firreko, file = "results/combined_vs_zero_notadjust_for_firreko.RData")
+  save(combined_vszero_shrnklfc, file = "results/combined_vs_zero_notimecourselengthfactor.RData")
+}
+```
+
+
+
 ### Short timecourse call significant genes
 
 We'll make the p-value cutoff based on the dox controlled model and the l2fc cutoff
@@ -172,6 +214,70 @@ make_timecourse_lfc_plot(deseq_res = short_vszero_sig,
 ggsave(paste0("figures/short_lfc_", thresh, ".pdf"),
        height = 3, width = 3.5, useDingbats = FALSE)
 ```
+
+```{r}
+load("results/short_vszero_sig.RData", verbose = T)
+load("results/combined_vs_zero_notimecourselengthfactor.RData", verbose = T)
+sig_combined_vs_zero <- combined_vszero_shrnklfc %>% filter(gene_id %in% unique(short_vszero_sig$gene_id))
+deseq_res <- sig_combined_vs_zero
+genes_to_include <- unique(sig_combined_vs_zero$gene_id)
+# Let's plot the downregulated genes separately
+ deg <- deseq_res %>%
+    filter(gene_id %in% genes_to_include) %>%
+    dplyr::select(gene_id, gene_name, baseMean, log2FoldChange, timepoint)
+  
+  # Add a zero timepoint
+  deg_zero <- deg %>%
+    dplyr::select(gene_id, gene_name, baseMean) %>%
+    distinct() %>%
+    mutate(log2FoldChange = 0,
+           timepoint = 0) 
+  
+  deg <- deg %>%
+    bind_rows(deg_zero)
+  
+  # if(length(unique(deg$gene_id)) > 1) {
+  #   deg <- deg %>%
+  #     mutate(x_adjust = scale(log10(baseMean)),
+  #            tp_adjust = timepoint + x_adjust*x_adjust_scale)
+  # } else {
+  #   deg <- deg %>%
+  #     mutate(tp_adjust = timepoint)
+  # }
+  
+  num_deg <- deg  %>%
+    group_by(gene_id) %>%
+    summarize(max_fc = log2FoldChange[which.max(abs(log2FoldChange))]) %>%
+    mutate(direction = ifelse(max_fc > 0, "up", "down")) %>%
+    group_by(direction) %>%
+    summarize(num_deg = length(unique(gene_id)))
+  
+  label_x <- max(deg$timepoint / 2)
+  
+  # Let's sort on the order of fold-change
+  deg_fc <- deg %>%
+    group_by(gene_name) %>%
+    summarize(max_fc = log2FoldChange[which.max(abs(log2FoldChange))]) %>%
+    arrange(-max_fc)
+  
+  deg$gene_name <- factor(deg$gene_name, levels = deg_fc$gene_name)
+  
+  g1 <- ggplot(deg, aes(x = timepoint, y = log2FoldChange, group = gene_id)) +
+    geom_hline(yintercept = 0) +
+    geom_line(alpha = 0.2, color = "gray70") +
+    geom_point(alpha = 0.4) +
+    facet_wrap(~gene_name, scales = "free_y") +
+    scale_x_continuous(breaks = c(0,330, 720, 1440, 2880, 5670), labels = c("0", "5.5", "12","24", "48","96") )
+  show(g1)
+ggsave("figures/short_and_long_individual_fc_profiles.pdf",
+       height = 4.5, width = 6.5)
+```
+
+```{r}
+# Figure out whether these genes stay differentially expressed
+# or return to baseline in the long timecourse.
+```
+
 
 ```{r}
 load("results/short_vszero_sig.RData", verbose = T)
