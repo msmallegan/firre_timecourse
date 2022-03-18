@@ -1,3 +1,14 @@
+# library(showtext)
+# 
+# font_paths()  
+# 
+# trace(grDevices::png, exit = quote({
+#   showtext::showtext_begin()
+# }), print = FALSE)
+# 
+# 
+# font_add("Arial", "../util/Arial.ttf")
+
 theme_paperwhite <- function(
   base_size = 8L,
   base_family = "sans",
@@ -67,6 +78,10 @@ theme_paperwhite <- function(
 theme_set(theme_paperwhite())
 scale_colour_discrete <- function(...) {
   scale_colour_manual(..., values = c("#424242","#a8404c","#024059","#71969F","#F2D6A2","#8B1D3B","#DD1822"))
+}
+
+scale_fill_discrete <- function(...) {
+  scale_fill_manual(..., values = c("#424242","#a8404c","#024059","#71969F","#F2D6A2","#8B1D3B","#DD1822"))
 }
 
 

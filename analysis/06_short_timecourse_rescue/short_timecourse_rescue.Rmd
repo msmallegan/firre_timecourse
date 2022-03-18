@@ -19,6 +19,7 @@ library(seriation)
 source("../util/_plot_theme.R")
 source("../util/_util.R")
 source("../01_setup/assumptions.R")
+source("../util/figures.R")
 
 # Keep track of thresholds for figure naming
 thresh <- paste0("pval", pval_thresh, "_l2fc", round(l2fc_thresh, 2))
@@ -233,6 +234,80 @@ make_timecourse_lfc_plot(deseq_res = ko_rescue_short_vszero_sig,
 
 ggsave(paste0("figures/ko_rescue_short_lfc_", thresh, ".pdf"),
        height = 3, width = 3.5, useDingbats = FALSE)
+
+deseq_res <- ko_rescue_short_vszero_sig
+genes_to_include <- unique(ko_rescue_short_vszero_sig$gene_id)
+# Let's plot the downregulated genes separately
+ deg <- deseq_res %>%
+    filter(gene_id %in% genes_to_include) %>%
+    dplyr::select(gene_id, gene_name, baseMean, l2fc_shrunken, timepoint)
+  
+  # Add a zero timepoint
+  deg_zero <- deg %>%
+    dplyr::select(gene_id, gene_name, baseMean) %>%
+    distinct() %>%
+    mutate(l2fc_shrunken = 0,
+           timepoint = 0) 
+  
+  deg <- deg %>%
+    bind_rows(deg_zero)
+  
+  if(length(unique(deg$gene_id)) > 1) {
+    deg <- deg %>%
+      mutate(x_adjust = scale(log10(baseMean)),
+             tp_adjust = timepoint + x_adjust*x_adjust_scale)
+  } else {
+    deg <- deg %>%
+      mutate(tp_adjust = timepoint)
+  }
+  
+  num_deg <- deg  %>%
+    group_by(gene_id) %>%
+    summarize(max_fc = l2fc_shrunken[which.max(abs(l2fc_shrunken))]) %>%
+    mutate(direction = ifelse(max_fc > 0, "up", "down")) %>%
+    group_by(direction) %>%
+    summarize(num_deg = length(unique(gene_id)))
+  
+  label_x <- max(deg$timepoint / 2)
+  
+  # Let's sort on the order of fold-change
+  deg_fc <- deg %>%
+    group_by(gene_name) %>%
+    summarize(max_fc = l2fc_shrunken[which.max(abs(l2fc_shrunken))]) %>%
+    arrange(-max_fc)
+  
+  deg$gene_name <- factor(deg$gene_name, levels = deg_fc$gene_name)
+  
+  g1 <- ggplot(deg, aes(x = timepoint, y = l2fc_shrunken, group = gene_id)) +
+    geom_hline(yintercept = 0) +
+    geom_line(alpha = 0.2, color = "gray70") +
+    geom_point(alpha = 0.4) +
+    facet_wrap(~gene_name, scales = "free_y") +
+    scale_x_continuous(breaks = seq(from = 0, to = 330, by = 30), labels = c("0", "", "1", "", "2", "", "3", "", "4", "", "5", "" ) )
+  show(g1) 
+ggsave("figures/short_rescue_individual_fc_profiles.pdf", device = cairo_pdf,
+       height = 3.5, width = 4.5)
+```
+
+```{r}
+# How many genes are changing in each timepoint?
+deg_per_timepoint <- ko_rescue_short_vszero_sig %>%
+  filter(abs(l2fc_shrunken) > l2fc_thresh) %>%
+  mutate(direction = ifelse(l2fc_shrunken > 0, "up", "down")) %>%
+  group_by(timepoint, direction) %>%
+  summarize(ndeg = n()) %>%
+  mutate(y = ifelse(direction == "up", ndeg, ndeg*-1))
+
+ggplot(deg_per_timepoint, aes(x = timepoint, y = y, fill = direction)) +
+  geom_bar(stat = "identity") +
+  geom_hline(yintercept = 0) +
+  geom_text(data = deg_per_timepoint %>% filter(direction == "up"), aes(label=ndeg), position=position_dodge(width=0.9), vjust=-0.25) +
+  geom_text(data = deg_per_timepoint %>% filter(direction == "down"), aes(label=ndeg), position=position_dodge(width=0.9), vjust=1.1) +
+    scale_x_continuous(breaks = seq(from = 0, to = 330, by = 30), labels = c("0", "", "1", "", "2", "", "3", "", "4", "", "5", "" ) ) +
+  guides(fill = FALSE) +
+  ylim(-6,15)
+ggsave("figures/short_rescue_ndeg_per_timepoint.pdf", device = cairo_pdf,
+       height = 2, width = 2.5)  
 ```
 
 

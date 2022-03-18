@@ -271,6 +271,28 @@ dev.off()
 draw(h1)
 ```
 
+```{r}
+load("results/ko_rescue_long_vszero_sig.RData")
+# How many genes are changing in each timepoint?
+deg_per_timepoint <- ko_rescue_long_vszero_sig %>%
+  filter(abs(log2FoldChange) > l2fc_thresh) %>%
+  mutate(direction = ifelse(log2FoldChange > 0, "up", "down")) %>%
+  group_by(timepoint, direction) %>%
+  summarize(ndeg = n()) %>%
+  mutate(y = ifelse(direction == "up", ndeg, ndeg*-1))
+deg_per_timepoint$timepoint <- factor(deg_per_timepoint$timepoint, labels = c("12", "24", "48", "96"))
+
+ggplot(deg_per_timepoint, aes(x = timepoint, y = y, fill = direction)) +
+  geom_bar(stat = "identity") +
+  geom_hline(yintercept = 0) +
+  geom_text(data = deg_per_timepoint %>% filter(direction == "up"), aes(label=ndeg), position=position_dodge(width=0.9), vjust=-0.25) +
+  geom_text(data = deg_per_timepoint %>% filter(direction == "down"), aes(label=ndeg), position=position_dodge(width=0.9), vjust=1.1) +
+  guides(fill = FALSE) +
+  ylim(-150,200)
+ggsave("figures/long_rescue_ndeg_per_timepoint.pdf",
+       height = 2, width = 1.75)  
+```
+
 ### Firre rescued genes heatmap
 
 We can visualize the expression levels of the genes that were significantly differentially expressed in the Firre knockout and dynamically changing in response to Firre's induction in a knockout background.
