@@ -23,6 +23,24 @@ load("../01_setup/results/rnaseq_data.RData")
 We would like to check that Firre's expression is actually induced by the addition of
 doxycycline.
 
+```{r}
+# Firre's expression in WT
+firre_tpm <- tpm %>%
+  filter(gene_name == "Firre") %>%
+  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
+  left_join(samples) %>%
+  filter(cell_type == "ESC", firre_ko == "WT", timepoint == 0)
+
+firre_mean <- firre_tpm %>%
+  group_by(firre_induced) %>%
+  summarize(sd = sd(tpm),
+            tpm = mean(tpm))
+ggplot(firre_tpm, aes(x = firre_induced, y = tpm, color = timecourse_length)) +
+  geom_point() 
+
+```
+
+
 ## ESC KO (rescue)
 
 ### ESC KO long timecourse
