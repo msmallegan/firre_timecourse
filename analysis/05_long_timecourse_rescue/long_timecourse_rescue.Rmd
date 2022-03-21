@@ -195,6 +195,49 @@ ggplot(rescued_df_closest, aes(x = l2fc_wtko, y = l2fc_ltc, color = rescued)) +
   ylim(-2,2)
 ggsave(paste0("figures/long_rescue_lfc_scatter_", thresh, ".pdf"), 
        height = 3, width = 3, useDingbats = FALSE)
+
+
+# Let's look at the number of genes overlapping between Firre responders and the KO vs WT
+rescued_gene_ids_20 <- rescued_df_closest %>% 
+  filter(rescued == TRUE) %>% 
+  pull(gene_id)
+
+
+
+combined_genes <- unique(c(rescued_genes, rescued_gene_ids_20))
+
+mat <- cbind(
+  rescued_genes = combined_genes %in% rescued_genes,
+  reciprocal = combined_genes %in% rescued_gene_ids_20
+)
+fit2 <- euler(mat)
+
+
+pdf("figures/rescued_vs_reciprocal_overlap.pdf", height = 2, width = 2)
+plot(fit2, quantities = TRUE, fontsize = 8)
+dev.off()
+
+ggplot(rescued_df_closest, aes(x = l2fc_wtko, y = l2fc_ltc, color = rescued)) +
+  geom_abline(slope = -1) +
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = 0) +
+  geom_point(alpha = 0.7) +
+  geom_abline(slope = -0.8, lty = 2) +
+  geom_abline(slope = -1.2, lty = 2) +
+  xlim(-2,2) +
+  ylim(-2,2)
+
+library(ggpubr)
+ggplot(rescued_df_closest %>% filter(gene_name != "Firre"), aes(x = l2fc_wtko, y = l2fc_ltc)) +
+  geom_point() +
+    geom_hline(yintercept = 0) +
+  geom_vline(xintercept = 0) +
+  stat_regline_equation(label.y = 1.5) +
+  stat_cor() +
+  geom_smooth(method = "lm")
+ggsave(paste0("figures/long_rescue_lfc_scatter_with_linear_regression", thresh, ".pdf"), 
+       height = 3, width = 3, useDingbats = FALSE)
+
 ```
 
 ### Long timecourse call significant genes
@@ -233,6 +276,27 @@ make_timecourse_lfc_plot(deseq_res = ko_rescue_long_vszero_sig,
 ggsave(paste0("figures/ko_rescue_long_lfc_", thresh, ".pdf"),
        height = 3, width = 3.5, useDingbats = FALSE)
 ```
+
+```{r}
+# Let's look at the number of genes overlapping between Firre responders and the KO vs WT
+ko_rescue_long_sig_genes <- unique(ko_rescue_long_vszero_sig$gene_id)
+wtko_sig_genes <- unique(wtko_sig$gene_id)
+
+combined_genes <- unique(c(ko_rescue_long_sig_genes, wtko_sig_genes))
+
+mat <- cbind(
+  rescue_long = combined_genes %in% ko_rescue_long_sig_genes,
+  wtko_static = combined_genes %in% wtko_sig_genes
+)
+fit2 <- euler(mat)
+
+ovp <- calculate_overlap_pval(ko_rescue_long_sig_genes, wtko_sig_genes, num_measured_genes)
+pdf("figures/long_timecourse_rescue_kowt_static_overlap.pdf", height = 2, width = 2)
+plot(fit2, quantities = TRUE, fontsize = 8)
+grid.text(paste0("P=", signif(ovp, 3)), x = 0.1, y = 0.9)
+dev.off()
+```
+
 
 
 ### Long timecourse Firre responders heatmap

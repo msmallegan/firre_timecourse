@@ -216,6 +216,12 @@ ggsave(paste0("figures/short_lfc_", thresh, ".pdf"),
 ```
 
 ```{r}
+combined_sig_genes <- unique(short_vszero_sig$gene_id)
+rescued_gene_ids_20[rescued_gene_ids_20 %in% combined_sig_genes]
+```
+
+
+```{r}
 load("results/short_vszero_sig.RData", verbose = T)
 load("results/combined_vs_zero_notimecourselengthfactor.RData", verbose = T)
 sig_combined_vs_zero <- combined_vszero_shrnklfc %>% filter(gene_id %in% unique(short_vszero_sig$gene_id))

@@ -171,6 +171,36 @@ ggsave(paste0("figures/wt_overexp_long_lfc_", thresh, ".pdf"),
        height = 3, width = 3.5, useDingbats = FALSE)
 ```
 
+```{r}
+# Overlap with long timecourse rescue
+load("../05_long_timecourse_rescue/results/ko_rescue_long_vszero_sig.RData")
+
+wt_overexp_sig_genes <- unique(wt_overexp_long_vszero_sig$gene_id)
+ko_rescue_sig_genes <- unique(ko_rescue_long_vszero_sig$gene_id)
+
+length(intersect(wt_overexp_sig_genes, ko_rescue_sig_genes))
+
+length(wt_overexp_sig_genes)
+length(ko_rescue_sig_genes)
+length(combined_genes)
+
+combined_genes <- unique(c(wt_overexp_sig_genes, ko_rescue_sig_genes))
+
+mat <- cbind(
+  overexp_long = combined_genes %in% wt_overexp_sig_genes,
+  rescue_long = combined_genes %in% ko_rescue_sig_genes
+)
+fit2 <- euler(mat)
+
+ovp <- calculate_overlap_pval(wt_overexp_sig_genes, ko_rescue_sig_genes, num_measured_genes)
+pdf("figures/long_timecourse_rescue_overexp_overlap.pdf", height = 2, width = 2)
+plot(fit2, quantities = TRUE, fontsize = 8)
+grid.text(paste0("P=", signif(ovp, 3)), x = 0.1, y = 0.9)
+dev.off()
+```
+
+
+
 ### Long timecourse Firre responders heatmap
 
 ```{r fig.width=3, fig.height=5}

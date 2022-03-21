@@ -12,6 +12,7 @@ options(stringsAsFactors = FALSE,
         tidyverse.quiet = TRUE)
 library(tidyverse)
 library(ggrepel)
+library(ggbeeswarm)
 source("../util/_plot_theme.R")
 source("../util/_util.R")
 ```
@@ -29,15 +30,21 @@ firre_tpm <- tpm %>%
   filter(gene_name == "Firre") %>%
   pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
   left_join(samples) %>%
-  filter(cell_type == "ESC", firre_ko == "WT", timepoint == 0)
+  filter(cell_type == "ESC", timepoint == 0)
 
 firre_mean <- firre_tpm %>%
-  group_by(firre_induced) %>%
+  group_by(firre_induced, firre_ko) %>%
   summarize(sd = sd(tpm),
             tpm = mean(tpm))
-ggplot(firre_tpm, aes(x = firre_induced, y = tpm, color = timecourse_length)) +
-  geom_point() 
+ggplot(firre_tpm, aes(x = firre_induced, y = tpm)) +
+  geom_beeswarm(cex = 6, alpha = 0.8) +
+    stat_summary(aes(y = tpm, group = firre_induced), fun=mean, colour="red", geom="point") +
+    stat_summary(fun='mean', geom='text', 
+               aes(label=signif(..y..,3),x=firre_induced)) +
+  facet_grid(~firre_ko)
+ggsave("figures/firre_expression_at_zero.pdf", height = 2, width = 2)
 
+firre_wt_level <- firre_mean$tpm[firre_mean$firre_induced == "control" & firre_mean$firre_ko == "WT"]
 ```
 
 
@@ -64,6 +71,17 @@ ggplot(firre_tpm,
   theme(legend.position = "none") +
   xlab("T (min)")
 ggsave("figures/firre_esc_ko_profile_long.pdf", height = 3, width = 3, useDingbats = FALSE)
+
+firre_means <- firre_means %>%
+  mutate(rel_wt = tpm / firre_wt_level)
+ggplot(firre_means, 
+       aes(x = timepoint, y = rel_wt, color = firre_induced)) +
+  geom_line(data = firre_means, aes(x = timepoint, y = rel_wt, color = firre_induced,
+                                    group = firre_induced)) +
+  geom_point() + 
+  theme(legend.position = "none") +
+  xlab("T (min)")
+ggsave("figures/firre_esc_ko_profile_long_relwt.pdf", height = 2, width = 2, useDingbats = FALSE)
 
 ```
 
@@ -236,6 +254,21 @@ ggplot(firre_tpm,
   theme(legend.position = "none") +
   xlab("T (min)")
 ggsave("figures/firre_esc_ko_profile_short.pdf", height = 3, width = 3, useDingbats = FALSE)
+
+# Label max
+
+firre_means <- firre_means %>%
+  mutate(rel_wt = tpm / firre_wt_level)
+ggplot(firre_means, 
+       aes(x = timepoint, y = rel_wt, color = firre_induced)) +
+  geom_line(data = firre_means, aes(x = timepoint, y = rel_wt, color = firre_induced,
+                                    group = firre_induced)) +
+  geom_point() + 
+  theme(legend.position = "none") +
+  geom_text(data = firre_means %>% filter(rel_wt == max(rel_wt)), aes(y = rel_wt + 2, label = round(rel_wt,1))) +
+  scale_x_continuous(breaks = seq(0,330, by = 30), labels = c("0", "", "1", "", "2", "", "3", "", "4", "", "5", "")) +
+  xlab("Time (h)")
+ggsave("figures/firre_esc_ko_profile_short_relwt.pdf", height = 2, width = 2, useDingbats = FALSE)
 ```
 
 ### ESC KO Combined
@@ -285,6 +318,20 @@ ggplot(firre_tpm,
   xlab("T (min)")
 ggsave("figures/firre_esc_wt_profile_long.pdf", height = 3, width = 3, useDingbats = FALSE)
 
+firre_means <- firre_means %>%
+  mutate(rel_wt = tpm / firre_wt_level)
+
+ggplot(firre_means, 
+       aes(x = timepoint, y = rel_wt, color = firre_induced)) +
+  geom_line(data = firre_means, aes(x = timepoint, y = rel_wt, color = firre_induced,
+                                    group = firre_induced)) +
+  geom_point() + 
+  theme(legend.position = "none") +
+  geom_text(data = firre_means %>% filter(rel_wt == max(rel_wt)), aes(y = rel_wt + 0.5, label = round(rel_wt,1))) +
+  scale_x_continuous(breaks = c(0, 720, 1440, 2880, 5670), labels = c("0", "12", "24", "48", "96")) +
+  xlab("Time (h)") +
+  ylim(0,6)
+ggsave("figures/firre_esc_wt_profile_long_relwt.pdf", height = 2, width = 2, useDingbats = FALSE)
 ```
 
 ### ESC WT short timecourse
@@ -308,6 +355,20 @@ ggplot(firre_tpm,
   theme(legend.position = "none") +
   xlab("T (min)")
 ggsave("figures/firre_esc_wt_profile_short.pdf", height = 3, width = 3, useDingbats = FALSE)
+
+firre_means <- firre_means %>%
+  mutate(rel_wt = tpm / firre_wt_level)
+ggplot(firre_means, 
+       aes(x = timepoint, y = rel_wt, color = firre_induced)) +
+  geom_line(data = firre_means, aes(x = timepoint, y = rel_wt, color = firre_induced,
+                                    group = firre_induced)) +
+  geom_point() + 
+  theme(legend.position = "none") +
+  geom_text(data = firre_means %>% filter(rel_wt == max(rel_wt)), aes(y = rel_wt + 2, label = round(rel_wt,1))) +
+  scale_x_continuous(breaks = seq(0,330, by = 30), labels = c("0", "", "1", "", "2", "", "3", "", "4", "", "5", "")) +
+  xlab("Time (h)") +
+  ylim(0,50)
+ggsave("figures/firre_esc_wt_profile_short_relwt.pdf", height = 2, width = 2, useDingbats = FALSE)
 ```
 
 ### ESC WT Combined

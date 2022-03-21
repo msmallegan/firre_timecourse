@@ -76,8 +76,12 @@ rownames(samples) <- samples$sample_id
 counts <- salmon_gene_counts[,as.character(samples$sample_id)]
 stopifnot(all(rownames(samples) == colnames(counts)))
 stopifnot(all(rownames(salmon_gene_counts) == genes$gene_id))
+
+nonzero_genes <- counts[rowSums(counts) > 0,]
+num_measured_genes <- nrow(nonzero_genes)
+
 # Save as a bundle of objects.
-save(genes, g2s, tx2gene, tpm, salmon_gene_counts, samples, counts,
+save(genes, g2s, tx2gene, tpm, salmon_gene_counts, samples, counts, num_measured_genes,
      file = "results/rnaseq_data.RData")
 ```
 

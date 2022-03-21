@@ -248,6 +248,27 @@ ggsave("figures/short_overexp_ndeg_per_timepoint.pdf",
        height = 2, width = 2.5)  
 ```
 
+```{r}
+load("../06_short_timecourse_rescue/results/ko_rescue_short_vszero_sig.RData")
+# Let's look at the number of genes overlapping between Firre responders and the KO vs WT
+ko_rescue_short_sig_genes <- unique(ko_rescue_short_vszero_sig$gene_id)
+wt_overexp_short_sig_genes <- unique(wt_overexp_short_vszero_sig$gene_id)
+
+combined_genes <- unique(c(ko_rescue_short_sig_genes, wt_overexp_short_sig_genes))
+
+mat <- cbind(
+  rescue_short = combined_genes %in% ko_rescue_short_sig_genes,
+  overexp_short = combined_genes %in% wt_overexp_short_sig_genes
+)
+fit2 <- euler(mat)
+
+ovp <- calculate_overlap_pval(ko_rescue_short_sig_genes, wt_overexp_short_sig_genes, num_measured_genes)
+pdf("figures/short_timecourse_rescue_overexp_overlap.pdf", height = 2, width = 2)
+plot(fit2, quantities = TRUE, fontsize = 8)
+grid.text(paste0("P=", signif(ovp, 3)), x = 0.1, y = 0.9)
+dev.off()
+```
+
 
 
 ### Short timecourse Firre responders heatmap
