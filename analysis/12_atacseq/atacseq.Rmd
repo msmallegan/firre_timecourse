@@ -26,6 +26,7 @@ thresh <- paste0("pval", pval_thresh)
 
 ```{r load, include=FALSE}
 load("../01_setup/results/atacseq_data.RData", verbose = T)
+nrow(atac_counts)
 ```
 
 ```{r}
@@ -248,7 +249,6 @@ draw(ht1)
 
 # ATAC-seq vs. gene expression timing
 
-
 ```{r}
 load("../01_setup/results/rnaseq_data.RData")
 
@@ -297,6 +297,52 @@ ggplot(combined_expr_peak, aes(x = timepoint, y = rel_tpm)) +
   facet_wrap(~gene_name)
 
 
+meta_expr_peak <- combined_expr_peak %>%
+  filter(gene_name != "Firre", timepoint <= 150) %>%
+  group_by(timepoint) %>%
+  summarize(tpm = sum(tpm),
+            atac = sum(atac_peak_count)) %>%
+  mutate(rel_tpm = range01(tpm),
+         rel_atac = range01(atac))
+
+meta_expr_peak_l <- meta_expr_peak %>%
+  dplyr::select(timepoint, rel_tpm, rel_atac) %>%
+  pivot_longer(2:3, names_to = "signal_type", values_to = "rel_signal") %>%
+  mutate(signal_type = gsub("rel_tpm", "expr", signal_type),
+         signal_type = gsub("rel_atac", "atac", signal_type)) %>%
+  filter(!is.na(rel_signal))
+
+
+meta_expr_peak_l <- meta_expr_peak_l %>%
+  mutate(weight = ifelse(timepoint %in% c(0,150), 100, 1))
+
+
+# These plots have a roughly linear trend. We can use the linear fit to determine the half-max
+atac_meta <- meta_expr_peak_l %>% filter(signal_type == "atac", !is.na(rel_signal))
+atac_mod <- loess(timepoint ~ rel_signal, data = atac_meta, span = 1.1, weights = atac_meta$weight)
+atac_half_max <- predict(atac_mod, data.frame(rel_signal = 0.5))
+expr_meta <- meta_expr_peak_l %>% filter(signal_type == "expr")
+expr_mod <- loess(timepoint ~ rel_signal, data = expr_meta, span = 1.1, weights = expr_meta$weight)
+expr_half_max <- predict(expr_mod, data.frame(rel_signal = 0.5))
+
+midpoint <- atac_half_max + (expr_half_max - atac_half_max)/2
+offset <- expr_half_max - atac_half_max
+
+meta_expr_peak_l$signal_type <- factor(meta_expr_peak_l$signal_type, levels = c("expr", "atac"))
+ggplot(meta_expr_peak_l, aes(y = timepoint, x = rel_signal, color = signal_type)) +
+  geom_point() +
+  geom_smooth(method = "loess", se = FALSE, span = 1.1, aes(weight = c(100,100,1,1,1,1,1,1,1,1,100,100))) +
+  # geom_abline(intercept = 0, slope = 0.0075164) +
+  geom_segment(aes(y = atac_half_max, yend = expr_half_max, x = 0.5, xend = 0.5), lty = 2) +
+  annotate("text", y = midpoint, x = 0.5, label = round(offset, 2)) +
+  geom_hline(yintercept = atac_half_max, lty = 2) +
+  geom_hline(yintercept = expr_half_max, lty = 2) +
+  coord_flip() +
+  scale_y_continuous(breaks = c(0,atac_half_max, expr_half_max, 150), labels = c(0, round(atac_half_max,1), round(expr_half_max, 1), 150)) +
+  guides(color = FALSE)
+ggsave("figures/meta_atac_vs_expression_timing.pdf", height = 2, width = 2)
+
+
 
 expr_peak_l <- combined_expr_peak %>%
   dplyr::select(timepoint, gene_name, rel_tpm, rel_atac) %>%
@@ -314,6 +360,10 @@ ggplot(expr_peak_l, aes(x = timepoint, y = signal_type, fill = rel_signal)) +
   scale_x_continuous(breaks = seq(0,300, by = 60),
                      labels = 0:5)
 ggsave("figures/firre_responder_atac_timing_heatmap.pdf", height = 3.5, width = 4)
+
+
+
+
 
 expr_peak_l <- combined_expr_peak %>%
   dplyr::select(timepoint, gene_name, scaled_tpm, scaled_atac) %>%
