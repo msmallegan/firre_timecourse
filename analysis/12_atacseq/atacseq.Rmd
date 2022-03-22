@@ -102,6 +102,39 @@ if(!file.exists("results/atacseq_firre_vs_control.RData")) {
 load("results/atacseq_firre_vs_control.RData", verbose = T)
 ```
 
+```{r}
+# Doxycycline effects.
+if(!file.exists("results/dox_atac_lfc.RData")) {
+  
+  dox_atac_samples <- atac_samples %>% filter(firre_induced == "control")
+  dox_atac_counts <- atac_counts[,dox_atac_samples$sample_name]  
+  
+  dox_atac_dds <- DESeqDataSetFromMatrix(countData = dox_atac_counts, 
+                                         colData = dox_atac_samples, 
+                                         design = ~ timepoint_minutes)
+  
+  dox_atac_dds <- DESeq(dox_atac_dds)
+  
+  dox_atac_lfc <- results(dox_atac_dds) %>%
+    as.data.frame() %>%
+    rownames_to_column("interval_id") %>%
+    merge(atac_consensus %>% 
+            dplyr::select(interval_id, Gene.Name, Nearest.PromoterID, 
+                          Distance.to.TSS, Chr, Start, End)) %>% 
+    unite(ucsc_coord, Chr, Start, remove = FALSE, sep = ":") %>%
+    unite(ucsc_coord, ucsc_coord, End, sep = "-", remove = FALSE)
+  names(dox_atac_lfc)[8] <- "gene_name"
+  names(dox_atac_lfc)[9] <- "gene_id"
+  
+  save(dox_atac_lfc, file = "results/dox_atac_lfc.RData")
+}
+
+load("results/dox_atac_lfc.RData", verbose = T)
+dox_sig <- dox_atac_lfc %>% 
+  filter(padj < pval_thresh)
+nrow(dox_sig)
+```
+
 # Call sigificantly changing ATAC-seq peaks
 
 ```{r}
@@ -770,7 +803,6 @@ overlapping_df$gene_name <- sig_genes_df$gene_name[peak_gene_overlaps@from]
 overlapping_df$gene_tss <- sig_genes_df$start[peak_gene_overlaps@from] + 50000
 overlapping_df$gene_chr <- sig_genes_df$seqnames[peak_gene_overlaps@from]
 ```
-
 
 
 
