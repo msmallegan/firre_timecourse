@@ -208,6 +208,41 @@ ggplot(overlapping_df %>% filter(gene_name != "Firre", deg == TRUE), aes(x = dis
 ggsave("figures/atac_peak_tss_density.pdf", height = 2, width = 2.5)
 ```
 
+# ATAC-seq differential accessibility volcano plot
+
+```{r}
+atac_lfc <- atac_lfc %>%
+  mutate(sig = ifelse(padj < pval_thresh, "sig", "ns"))
+
+# We don't need 50,000 overlapping points at approximately 
+# zero fold-change. It will make the plot unweidy and
+# slow down illustrator. So let's subsample.
+atac_lfc_ns <- atac_lfc %>%
+  filter(sig == "ns",
+         !is.na(padj)) %>%
+  sample_n(500)
+
+atac_lfc_subset <- bind_rows(atac_lfc %>% filter(sig == "sig"),
+                             atac_lfc_ns)
+
+# Let's label the number of up and down peaks
+atac_lfc_summary <- atac_lfc %>% filter(sig == "sig") %>%
+  mutate(direction = ifelse(log2FoldChange > 0, "up", "down")) %>%
+  group_by(direction) %>%
+  summarize(count = n())
+
+ggplot(atac_lfc_subset, aes(x = log2FoldChange, y = -log10(padj), color = sig)) +
+  geom_vline(xintercept = 0) +
+  geom_hline(yintercept = -log10(pval_thresh), lty = 2) +
+  geom_point() +
+  annotate("text", x = -1, y = 15, label = paste0("down=", atac_lfc_summary$count[atac_lfc_summary$direction == "down"])) +
+  annotate("text", x = 1, y = 15, label = paste0("up=", atac_lfc_summary$count[atac_lfc_summary$direction == "up"])) +
+  xlim(-2,2) +
+  guides(color = FALSE)
+ggsave("figures/atac_seq_volcano.pdf", height = 2, width = 2, useDingbats = FALSE)
+```
+
+
 
 ```{r}
 atac_lfc_matrix <- atac_vszero_sig %>%
@@ -296,6 +331,23 @@ ggplot(combined_expr_peak, aes(x = timepoint, y = rel_tpm)) +
               color = "#424242") +
   facet_wrap(~gene_name)
 
+# What does it look like if we take the mean of the relative signal per timepoint?
+hmm <- combined_expr_peak %>%
+  filter(timepoint <= 150) %>%
+  group_by(gene_name) %>%
+    mutate(rel_tpm = range01(tpm),
+         rel_atac = range01(atac_peak_count)) %>%
+  group_by(timepoint) %>%
+  mutate(rel_tpm = sum(rel_tpm),
+         rel_atac = sum(rel_atac)) %>%
+  ungroup() %>%
+    mutate(rel_tpm = range01(rel_tpm),
+         rel_atac = range01(rel_atac)) 
+ggplot(hmm, aes(x = timepoint, y = rel_atac)) +
+  geom_point(color = "red") +
+  geom_smooth(method = "loess", se = F, span = 1.1, color = "red") +
+  geom_point(aes(y = rel_tpm), color = "black") +
+  geom_smooth(aes(y = rel_tpm), color = "black", se = F, span = 1.1)
 
 meta_expr_peak <- combined_expr_peak %>%
   filter(gene_name != "Firre", timepoint <= 150) %>%
@@ -853,6 +905,27 @@ overlapping_df$gene_name <- sig_genes_df$gene_name[peak_gene_overlaps@from]
 overlapping_df$gene_tss <- sig_genes_df$start[peak_gene_overlaps@from] + 50000
 overlapping_df$gene_chr <- sig_genes_df$seqnames[peak_gene_overlaps@from]
 ```
+
+# Comparison with RAP data
+
+```{r}
+# sftp://fiji.colorado.edu/scratch/Shares/rinn/Michael/RAP/archive/FromJesse/Firre-Round4/Firre-6wash_vs_Input.W2000_O1000.p10.r10.bed
+# sftp://fiji.colorado.edu/scratch/Shares/rinn/Michael/RAP/firre_rap/results/bwa/mergedLibrary/macs/broadPeak/firre_rap_R1_peaks.broadPeak
+
+orig_rap_peaks <- read.table("/scratch/Shares/rinn/Michael/RAP/archive/FromJesse/Firre-Round4/Firre-6wash_vs_Input.W2000_O1000.p10.r10.bed")
+colnames(orig_rap_peaks) <- c("chr", "start", "end")
+
+orig_rap_peaks_gr <- GRanges(seqnames = orig_rap_peaks$chr,
+                             ranges = IRanges(start = orig_rap_peaks$start,
+                                              end = orig_rap_peaks$end))
+
+sig_atac_gr <- atac_consensus_gr[atac_consensus_gr$interval_id %in% unique(atac_vszero_sig$interval_id)]
+
+
+findOverlaps(sig_atac_gr, orig_rap_peaks_gr)
+
+```
+
 
 
 
