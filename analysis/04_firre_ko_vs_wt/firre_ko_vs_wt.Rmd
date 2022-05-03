@@ -71,7 +71,7 @@ load("results/wtko.RData")
 
 wtko_res_shrnklfc <- wtko_res_shrnklfc %>%
   mutate(sig = padj <= pval_thresh & abs(log2FoldChange) > l2fc_thresh)
-
+write_csv(wtko_res_shrnklfc, "results/firre_ko_vs_wt_mesc_deseq_results.csv")
 wtko_sig <- wtko_res_shrnklfc %>% 
   filter(sig == TRUE)
 ```

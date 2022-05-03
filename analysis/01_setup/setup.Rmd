@@ -64,7 +64,7 @@ samples <- read.csv("../../rnaseq/rnaseq_samplesheet.csv") %>%
          date_sequenced != "2018-09") %>%
   mutate(firre_ko = factor(firre_ko, levels = c("WT", "KO")),
          timepoint = factor(timepoint, 
-                                    levels = c(seq(0,360,30), 720, 1440, 2880, 5760)),
+                            levels = c(seq(0,360,30), 720, 1440, 2880, 5760)),
          firre_induced = factor(firre_induced, 
                                 levels = c("control", "firre_induced")),
          timecourse_length = factor(timecourse_length, levels = c("long", "short")),
@@ -125,7 +125,7 @@ stopifnot(all(colnames(atac_counts) == rownames(atac_samples)))
 atac_samples$condition <- "control"
 atac_samples$timepoint <- as.numeric(as.character(atac_samples$timepoint_minutes))
 atac_samples$condition[which(atac_samples$timepoint > 0 & 
-                          atac_samples$firre_induced == "firre_induced")] <- "firre"
+                               atac_samples$firre_induced == "firre_induced")] <- "firre"
 atac_samples$condition <- factor(atac_samples$condition, levels = c("control", "firre"))
 
 atac_counts <- atac_counts[,rownames(atac_samples)]
@@ -135,5 +135,86 @@ mode(atac_counts) <- "integer"
 save(genes, g2s, tpm, atac_samples, atac_counts, atac_consensus, atac_consensus_gr,
      file = "results/atacseq_data.RData")
 ```
+
+# GEO Submission
+
+```{r}
+# save sample info for GEO submission
+geo_rnaseq_samples <- samples %>%
+  filter(cell_type == "ESC") %>%
+  rowwise() %>%
+  mutate(replicate_numeric = replicate, 
+         replicate = paste0("rep", replicate),
+         timepoint_numeric = as.numeric(as.character(timepoint)),
+         timepoint = paste0(timepoint, "min"),
+         treatment = "dox") %>%
+  unite(geo_sample_name, experiment, firre_induced, timepoint, treatment, replicate, remove = FALSE) %>%
+  mutate(geo_sample_name = gsub("ESC_KO", "mESC_Firre_Rescue", geo_sample_name),
+         geo_sample_name = gsub("ESC_WT", "mESC_Firre_OE", geo_sample_name)) %>%
+  arrange(firre_ko, timecourse_length, firre_induced, timepoint_numeric, replicate_numeric) %>%
+    mutate(fastq1 = paste0(sample_id, "_read1.fastq.gz"),
+         fastq2 = paste0(sample_id, "_read2.fastq.gz"),
+         geo_fastq1 = paste0(geo_sample_name, "_read1.fastq.gz"),
+         geo_fastq2 = paste0(geo_sample_name, "_read2.fastq.gz")) %>%
+  mutate(type = "RNAseq") 
+
+
+
+# Gather and format the ATAC-seq samples
+geo_atacseq_samples <- read_csv("/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/atacseq_samplesheet.csv") %>%
+  mutate(timepoint_min = paste0(timepoint_minutes, "min"),
+         type = "ATACseq") %>%
+  unite(geo_sample_name, cell_type, firre_ko, firre_induced, timepoint_min, type, remove = FALSE) %>%
+  mutate(geo_sample_name = gsub("ESC_KO", "mESC_Firre_Rescue", geo_sample_name),
+         geo_sample_name = gsub("ESC_WT", "mESC_Firre_OE", geo_sample_name)) %>%
+  arrange(firre_ko, firre_induced, timepoint_minutes) %>%
+  rowwise() %>%
+  mutate(fastq1 = paste0(sample_id, "_read1.fastq.gz"),
+         fastq2 = paste0(sample_id, "_read2.fastq.gz"),
+         geo_fastq1 = paste0(geo_sample_name, "_read1.fastq.gz"),
+         geo_fastq2 = paste0(geo_sample_name, "_read2.fastq.gz")) 
+
+
+write_csv(geo_rnaseq_samples, "geo_rnaseq_samples.csv")
+write_csv(geo_atacseq_samples, "geo_atacseq_samples.csv")
+
+geo_samples <- bind_rows(geo_rnaseq_samples %>%
+  dplyr::select(geo_sample_name, fastq1, fastq2, geo_fastq1, geo_fastq2, type), 
+  geo_atacseq_samples %>%
+  dplyr::select(geo_sample_name, fastq1, fastq2, geo_fastq1, geo_fastq2, type))
+
+gs_fastq1 <- geo_samples %>% 
+  dplyr::select(geo_sample_name, fastq1, geo_fastq1, type) %>%
+  dplyr::rename(fiji_fastq = fastq1, geo_fastq = geo_fastq1)
+gs_fastq2 <- geo_samples %>% 
+  dplyr::select(geo_sample_name, fastq2, geo_fastq2, type) %>%
+  dplyr::rename(fiji_fastq = fastq2, geo_fastq = geo_fastq2)
+
+gs_mv_script <- bind_rows(gs_fastq1, gs_fastq2) %>%
+  rowwise() %>%
+  mutate(fiji_location = ifelse(type == "RNAseq", paste0("/scratch/Shares/rinn/Michael/firre_timecourse/rnaseq/fastq/", fiji_fastq),
+                                paste0("/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/fastq/", fiji_fastq)),
+         geo_location = paste0("/scratch/Shares/rinn/Michael/firre_timecourse/geo_upload/", geo_fastq),
+         mv_script = paste0("mv ", fiji_location, " ", geo_location))
+
+writeLines(c("#!/bin/bash", gs_mv_script$mv_script), "geo_staging_raw_files.sh")
+
+# Make md5 check sums for each file (using slurm to parallelize)
+md5_file_list <- list.files("../../geo_md5sums", full.names = TRUE, pattern = "*.md5.txt")
+
+md5_list <- sapply(md5_file_list, readLines)
+md5_df <- data.frame(md5sum = md5_list) %>%
+  separate(md5sum, into = c("md5sum", "filename"), sep = "  ../geo_upload/")
+write_csv(md5_df, "geo_md5sum.csv")
+
+
+# Let's get some processed data files ready for the GEO submission. 
+rnaseq_counts <- read.csv("../../rnaseq/results/salmon/salmon_merged_gene_counts.csv") %>%
+  merge(g2s) %>%
+  dplyr::select(gene_id, gene_name, everything()) %>%
+  filter(gene_id %in% genes$gene_id) %>%
+  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "count")
+```
+
 
 

@@ -906,7 +906,100 @@ overlapping_df$gene_tss <- sig_genes_df$start[peak_gene_overlaps@from] + 50000
 overlapping_df$gene_chr <- sig_genes_df$seqnames[peak_gene_overlaps@from]
 ```
 
-# Comparison with RAP data
+# RAP Overlaps
+
+```{r}
+pub_rap_peaks <- read.table("data/Significant Firre RAP trans sites copy.txt")
+loyal_rap_peaks <- read.table("data/mm9_sigUp_FIRRE_RAP_peaks.bed", skip = 1)
+
+pub_rap_peaks$V1 <- gsub("mm", "chr", pub_rap_peaks$V1)
+pub_rap_peaks_gr <- GRanges(seqnames = pub_rap_peaks$V1,
+                            ranges = IRanges(start = pub_rap_peaks$V2,
+                                             end = pub_rap_peaks$V3))
+loyal_rap_peaks_gr <- GRanges(seqnames = loyal_rap_peaks$V1,
+                              ranges = IRanges(start = loyal_rap_peaks$V2,
+                                               end = loyal_rap_peaks$V3))
+
+# Firre responder GR.
+load("../11_short_timecourse_combined/results/short_vszero_sig.RData", verbose = T)
+
+fr_genes <- genes[genes$gene_id %in% short_vszero_sig$gene_id]
+# Extend 50kb on either side
+extend_region <- 5e4
+orig_widths <- width(fr_genes)
+start(fr_genes) <- start(fr_genes) - extend_region
+end(fr_genes) <- end(fr_genes) + extend_region
+stopifnot(all(width(fr_genes) - orig_widths == extend_region *2))
+
+promoters_gr <- promoters(genes, upstream = 1, downstream = 1)
+promoters_df <- promoters_gr %>% as.data.frame() %>%
+  filter(gene_type %in% c("protein_coding", "processed_transcript", "bidirectional_promoter_lncRNA",
+                          "antisense", "lincRNA", "sense_intronic"))
+
+promoters_gr <- promoters_gr[promoters_gr$gene_id %in% promoters_df$gene_id]
+fr_promoters_gr <- promoters_gr[promoters_gr$gene_id %in% short_vszero_sig$gene_id]
+orig_widths <- width(fr_promoters_gr)
+start(fr_promoters_gr) <- start(fr_promoters_gr) - extend_region
+end(fr_promoters_gr) <- end(fr_promoters_gr) + extend_region
+stopifnot(all(width(fr_promoters_gr) - orig_widths == extend_region *2))
+
+# Sig ATAC GR
+sig_atac_gr <- atac_consensus_gr[atac_consensus_gr$interval_id %in% unique(atac_vszero_sig$interval_id)]
+
+# Let's look at overlaps
+findOverlaps(pub_rap_peaks_gr, fr_genes)
+findOverlaps(loyal_rap_peaks_gr, fr_genes)
+
+findOverlaps(pub_rap_peaks_gr, fr_promoters_gr)
+findOverlaps(loyal_rap_peaks_gr, fr_promoters_gr)
+
+findOverlaps(pub_rap_peaks_gr, sig_atac_gr)
+findOverlaps(loyal_rap_peaks_gr, sig_atac_gr)
+
+# All Firre responder genes
+load("../11_short_timecourse_combined/results/short_vszero_sig.RData", verbose = T)
+load("../05_long_timecourse_rescue/results/ko_rescue_long_vszero_sig.RData", verbose = T)
+load("../06_short_timecourse_rescue/results/ko_rescue_short_vszero_sig.RData", verbose = T)
+load("../08_long_timecourse_overexpression/results/wt_overexp_long_vszero_sig.RData", verbose = T)
+load("../09_short_timecourse_overexpression/results/wt_overexp_short_vszero_sig.RData", verbose = T)
+
+all_firre_responder_genes <- unique(c(short_vszero_sig$gene_id,
+                                      ko_rescue_long_vszero_sig$gene_id,
+                                      ko_rescue_short_vszero_sig$gene_id,
+                                      wt_overexp_long_vszero_sig$gene_id,
+                                      wt_overexp_short_vszero_sig$gene_id))
+
+fr_genes <- genes[genes$gene_id %in% all_firre_responder_genes]
+length(fr_genes)
+# Extend 50kb on either side
+extend_region <- 5e4
+orig_widths <- width(fr_genes)
+start(fr_genes) <- start(fr_genes) - extend_region
+end(fr_genes) <- end(fr_genes) + extend_region
+stopifnot(all(width(fr_genes) - orig_widths == extend_region *2))
+
+promoters_gr <- promoters(genes, upstream = 1, downstream = 1)
+promoters_df <- promoters_gr %>% as.data.frame() %>%
+  filter(gene_type %in% c("protein_coding", "processed_transcript", "bidirectional_promoter_lncRNA",
+                          "antisense", "lincRNA", "sense_intronic"))
+
+promoters_gr <- promoters_gr[promoters_gr$gene_id %in% promoters_df$gene_id]
+fr_promoters_gr <- promoters_gr[promoters_gr$gene_id %in% all_firre_responder_genes]
+length(fr_promoters_gr)
+orig_widths <- width(fr_promoters_gr)
+start(fr_promoters_gr) <- start(fr_promoters_gr) - extend_region
+end(fr_promoters_gr) <- end(fr_promoters_gr) + extend_region
+stopifnot(all(width(fr_promoters_gr) - orig_widths == extend_region *2))
+
+# Let's look at overlaps
+findOverlaps(pub_rap_peaks_gr, fr_genes)
+findOverlaps(loyal_rap_peaks_gr, fr_genes)
+
+findOverlaps(pub_rap_peaks_gr, fr_promoters_gr)
+findOverlaps(loyal_rap_peaks_gr, fr_promoters_gr)
+```
+
+
 
 ```{r}
 # sftp://fiji.colorado.edu/scratch/Shares/rinn/Michael/RAP/archive/FromJesse/Firre-Round4/Firre-6wash_vs_Input.W2000_O1000.p10.r10.bed
@@ -921,8 +1014,10 @@ orig_rap_peaks_gr <- GRanges(seqnames = orig_rap_peaks$chr,
 
 sig_atac_gr <- atac_consensus_gr[atac_consensus_gr$interval_id %in% unique(atac_vszero_sig$interval_id)]
 
+new_rap_peaks <- rtracklayer::import("/scratch/Shares/rinn/Michael/RAP/firre_rap/results/bwa/mergedLibrary/macs/broadPeak/firre_rap_R1_peaks.broadPeak")
 
-findOverlaps(sig_atac_gr, orig_rap_peaks_gr)
+findOverlaps(sig_atac_gr, new_rap_peaks)
+sig_atac_gr[34]
 
 ```
 
