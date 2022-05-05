@@ -148,17 +148,19 @@ geo_rnaseq_samples <- samples %>%
          timepoint_numeric = as.numeric(as.character(timepoint)),
          timepoint = paste0(timepoint, "min"),
          treatment = "dox") %>%
-  unite(geo_sample_name, experiment, firre_induced, timepoint, treatment, replicate, remove = FALSE) %>%
+  unite(geo_sample_name, experiment, firre_induced, timepoint, treatment, 
+        timecourse_length, replicate, remove = FALSE) %>%
+  unite(og_geo_sample_name, experiment, firre_induced, timepoint, treatment, replicate, remove = FALSE) %>%
   mutate(geo_sample_name = gsub("ESC_KO", "mESC_Firre_Rescue", geo_sample_name),
          geo_sample_name = gsub("ESC_WT", "mESC_Firre_OE", geo_sample_name)) %>%
   arrange(firre_ko, timecourse_length, firre_induced, timepoint_numeric, replicate_numeric) %>%
-    mutate(fastq1 = paste0(sample_id, "_read1.fastq.gz"),
+  mutate(fastq1 = paste0(sample_id, "_read1.fastq.gz"),
          fastq2 = paste0(sample_id, "_read2.fastq.gz"),
          geo_fastq1 = paste0(geo_sample_name, "_read1.fastq.gz"),
          geo_fastq2 = paste0(geo_sample_name, "_read2.fastq.gz")) %>%
-  mutate(type = "RNAseq") 
-
-
+  mutate(type = "RNAseq",
+         raw_read1_exists = file.exists(raw_data_read1),
+         raw_read2_exists = file.exists(raw_data_read2))
 
 # Gather and format the ATAC-seq samples
 geo_atacseq_samples <- read_csv("/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/atacseq_samplesheet.csv") %>%
@@ -172,48 +174,133 @@ geo_atacseq_samples <- read_csv("/scratch/Shares/rinn/Michael/firre_timecourse/a
   mutate(fastq1 = paste0(sample_id, "_read1.fastq.gz"),
          fastq2 = paste0(sample_id, "_read2.fastq.gz"),
          geo_fastq1 = paste0(geo_sample_name, "_read1.fastq.gz"),
-         geo_fastq2 = paste0(geo_sample_name, "_read2.fastq.gz")) 
+         geo_fastq2 = paste0(geo_sample_name, "_read2.fastq.gz")) %>%
+  mutate(raw_read1_exists = file.exists(raw_data_read1),
+         raw_read2_exists = file.exists(raw_data_read2))
+
 
 
 write_csv(geo_rnaseq_samples, "geo_rnaseq_samples.csv")
 write_csv(geo_atacseq_samples, "geo_atacseq_samples.csv")
 
-geo_samples <- bind_rows(geo_rnaseq_samples %>%
-  dplyr::select(geo_sample_name, fastq1, fastq2, geo_fastq1, geo_fastq2, type), 
-  geo_atacseq_samples %>%
-  dplyr::select(geo_sample_name, fastq1, fastq2, geo_fastq1, geo_fastq2, type))
-
-gs_fastq1 <- geo_samples %>% 
-  dplyr::select(geo_sample_name, fastq1, geo_fastq1, type) %>%
-  dplyr::rename(fiji_fastq = fastq1, geo_fastq = geo_fastq1)
-gs_fastq2 <- geo_samples %>% 
-  dplyr::select(geo_sample_name, fastq2, geo_fastq2, type) %>%
-  dplyr::rename(fiji_fastq = fastq2, geo_fastq = geo_fastq2)
-
-gs_mv_script <- bind_rows(gs_fastq1, gs_fastq2) %>%
-  rowwise() %>%
-  mutate(fiji_location = ifelse(type == "RNAseq", paste0("/scratch/Shares/rinn/Michael/firre_timecourse/rnaseq/fastq/", fiji_fastq),
-                                paste0("/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/fastq/", fiji_fastq)),
-         geo_location = paste0("/scratch/Shares/rinn/Michael/firre_timecourse/geo_upload/", geo_fastq),
-         mv_script = paste0("mv ", fiji_location, " ", geo_location))
-
-writeLines(c("#!/bin/bash", gs_mv_script$mv_script), "geo_staging_raw_files.sh")
 
 # Make md5 check sums for each file (using slurm to parallelize)
 md5_file_list <- list.files("../../geo_md5sums", full.names = TRUE, pattern = "*.md5.txt")
-
 md5_list <- sapply(md5_file_list, readLines)
 md5_df <- data.frame(md5sum = md5_list) %>%
-  separate(md5sum, into = c("md5sum", "filename"), sep = "  ../geo_upload/")
+  separate(md5sum, into = c("md5sum", "filename"), sep = "  ../geo_upload/rnaseq/")
+# Let's merge this into the geo_sample data
+md5_r1 <- md5_df %>%
+  filter(grepl("read1", filename)) %>%
+  dplyr::rename(geo_fastq1 = filename,
+                md5_geo_read1 = md5sum)
+md5_r2 <- md5_df %>%
+  filter(grepl("read2", filename)) %>%
+  dplyr::rename(geo_fastq2 = filename,
+                 md5_geo_read2 = md5sum)
+geo_rnaseq_samples <- geo_rnaseq_samples %>%
+  left_join(md5_r1) %>%
+  left_join(md5_r2)
+geo_rnaseq_samples <- geo_rnaseq_samples %>%
+  mutate(md5_r1_equal = md5_read1 == md5_geo_read1,
+         md5_r2_equal = md5_read2 == md5_geo_read2)
+
+table(geo_rnaseq_samples$md5_r1_equal)
+table(geo_rnaseq_samples$md5_r2_equal)
+
 write_csv(md5_df, "geo_md5sum.csv")
+
+# Let's also check the md5sums seperately for the ATAC-seq
+md5_file_list <- list.files("../../geo_atacseq_md5sums", full.names = TRUE, pattern = "*.md5.txt")
+md5_list <- sapply(md5_file_list, readLines)
+md5_df <- data.frame(md5sum = md5_list) %>%
+  separate(md5sum, into = c("md5sum", "filename"), sep = "  ../geo_upload/geo_submission_atacseq_may4/")
+# Let's merge this into the geo_sample data
+md5_r1 <- md5_df %>%
+  filter(grepl("read1", filename)) %>%
+  dplyr::rename(geo_fastq1 = filename,
+                md5_geo_read1 = md5sum)
+md5_r2 <- md5_df %>%
+  filter(grepl("read2", filename)) %>%
+  dplyr::rename(geo_fastq2 = filename,
+                 md5_geo_read2 = md5sum)
+geo_atacseq_samples <- geo_atacseq_samples %>%
+  left_join(md5_r1) %>%
+  left_join(md5_r2) %>%
+  mutate(md5_r1_equal = md5_read1 == md5_geo_read1,
+         md5_r2_equal = md5_read2 == md5_geo_read2)
+
+table(geo_atacseq_samples$md5_r1_equal)
+table(geo_atacseq_samples$md5_r2_equal)
+
+write_csv(md5_df, "geo_atacseq_md5sum.csv")
 
 
 # Let's get some processed data files ready for the GEO submission. 
-rnaseq_counts <- read.csv("../../rnaseq/results/salmon/salmon_merged_gene_counts.csv") %>%
+geo_rnaseq_counts <- read.csv("../../rnaseq/results/salmon/salmon_merged_gene_counts.csv") %>%
   merge(g2s) %>%
   dplyr::select(gene_id, gene_name, everything()) %>%
   filter(gene_id %in% genes$gene_id) %>%
-  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "count")
+  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "count") %>%
+  left_join(geo_rnaseq_samples %>% dplyr::select(sample_id, geo_sample_name)) %>%
+  filter(!is.na(geo_sample_name)) %>%
+  dplyr::rename(sample_name = geo_sample_name) %>%
+  dplyr::select(gene_id, gene_name, sample_name, count)
+write_csv(geo_rnaseq_counts, "mESC_Firre_induction_timecourse_merged_gene_counts.csv")
+
+geo_rnaseq_tpm <- read.csv("../../rnaseq/results/salmon/salmon_merged_gene_tpm.csv") %>%
+  merge(g2s) %>%
+  dplyr::select(gene_id, gene_name, everything()) %>%
+  filter(gene_id %in% genes$gene_id) %>%
+  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "TPM") %>%
+  left_join(geo_rnaseq_samples %>% dplyr::select(sample_id, geo_sample_name)) %>%
+  filter(!is.na(geo_sample_name)) %>%
+  dplyr::rename(sample_name = geo_sample_name) %>%
+  dplyr::select(gene_id, gene_name, sample_name, TPM)
+
+write_csv(geo_rnaseq_tpm, "mESC_Firre_induction_timecourse_merged_gene_tpm.csv")
+
+# Now let's get the processed data files in order for the ATAC-seq
+base_path <- "../../atacseq/results/bwa/mergedLibrary/macs/broadPeak/consensus/"
+atac_consensus <- read.table(paste0(base_path,
+                                    "consensus_peaks.mLb.clN.annotatePeaks.txt"),
+                             sep = "\t", header = T)
+colnames(atac_consensus)[[1]] <- "interval_id"
+
+atac_consensus <- atac_consensus %>%
+  separate(interval_id, into = c("interval", "interval_number"), sep = "_", remove = FALSE) %>%
+  mutate(interval_number = as.numeric(interval_number)) %>%
+  arrange(interval_number) %>%
+  dplyr::select(-interval, -interval_number, -Peak.Score, -Strand)
+
+
+
+write_csv(atac_consensus, "atacseq_consensus_peaks.csv")
+
+atac_c_fc <- read.table(paste0(base_path,
+                               "consensus_peaks.mLb.clN.featureCounts.txt"), 
+                        skip = 1, sep = "\t", header = T)
+colnames(atac_c_fc) <- gsub(".mLb.clN.bam","",colnames(atac_c_fc))
+rownames(atac_c_fc) <- atac_c_fc$Geneid
+interval_table <- atac_c_fc[, 1:6]
+
+
+
+geo_atac_counts <- atac_c_fc[, 7:ncol(atac_c_fc), drop = FALSE] %>%
+  rownames_to_column("interval_id") %>%
+  pivot_longer(2:ncol(.), names_to = "orig_sample_name", values_to = "count")
+
+geo_atacseq_samples <- geo_atacseq_samples %>%
+  mutate(append = "R1") %>%
+  unite(orig_sample_name, cell_type, firre_ko, firre_induced, timepoint_minutes, append, sep = "_", remove = FALSE)
+
+geo_atac_counts <- geo_atac_counts %>%
+  left_join(geo_atacseq_samples %>% dplyr::select(orig_sample_name, geo_sample_name)) %>%
+  dplyr::select(interval_id, geo_sample_name, count) %>%
+  dplyr::rename(sample_name = geo_sample_name)
+
+write_csv(geo_atac_counts, "atacseq_consensus_peak_counts.csv")
+
 ```
 
 
