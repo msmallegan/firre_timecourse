@@ -25,6 +25,21 @@ We would like to check that Firre's expression is actually induced by the additi
 doxycycline.
 
 ```{r}
+huh <- tpm %>%
+  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
+  left_join(samples) %>%
+  filter(cell_type == "ESC", timepoint == 0) %>%
+  group_by(gene_id, firre_induced, firre_ko) %>%
+  summarize(sd = sd(tpm),
+            tpm = mean(tpm))
+
+huh <- huh %>%
+  left_join(hmm)
+
+huh  <- huh %>%
+  arrange(-tpm)
+table(huh$gene_type)
+lncRNA_hun <- huh %>% filter(gene_type == "")
 # Firre's expression in WT
 firre_tpm <- tpm %>%
   filter(gene_name == "Firre") %>%
@@ -45,6 +60,8 @@ ggplot(firre_tpm, aes(x = firre_induced, y = tpm)) +
 ggsave("figures/firre_expression_at_zero.pdf", height = 2, width = 2)
 
 firre_wt_level <- firre_mean$tpm[firre_mean$firre_induced == "control" & firre_mean$firre_ko == "WT"]
+
+
 ```
 
 

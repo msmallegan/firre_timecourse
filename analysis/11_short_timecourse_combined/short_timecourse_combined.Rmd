@@ -186,6 +186,8 @@ based on the fold change vs zero.
 short_dox_sig <- short_shrnklfc %>% 
   filter(padj <= pval_thresh)
 
+write_csv(short_dox_sig %>% dplyr::select(gene_id, gene_name), "results/short_sig_gene_names.csv")
+
 short_vszero_sig <- short_vszero_shrnklfc %>%
   filter(gene_id %in% short_dox_sig$gene_id)
 
@@ -380,3 +382,69 @@ draw(ht1)
 dev.off()
 draw(ht1)
 ```
+
+
+```{r}
+# Let's make a list of all of the genes in the short and the long timecourse.
+load("results/short_vszero_sig.RData", verbose = T)
+load("../09_short_timecourse_overexpression/results/wt_overexp_short_vszero_sig.RData", verbose = T)
+load("../06_short_timecourse_rescue/results/ko_rescue_short_vszero_sig.RData", verbose = TRUE)
+load("../05_long_timecourse_rescue/results/ko_rescue_long_vszero_sig.RData", verbose = TRUE)
+load("../08_long_timecourse_overexpression/results/wt_overexp_long_vszero_sig.RData", verbose = TRUE)
+
+all_sig <- bind_rows(short_vszero_sig %>%
+  dplyr::select(gene_id, gene_name) %>%
+  mutate(experiment = ("short_combined")),
+wt_overexp_short_vszero_sig %>%
+  dplyr::select(gene_id, gene_name) %>%
+  mutate(experiment = ("short_OE")),
+ko_rescue_short_vszero_sig %>%
+  dplyr::select(gene_id, gene_name) %>%
+  mutate(experiment = ("short_Res")),
+ko_rescue_long_vszero_sig %>%
+  dplyr::select(gene_id, gene_name) %>%
+  mutate(experiment = ("long_Res")),
+wt_overexp_long_vszero_sig %>%
+  dplyr::select(gene_id, gene_name) %>%
+  mutate(experiment = ("long_OE"))) %>%
+  distinct()
+
+all_sig_unique <- all_sig %>%
+  dplyr::select(-experiment) %>%
+  distinct()
+
+write_csv(all_sig, "results/all_sig.csv")
+write_csv(all_sig_unique, "results/all_sig_unique.csv")
+write.table(all_sig_unique %>% dplyr::select(gene_id), 
+            "results/all_sig.unique.txt",
+            row.names = FALSE, 
+            col.names = FALSE, quote = FALSE, sep = "\t")
+
+experiments <- unique(all_sig$experiment)
+
+all_sig <- all_sig %>%
+  rowwise() %>%
+  mutate(ens = unlist(strsplit(gene_id, ".", fixed = TRUE))[[1]])
+
+for(i in 1:length(experiments)) {
+  write.table(all_sig %>% filter(experiment == experiments[[i]]) %>% dplyr::select(gene_id), 
+            paste0("results/", experiments[[i]], ".txt"),
+            row.names = FALSE, 
+            col.names = FALSE, quote = FALSE, sep = "\t")
+}
+
+load("../05_long_timecourse_rescue/results/ko_rescue_long.RData", verbose = TRUE)
+hmm <- ko_rescue_long_lfc %>%
+  filter(baseMean > 10) %>%
+  dplyr::select(gene_id) %>%
+  distinct() 
+write.table(hmm, "results/bg.txt", row.names = F, col.names = F, quote = F)
+
+overlapping_long <- data.frame(gene_id = ko_rescue_long_vszero_sig$gene_id[ko_rescue_long_vszero_sig$gene_id %in% wt_overexp_long_vszero_sig$gene_id])
+  write.table(overlapping_long, 
+            paste0("results/overlapping_long.txt"),
+            row.names = FALSE, 
+            col.names = FALSE, quote = FALSE, sep = "\t")
+
+```
+

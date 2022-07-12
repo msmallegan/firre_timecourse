@@ -31,6 +31,8 @@ names(genes) <- genes$gene_id
 # Remove pseudogenes
 genes <- genes[!grepl("pseudogene", genes$gene_type), ]
 
+hmm <- genes %>% as.data.frame() %>% dplyr::select(gene_id, gene_type, gene_name)
+
 
 g2s <- genes %>% as.data.frame() %>%
   dplyr::select(gene_id, gene_name)
