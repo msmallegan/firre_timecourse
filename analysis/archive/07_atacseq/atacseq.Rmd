@@ -691,16 +691,16 @@ fimo_sig$dbp <- sapply(fimo_sig$motif_id, function(x) {
   unlist(strsplit(x, "_"))[[1]]
 })
 
-fr_peaks <- res_df %>% filter(firre_responder == TRUE)
-fr_peaks <- unique(fr_peaks$name)
-fr_peaks <- fr_peaks[fr_peaks %in% fimo_sig$name]
+# fr_peaks <- res_df %>% filter(firre_responder == TRUE)
+# fr_peaks <- unique(fr_peaks$name)
+# fr_peaks <- fr_peaks[fr_peaks %in% fimo_sig$name]
 
 motif_peaks <- fimo_sig %>%
   group_by(dbp, name) %>%
   summarize(count = n(),
             occurrence = as.numeric(count > 0)) %>%
   dplyr::select(-count) %>%
-  filter(name %in% fr_peaks) %>%
+  # filter(name %in% fr_peaks) %>%
   pivot_wider(names_from = name, values_from = occurrence, values_fill = 0) %>%
   column_to_rownames("dbp") %>%
   as.matrix()
@@ -710,13 +710,43 @@ tfs <- data.frame(count = rowSums(motif_peaks)) %>%
 
 
 motif_merge <- fimo_sig %>%
-  filter(name %in% fr_peaks) %>%
+  # filter(name %in% fr_peaks) %>%
   group_by(dbp, name) %>%
   summarize(count = n()) %>%
   pivot_wider(names_from = dbp, values_from = count, values_fill = 0)
 
 hmm <- merge(res_df, motif_merge)
+is_outlier <- function(x) {
+  return(x < quantile(x, 0.25) - 1.5 * IQR(x) | x > quantile(x, 0.75) + 1.5 * IQR(x))
+}
 
+tfdf$outlier <- is_outlier(tfdf$num_atac_peaks_present)
+library(ComplexHeatmap)
+ha = HeatmapAnnotation(outlier = tfdf$outlier)
+pdf("figures/atac_tf_heatmap.pdf", height = 5, width = 3)
+Heatmap(motif_peaks, show_column_names = FALSE, col = c("#FFFFFF", "#424242"), row_names_gp = gpar(fontsize = 4))
+dev.off()
+# pheatmap::pheatmap(motif_peaks, show_colnames = FALSE, border_color = NA, color = c("#FFFFFF", "#424242"), legend = FALSE)
+
+tfrs <- rowSums(motif_peaks)
+
+tfdf <- tibble(tf = names(tfrs), 
+               num_atac_peaks_present = tfrs)
+
+ggplot(tfdf, aes(x = num_atac_peaks_present)) +
+  geom_histogram(bins = 25) +
+  geom_vline(xintercept = 6, lty = 2)
+ggsave("figures/tf_atac_histogram.pdf", height = 2.5, width = 2.5)
+
+cat(tfdf$tf[tfdf$outlier == TRUE])
+x <- tfdf$num_atac_peaks_present
+max(x[x < quantile(x)[4] + 1.5 * IQR(x)])
+
+
+IQR(tfdf$num_atac_peaks_present) * 1.5
+hmm <- 2.0 * sqrt(tfdf$num_atac_peaks_present + 3.0 / 8.0)
+
+plot(ppois(hmm, mean(hmm)))
 fr_motif_matrix <- hmm %>%
   dplyr::select(Gene.Name, ASCL1:ZN335) %>%
   column_to_rownames("Gene.Name") %>%
@@ -810,8 +840,9 @@ write.table(shuf_peaks[4001:5000,],
 write.table(shuf_peaks[5001:6000,],
             "results/permuted_atac_peaks6.txt", quote = F, sep = "\t", 
             col.names = F, row.names = F)
+library(janitor)
   ?bed_shuffle
-jaspar_motifs <- read_table("data/jaspar_atac_mm10.txt") %>%
+jaspar_motifs <- read_tsv("data/jaspar_atac_mm10.txt") %>%
   clean_names()
 
 jaspar_motifs_summary <- jaspar_motifs %>% group_by(tf_name) %>%

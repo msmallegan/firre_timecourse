@@ -386,7 +386,7 @@ draw(ht1)
 
 ```{r}
 # Let's make a list of all of the genes in the short and the long timecourse.
-load("results/short_vszero_sig.RData", verbose = T)
+  load("results/short_vszero_sig.RData", verbose = T)
 load("../09_short_timecourse_overexpression/results/wt_overexp_short_vszero_sig.RData", verbose = T)
 load("../06_short_timecourse_rescue/results/ko_rescue_short_vszero_sig.RData", verbose = TRUE)
 load("../05_long_timecourse_rescue/results/ko_rescue_long_vszero_sig.RData", verbose = TRUE)

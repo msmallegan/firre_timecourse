@@ -242,6 +242,22 @@ ggplot(atac_lfc_subset, aes(x = log2FoldChange, y = -log10(padj), color = sig)) 
 ggsave("figures/atac_seq_volcano.pdf", height = 2, width = 2, useDingbats = FALSE)
 ```
 
+```{r}
+# ATAC UP
+atac_up <- atac_lfc %>% filter(sig == "sig", log2FoldChange > 0)
+
+write.table(atac_up %>% dplyr::select(Chr, Start, End),
+            "results/atac_up.bed",
+            col.names = FALSE, row.names = FALSE, sep = "\t", quote = F)
+
+atac_down <- atac_lfc %>% filter(sig == "sig", log2FoldChange < 0)
+
+write.table(atac_down %>% dplyr::select(Chr, Start, End),
+            "results/atac_down.bed",
+            col.names = FALSE, row.names = FALSE, sep = "\t", quote = F)
+```
+
+
 
 
 ```{r}

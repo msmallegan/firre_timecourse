@@ -96,13 +96,66 @@ for(i in 1:length(tps)) {
 
 
 ```{r}
+# https://resources.aertslab.org/cistarget/databases/mus_musculus/mm10/refseq_r80/mc9nr/gene_based/mm10__refseq-r80__500bp_up_and_100bp_down_tss.mc9nr.feather
+data(motifAnnotations_hgnc)
+motifRankings <- importRankings("data/mm10__refseq-r80__500bp_up_and_100bp_down_tss.mc9nr.feather")
+?cisTarget
 
-# data(motifAnnotations_hgnc)
-motifRankings <- importRankings("mm10__refseq-r80__10kb_up_and_down_tss.mc9nr.feather")
+txtFile <- paste(file.path(system.file('examples', package='RcisTarget')),
+                 "hypoxiaGeneSet.txt", sep="/")
+geneLists <- list(hypoxia=read.table(txtFile, stringsAsFactors=FALSE)[,1])
 
+load("../../11_short_timecourse_combined/results/short_vszero_sig.RData", verbose = T)
+load("../../09_short_timecourse_overexpression/results/wt_overexp_short_vszero_sig.RData", verbose = T)
+load("../../06_short_timecourse_rescue/results/ko_rescue_short_vszero_sig.RData", verbose = TRUE)
+load("../../05_long_timecourse_rescue/results/ko_rescue_long_vszero_sig.RData", verbose = TRUE)
+load("../../08_long_timecourse_overexpression/results/wt_overexp_long_vszero_sig.RData", verbose = TRUE)
+
+all_sig <- bind_rows(short_vszero_sig %>%
+  dplyr::select(gene_id, gene_name) %>%
+  mutate(experiment = ("short_combined")),
+wt_overexp_short_vszero_sig %>%
+  dplyr::select(gene_id, gene_name) %>%
+  mutate(experiment = ("short_OE")),
+ko_rescue_short_vszero_sig %>%
+  dplyr::select(gene_id, gene_name) %>%
+  mutate(experiment = ("short_Res")),
+ko_rescue_long_vszero_sig %>%
+  dplyr::select(gene_id, gene_name) %>%
+  mutate(experiment = ("long_Res")),
+wt_overexp_long_vszero_sig %>%
+  dplyr::select(gene_id, gene_name) %>%
+  mutate(experiment = ("long_OE"))) %>%
+  distinct()
+# Turn into gene list 
+gl <- list(short_combined = all_sig %>% filter(experiment == "short_combined") %>% pull(gene_name),
+           short_OE = all_sig %>% filter(experiment == "short_OE") %>% pull(gene_name),
+           short_Res = all_sig %>% filter(experiment == "short_Res") %>% pull(gene_name),
+           long_Res = all_sig %>% filter(experiment == "long_Res") %>% pull(gene_name),
+           long_OE = all_sig %>% filter(experiment == "long_OE") %>% pull(gene_name))
+# https://github.com/aertslab/RcisTarget/raw/master/data/motifAnnotations_mgi.RData
+load("data/motifAnnotations_mgi.RData", verbose = TRUE)
 # Motif enrichment analysis:
 motifEnrichmentTable_wGenes <- cisTarget(gl, motifRankings,
                                motifAnnot=motifAnnotations_mgi)
+write_csv(motifEnrichmentTable_wGenes, "results/firre_responder_promoter_motif_enrichment.csv")
+# Let's look at the overlaps for the short timecourse
+tfs_short_OE <- motifEnrichmentTable_wGenes %>%
+  filter(geneSet == "short_OE")
+
+all_tfs <- data.frame(tfs = c(motifEnrichmentTable_wGenes$TF_highConf, motifEnrichmentTable_wGenes$TF_lowConf)) %>%
+  filter(tfs != "") %>%
+  mutate(tfs = gsub("\\(directAnnotation).", "", tfs),
+         tfs = gsub("\\(inferredBy_Orthology).", "", tfs),
+         tfs = gsub("\\(inferredBy_MotifSimilarity).", "", tfs),
+         tfs = gsub("\\(inferredBy_MotifSimilarity_n_Orthology).", "", tfs)) %>%
+  separate_rows(tfs, sep = "\\s*;\\s*") %>%
+  separate_rows(tfs, sep = "\\s") %>%
+  distinct() %>%
+  filter(tfs != "")
+
+all_tfs$tfs[tolower(all_tfs$tfs) %in% tolower(all_sig$gene_name)]
+
 ```
 
 
