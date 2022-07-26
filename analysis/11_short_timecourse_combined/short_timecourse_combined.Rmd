@@ -87,8 +87,9 @@ if(!file.exists("results/short.RData")) {
   save(short_lfc, short_shrnklfc, file = "results/short.RData")
 }
 
-load("results/short.RData")
+load("results/short.RData", verbose = TRUE)
 ```
+
 
 ### Fold changes vs zero timepoint
 
@@ -393,22 +394,89 @@ load("../05_long_timecourse_rescue/results/ko_rescue_long_vszero_sig.RData", ver
 load("../08_long_timecourse_overexpression/results/wt_overexp_long_vszero_sig.RData", verbose = TRUE)
 
 all_sig <- bind_rows(short_vszero_sig %>%
-  dplyr::select(gene_id, gene_name) %>%
+  dplyr::select(gene_id, gene_name, log2FoldChange, timepoint) %>%
   mutate(experiment = ("short_combined")),
 wt_overexp_short_vszero_sig %>%
-  dplyr::select(gene_id, gene_name) %>%
+  dplyr::select(gene_id, gene_name, log2FoldChange, timepoint) %>%
   mutate(experiment = ("short_OE")),
 ko_rescue_short_vszero_sig %>%
-  dplyr::select(gene_id, gene_name) %>%
+  dplyr::select(gene_id, gene_name, log2FoldChange, timepoint) %>%
   mutate(experiment = ("short_Res")),
 ko_rescue_long_vszero_sig %>%
-  dplyr::select(gene_id, gene_name) %>%
+  dplyr::select(gene_id, gene_name, log2FoldChange, timepoint) %>%
   mutate(experiment = ("long_Res")),
 wt_overexp_long_vszero_sig %>%
-  dplyr::select(gene_id, gene_name) %>%
+  dplyr::select(gene_id, gene_name, log2FoldChange, timepoint) %>%
   mutate(experiment = ("long_OE"))) %>%
   distinct()
 
+tps <- unique(all_sig$timepoint)
+cum_deg <- tibble(timepoint = numeric(),
+                  deg = integer(),
+                  ndeg = integer())
+
+for(tp in tps) {
+  tpdeg_up <- all_sig %>%
+    filter(timepoint <= tp,
+           log2FoldChange > 0.5) %>%
+    dplyr::pull(gene_id) %>%
+    unique() %>%
+    length()
+    tpdeg_down <- all_sig %>%
+    filter(timepoint <= tp,
+           log2FoldChange < -0.5) %>%
+    dplyr::pull(gene_id) %>%
+    unique() %>%
+    length()
+    
+    cum_deg <- bind_rows(cum_deg,
+                         tibble(timepoint = tp,
+                  deg = 1,
+                  ndeg = tpdeg_up),
+                  tibble(timepoint = tp,
+                  deg = -1,
+                  ndeg = tpdeg_down))
+}
+# tp_summary <- all_sig %>%
+#   mutate(deg = ifelse(abs(log2FoldChange) > 0.5,
+#          ifelse(log2FoldChange > 0, 1, -1), 0)) %>%
+#   # filter(abs(log2FoldChange) > 0.5) %>%
+#   group_by(timepoint, deg) %>%
+#   summarize(ndeg = length(unique(gene_id))) %>%
+#   filter(deg != 0)
+
+cum_deg[cum_deg$deg == -1, "ndeg"] <- cum_deg[cum_deg$deg == -1, "ndeg"] * -1
+cum_deg$deg_cat <- factor(cum_deg$deg, levels = c(-1,1))
+ggplot(cum_deg, aes(x = timepoint, y = ndeg, color = deg_cat)) +
+  geom_hline(yintercept = 0) +
+  geom_point() +
+  geom_line() +
+  scale_x_continuous(breaks = c(0,6*60,12*60,24*60,48*60,96*60),labels = c(0,6,12,24,48,96))
+ggsave("figures/cummulative_deg.pdf", height = 3, width = 3,
+       useDingbats = FALSE)
+  # geom_smooth(se = FALSE, span = 0.4)
+
+short_vs_long <- all_sig %>%
+  mutate(timecourse_length = ifelse(grepl("long", experiment), "long", "short")) %>%
+  dplyr::select(timecourse_length, gene_id) %>%
+  distinct() %>%
+  mutate(deg = 1) %>%
+  pivot_wider(names_from = timecourse_length,
+              values_from = deg, 
+              values_fill = 0) %>%
+  column_to_rownames("gene_id")
+library(ggvenn)
+
+ggvenn(short_vs_long, fill_color = c("#bad0da", "#eabebb", "#f8ebc6"), stroke_alpha = 0.1, stroke_size =  0.5,
+       show_percentage = FALSE)
+
+library(eulerr)
+?euler
+pdf("figures/short_vs_long_sig_euler.pdf")
+plot(euler(short_vs_long))
+dev.off()
+ggsave("figures/short_vs_long_sig_genes.pdf")
+plot(venn(short_vs_long))
 all_sig_unique <- all_sig %>%
   dplyr::select(-experiment) %>%
   distinct()
