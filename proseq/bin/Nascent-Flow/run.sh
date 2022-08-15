@@ -28,5 +28,5 @@ module load gcc/7.1.0
 #source /Users/allenma/Nexflow_pipelines/bin/activate
 
 
-nextflow run main.nf -profile 'mm10' --workdir '/scratch/Shares/rinn/Michael/firre_timecourse/proseq/work' --genome_id 'mm10' --outdir '/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results' --email mism6893@colorado.edu --fastqs '/scratch/Shares/rinn/Michael/firre_timecourse/proseq/fastq/*_{R1,R2}.fastq.gz' --saveBAM --skipFastQC
+nextflow run main.nf -resume -profile 'mm10' --workdir '/scratch/Shares/rinn/Michael/firre_timecourse/proseq/work' --genome_id 'mm10' --outdir '/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results' --email mism6893@colorado.edu --fastqs '/scratch/Shares/rinn/Michael/firre_timecourse/proseq/fastq/*_{R1,R2}.fastq.gz' --saveBAM --skipFastQC --noTrim
 
