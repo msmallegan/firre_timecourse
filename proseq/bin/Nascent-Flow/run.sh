@@ -6,7 +6,7 @@
 #SBATCH --nodes=1 # Run on a single node
 #SBATCH --ntasks=1     # Number of CPU (processer cores i.e. tasks) In this example I use 1. I only need one, since none of the commands I run are parallelized.
 #SBATCH --mem=8gb # Memory limit
-#SBATCH --time=48:00:00 # Time limit hrs:min:sec
+#SBATCH --time=12:00:00 # Time limit hrs:min:sec
 #SBATCH --output=firre_proseq_nextflow.%j.out # Standard output
 #SBATCH --error=firre_proseq_nextflow.%j.err # Standard error log
 
@@ -31,5 +31,5 @@ conda activate rseqc
 #source /Users/allenma/Nexflow_pipelines/bin/activate
 
 
-nextflow run main.nf -resume -profile 'mm10' --workdir '/scratch/Shares/rinn/Michael/firre_timecourse/proseq/work' --genome_id 'mm10' --outdir '/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results' --email mism6893@colorado.edu --fastqs '/scratch/Shares/rinn/Michael/firre_timecourse/proseq/fastq/*_{R1,R2}.fastq.gz' --saveBAM
+nextflow run main.nf -profile 'mm10' --workdir '/scratch/Shares/rinn/Michael/firre_timecourse/proseq/work' --genome_id 'mm10' --outdir '/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results' --email mism6893@colorado.edu --fastqs '/scratch/Shares/rinn/Michael/firre_timecourse/proseq/fastq/*_{R1,R2}.fastq.gz' --saveBAM -resume
 
