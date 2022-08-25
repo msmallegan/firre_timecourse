@@ -1,0 +1,10 @@
+#file	sampid	group
+/scratch/Shares/rinn/Michael/firre_timecourse/proseq/bidirflow/tfit/JR3113.sorted_split_bidir_predictions.bed	JR3113	Control
+/scratch/Shares/rinn/Michael/firre_timecourse/proseq/bidirflow/tfit/JR3114.sorted_split_bidir_predictions.bed	JR3114	15minDOX
+/scratch/Shares/rinn/Michael/firre_timecourse/proseq/bidirflow/tfit/JR3115.sorted_split_bidir_predictions.bed	JR3115	30minDOX
+/scratch/Shares/rinn/Michael/firre_timecourse/proseq/bidirflow/tfit/JR3116.sorted_split_bidir_predictions.bed	JR3116	Control
+/scratch/Shares/rinn/Michael/firre_timecourse/proseq/bidirflow/tfit/JR3117.sorted_split_bidir_predictions.bed	JR3117	15minDOX
+/scratch/Shares/rinn/Michael/firre_timecourse/proseq/bidirflow/tfit/JR3118.sorted_split_bidir_predictions.bed	JR3118	30minDOX
+/scratch/Shares/rinn/Michael/firre_timecourse/proseq/bidirflow/tfit/JR3119.sorted_split_bidir_predictions.bed	JR3119	Control
+/scratch/Shares/rinn/Michael/firre_timecourse/proseq/bidirflow/tfit/JR3120.sorted_split_bidir_predictions.bed	JR3120	15minDOX
+/scratch/Shares/rinn/Michael/firre_timecourse/proseq/bidirflow/tfit/JR3121.sorted_split_bidir_predictions.bed	JR3121	30minDOX
