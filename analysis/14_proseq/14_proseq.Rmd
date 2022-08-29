@@ -1,0 +1,19 @@
+---
+title: "PRO-seq"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+options(stringsAsFactors = FALSE)
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+```{r}
+# Create SAF file for featurecounts
+mumerge_bed <- read_tsv("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/mumerge/split_bidir_predictions_mumerge_MUMERGE.bed", col_names = c("chrom", "start", "end")) %>%
+  mutate(gene_id = paste0("bidir_", 1:nrow(.)), .before = 1)
+```
+
