@@ -9,11 +9,91 @@ editor_options:
 options(stringsAsFactors = FALSE)
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
+library(Rsubread)
+library(DESeq2)
 ```
+
+## Nascent transcription upon Firre induction
+
+PRO-seq libraries were sequenced on a HiSeq 4000 using paired-end 150bp reads to an average read depth of 120M reads. Mapping and QC were handled by the NascentFlow Nextflow pipeline (DOI 10.17605/OSF.IO/NDHJ2). Reads were mapped to mm10 using HISAT2
 
 ```{r}
 # Create SAF file for featurecounts
-mumerge_bed <- read_tsv("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/mumerge/split_bidir_predictions_mumerge_MUMERGE.bed", col_names = c("chrom", "start", "end")) %>%
-  mutate(gene_id = paste0("bidir_", 1:nrow(.)), .before = 1)
+
+# 
+# chr_sizes <- read_tsv("/scratch/Shares/rinn/genomes/Mus_musculus/hisat2/mm10_chrom_sizes.txt",
+#                       col_names = c("Chr", "chr_length"))
+mumerge_bed <- read_tsv("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/mumerge/split_bidir_predictions_mumerge_MUMERGE.bed",
+                        col_names = c("Chr", "Start", "End"),
+                        col_types = list(Chr = col_character(), Start = col_integer(), End = col_integer())) %>%
+  mutate(GeneID = paste0("bidir_", 1:nrow(.)), .before = 1)%>%
+  mutate(Strand = ".")
+
+
+bidir_coords <- mumerge_bed %>%
+  dplyr::rename(region_id = GeneID,
+                chrom = Chr,
+                start = Start,
+                end = End) %>%
+  dplyr::select(-Strand) %>%
+  dplyr::select(chrom, start, end, region_id)
+write_tsv(bidir_coords, "results/bidir_coords.bed", col_names = F)
+
+write.table(mumerge_bed, "results/mumerge_bidirs.saf", 
+            quote = FALSE, sep = "\t",
+            col.names = TRUE, row.names = FALSE)
+library(Rsubread)
+library(tidyverse)
+fl <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/bams", 
+                 pattern = "*.bam$",
+                 full.names = TRUE)
+bidir_counts <- featureCounts(fl, annot.ext = "results/mumerge_bidirs.saf",
+                              nthreads = 18)
+write_rds(bidir_counts, "results/bidir_counts.rds")
+
+bidir_counts <- read_rds("results/bidir_counts.rds")
 ```
 
+```{r}
+sinfo <- read_tsv("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/mumerge/sample_info.txt")
+counts_matrix <- bidir_counts$counts
+samples <- tibble(file = colnames(counts_matrix)) %>%
+  mutate(sampid = gsub(".sorted.bam", "", file)) %>%
+  left_join(sinfo) %>%
+  mutate(timepoint = case_when(group == "Control" ~ "0",
+                               group == "15minDOX" ~ "15",
+                             TRUE ~ "30"),
+         timepoint = factor(timepoint, levels = c("0", "15", "30")))
+
+
+dds <- DESeqDataSetFromMatrix(countData = counts_matrix,
+                              colData = samples,
+                              design = ~ timepoint)
+# Each timepoint vs zero
+dds <- DESeq(dds)
+# write_rds(dds, "results/deseq_dds_vs_zero.rds")
+res_vs_zero <- bind_rows(results(dds, name = "timepoint_30_vs_0", tidy = T) %>%
+  mutate(comparison = "timepoint_30_vs_0"),
+  results(dds, name = "timepoint_15_vs_0", tidy = T) %>%
+  mutate(comparison = "timepoint_15_vs_0")) %>%
+  dplyr::rename(region_id = row) %>%
+  left_join(bidir_coords)
+write_csv(res_vs_zero, "results/res_vs_zero.csv")
+
+ggplot(res_vs_zero, aes(x = log2FoldChange, y = -log10(padj))) +
+  geom_point() +
+  facet_wrap(~comparison)
+
+# LRT 
+res_lrt <- DESeq(dds, test = "LRT", reduced = ~1)
+write_rds(res_lrt, "results/deseq_dds_vs_zero_lrt.rds")
+
+res_lrt_res <- bind_rows(results(res_lrt, name = "timepoint_30_vs_0", tidy = T) %>%
+  mutate(comparison = "timepoint_30_vs_0_lrt")) %>%
+  dplyr::rename(region_id = row) %>%
+  left_join(bidir_coords)
+
+sig_lrt_res <- res_lrt_res %>%
+  filter(padj < 0.05) %>%
+  arrange(padj)
+```
