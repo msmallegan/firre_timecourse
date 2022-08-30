@@ -11,6 +11,8 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(Rsubread)
 library(DESeq2)
+source("../util/_util.R")
+source("../util/_plot_theme.R")
 ```
 
 ## Nascent transcription upon Firre induction
@@ -28,7 +30,21 @@ mumerge_bed <- read_tsv("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/mu
                         col_types = list(Chr = col_character(), Start = col_integer(), End = col_integer())) %>%
   mutate(GeneID = paste0("bidir_", 1:nrow(.)), .before = 1)%>%
   mutate(Strand = ".")
+write.table(mumerge_bed, "results/mumerge_bidirs.saf", 
+            quote = FALSE, sep = "\t",
+            col.names = TRUE, row.names = FALSE)
 
+mumerge_bed_positive_strand <- mumerge_bed %>%
+  mutate(Strand = "+")
+write.table(mumerge_bed_positive_strand, "results/mumerge_bidirs_positive_strand.saf", 
+            quote = FALSE, sep = "\t",
+            col.names = TRUE, row.names = FALSE)
+
+mumerge_bed_negative_strand <- mumerge_bed %>%
+  mutate(Strand = "-")
+write.table(mumerge_bed_negative_strand, "results/mumerge_bidirs_negative_strand.saf", 
+            quote = FALSE, sep = "\t",
+            col.names = TRUE, row.names = FALSE)
 
 bidir_coords <- mumerge_bed %>%
   dplyr::rename(region_id = GeneID,
@@ -39,20 +55,51 @@ bidir_coords <- mumerge_bed %>%
   dplyr::select(chrom, start, end, region_id)
 write_tsv(bidir_coords, "results/bidir_coords.bed", col_names = F)
 
-write.table(mumerge_bed, "results/mumerge_bidirs.saf", 
-            quote = FALSE, sep = "\t",
-            col.names = TRUE, row.names = FALSE)
+
 library(Rsubread)
 library(tidyverse)
 fl <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/bams", 
                  pattern = "*.bam$",
                  full.names = TRUE)
-bidir_counts <- featureCounts(fl, annot.ext = "results/mumerge_bidirs.saf",
-                              nthreads = 18)
-write_rds(bidir_counts, "results/bidir_counts.rds")
+bidir_counts <- featureCounts(fl, 
+                              annot.ext = "/scratch/Shares/rinn/Michael/firre_timecourse/analysis/14_proseq/results/mumerge_bidirs.saf",
+                              isPairedEnd = TRUE,
+                              nthreads = 22)
+write_rds(bidir_counts, "../results/bidir_counts_pe.rds")
 
 bidir_counts <- read_rds("results/bidir_counts.rds")
+
+
+# Positive strand read counts
+library(Rsubread)
+library(tidyverse)
+fl <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/bams", 
+                 pattern = "*.bam$",
+                 full.names = TRUE)
+bidir_counts <- featureCounts(fl, 
+                              annot.ext = "/scratch/Shares/rinn/Michael/firre_timecourse/analysis/14_proseq/results/mumerge_bidirs_positive_strand.saf",
+                              isPairedEnd = TRUE,
+                              strandSpecific = 1,
+                              nthreads = 22)
+write_rds(bidir_counts, "../results/bidir_counts_positive_strand.rds")
+
+# Negative strand read counts
+library(Rsubread)
+library(tidyverse)
+fl <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/bams", 
+                 pattern = "*.bam$",
+                 full.names = TRUE)
+bidir_counts <- featureCounts(fl, 
+                              annot.ext = "/scratch/Shares/rinn/Michael/firre_timecourse/analysis/14_proseq/results/mumerge_bidirs_negative_strand.saf",
+                              isPairedEnd = TRUE,
+                              strandSpecific = 1,
+                              nthreads = 18)
+write_rds(bidir_counts, "../results/bidir_counts_negative_strand.rds")
 ```
+
+### Strand-specific differential expression of nascent transcripts
+
+It would be interesting to see the best changing bidirectional nascent transcripts. Therefore, what we'll do here is run DEseq on the +/- strand counts separately. Then look at the correlation and choose those that are the most correlated with the highest fold-change.
 
 ```{r}
 sinfo <- read_tsv("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/mumerge/sample_info.txt")
@@ -64,6 +111,99 @@ samples <- tibble(file = colnames(counts_matrix)) %>%
                                group == "15minDOX" ~ "15",
                              TRUE ~ "30"),
          timepoint = factor(timepoint, levels = c("0", "15", "30")))
+```
+
+\
+
+```{r}
+# Positive strand counts 
+pcounts <- read_rds("results/bidir_counts_positive_strand.rds")
+pcounts_matrix <- pcounts$counts
+
+rownames(pcounts_matrix)
+samples <- tibble(file = colnames(pcounts_matrix)) %>%
+  mutate(sampid = gsub(".sorted.bam", "", file)) %>%
+  left_join(sinfo) %>%
+  mutate(timepoint = case_when(group == "Control" ~ "0",
+                               group == "15minDOX" ~ "15",
+                             TRUE ~ "30"),
+         timepoint = factor(timepoint, levels = c("0", "15", "30")))
+
+pdds <- DESeqDataSetFromMatrix(countData = pcounts_matrix,
+                              colData = samples,
+                              design = ~ timepoint)
+# Each timepoint vs zero
+pdds <- DESeq(pdds)
+# write_rds(dds, "results/deseq_dds_vs_zero.rds")
+pres_vs_zero <- bind_rows(results(pdds, name = "timepoint_30_vs_0", tidy = T) %>%
+  mutate(comparison = "timepoint_30_vs_0"),
+  results(pdds, name = "timepoint_15_vs_0", tidy = T) %>%
+  mutate(comparison = "timepoint_15_vs_0")) %>%
+  dplyr::rename(region_id = row) %>%
+  left_join(bidir_coords) %>%
+  mutate(strand = "+")
+write_csv(pres_vs_zero, "results/res_vs_zero_positive_strand.csv")
+
+# Negative strand counts
+ncounts <- read_rds("results/bidir_counts_negative_strand.rds")
+ncounts_matrix <- ncounts$counts
+samples <- tibble(file = colnames(ncounts_matrix)) %>%
+  mutate(sampid = gsub(".sorted.bam", "", file)) %>%
+  left_join(sinfo) %>%
+  mutate(timepoint = case_when(group == "Control" ~ "0",
+                               group == "15minDOX" ~ "15",
+                             TRUE ~ "30"),
+         timepoint = factor(timepoint, levels = c("0", "15", "30")))
+
+ndds <- DESeqDataSetFromMatrix(countData = ncounts_matrix,
+                              colData = samples,
+                              design = ~ timepoint)
+# Each timepoint vs zero
+ndds <- DESeq(ndds)
+# write_rds(dds, "results/deseq_dds_vs_zero.rds")
+nres_vs_zero <- bind_rows(results(ndds, name = "timepoint_30_vs_0", tidy = T) %>%
+  mutate(comparison = "timepoint_30_vs_0"),
+  results(ndds, name = "timepoint_15_vs_0", tidy = T) %>%
+  mutate(comparison = "timepoint_15_vs_0")) %>%
+  dplyr::rename(region_id = row) %>%
+  left_join(bidir_coords) %>%
+  mutate(strand = "-")
+write_csv(nres_vs_zero, "results/res_vs_zero_negative_strand.csv")
+
+pres_vs_zero <- read_csv("results/res_vs_zero_positive_strand.csv")
+nres_vs_zero <- read_csv("results/res_vs_zero_negative_strand.csv")
+# Combine into one data.frame
+pres_vs_zero <- pres_vs_zero %>%
+  dplyr::rename(l2fc_pos = log2FoldChange,
+                padj_pos = padj) %>%
+  dplyr::select(region_id, comparison, chrom, start, end, l2fc_pos, padj_pos)
+
+nres_vs_zero <- nres_vs_zero %>%
+  dplyr::rename(l2fc_neg = log2FoldChange,
+                padj_neg = padj) %>%
+  dplyr::select(region_id, comparison, l2fc_neg, padj_neg)
+
+combined_strands_vs_zero <- pres_vs_zero %>%
+  left_join(nres_vs_zero)
+
+combined_strands_vs_zero <- combined_strands_vs_zero %>%
+  mutate(sig_in_both = (padj_pos < 0.05 & padj_neg < 0.05))
+table(combined_strands_vs_zero$sig_in_both)
+ggplot(combined_strands_vs_zero %>%
+         filter(sig_in_both == TRUE), aes(x = l2fc_pos, y = l2fc_neg, color = sig_in_both)) +
+  facet_wrap(~comparison) +
+  geom_point()
+
+
+hmm <- combined_strands_vs_zero %>%
+  filter(sig_in_both == TRUE,
+         l2fc_pos > 1, l2fc_neg > 1)
+```
+
+\
+
+```{r}
+
 
 
 dds <- DESeqDataSetFromMatrix(countData = counts_matrix,
@@ -96,4 +236,77 @@ res_lrt_res <- bind_rows(results(res_lrt, name = "timepoint_30_vs_0", tidy = T) 
 sig_lrt_res <- res_lrt_res %>%
   filter(padj < 0.05) %>%
   arrange(padj)
+```
+
+## Gene level differential expression
+
+```{r}
+
+
+fl_unstranded_gene_counts <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/bidirflow/featurecounts_genes", full.names = T, pattern = "*unstranded*")
+# Let's just get those with the 5' part of the gene removed
+fl_unstranded_gene_counts <- fl_unstranded_gene_counts[grepl("5ptrunc_gene_counts.txt", fl_unstranded_gene_counts)]
+
+ugc <- lapply(fl_unstranded_gene_counts,function(x)
+  read_tsv(x)[,4])
+ugc <- do.call(cbind, ugc)
+
+# The gene ID order is the same in all the count files. 
+# However, there are duplicated gene names and transcript ids.
+# ugc_gene_ids <- lapply(fl_unstranded_gene_counts, function(x)
+#   read_tsv(x)[,2])
+# ugc_gene_ids <- do.call(cbind, ugc_gene_ids)
+ugc_gid <- read_tsv(fl_unstranded_gene_counts[[1]]) %>%
+  mutate(index = 1:nrow(.)) %>%
+  unite(col = "id", GeneID, TranscriptID, index)
+# ugc_gid <- ugc_gid$id
+
+rownames(ugc) <- ugc_gid$id
+
+
+# Calc TPM
+ugc_tpm <- counts_to_tpm(ugc, ugc_gid$Length, rep(250,9))
+
+tpm_5ptrunc <- ugc_tpm %>%
+  as.data.frame() %>%
+  rownames_to_column("id") %>%
+  pivot_longer(2:ncol(.), names_to="sampid", values_to = "tpm") %>%
+  mutate(sampid = gsub(".sorted.bam", "", sampid)) %>%
+  left_join(samples) %>%
+  mutate(timepoint = as.numeric(as.character(timepoint)))
+write_csv(tpm_5ptrunc, "results/tpm_5ptrunc.csv")
+
+
+ggplot(tpm_5ptrunc %>% filter(grepl("Duox1", id)),
+       aes(x = timepoint, y = tpm)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+
+
+ggplot(tpm_5ptrunc %>% filter(grepl("Firre", id)),
+       aes(x = timepoint, y = tpm)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+
+samples <- tibble(file = colnames(ugc)) %>%
+  mutate(sampid = gsub(".sorted.bam", "", file)) %>%
+  left_join(sinfo) %>%
+  mutate(timepoint = case_when(group == "Control" ~ "0",
+                               group == "15minDOX" ~ "15",
+                             TRUE ~ "30"),
+         timepoint = factor(timepoint, levels = c("0", "15", "30")))
+
+dds <- DESeqDataSetFromMatrix(countData = ugc,
+                              colData = samples,
+                              design = ~ timepoint)
+
+dds <- DESeq(dds)
+
+res_vs_zero <- bind_rows(results(dds, name = "timepoint_30_vs_0", tidy = T) %>%
+  mutate(comparison = "timepoint_30_vs_0"),
+  results(dds, name = "timepoint_15_vs_0", tidy = T) %>%
+  mutate(comparison = "timepoint_15_vs_0")) %>%
+  dplyr::rename(region_id = row) %>%
+  left_join(bidir_coords)
+write_csv(res_vs_zero, "results/res_vs_zero_gene5ptrunc.csv")
 ```
