@@ -1,0 +1,77 @@
+---
+title: "Coverage tracks"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+options(stringsAsFactors = FALSE)
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+First let's take an inventory of the files that we would like to include.
+This may help us move toward making a unified UCSC trackHub as well.
+
+We need to find bedGraph files (or make them) for PRO-seq, RNA-seq, ATAC-seq, and ChIP-seq.
+
+
+```{r}
+# PRO-seq bedGraph files location
+# "/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/bedgraphs"
+# - Need to compress with samtools bgzip: bgzip < JR3113.bedGraph > JR3113.bedGraph.bgz
+# - Need to index with tabix: tabix -p bed JR3113.bedGraph.bgz
+# - Need to make a manifest of the file locations
+
+# RNA-seq bedGraph files location
+# - Need to re-run nf-core/rnaseq to get bam files.
+# - Use http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/ bigWigToBedGraph to get bedgraphs
+# - Need to compress with samtools bgzip: bgzip < JR3113.bedGraph > JR3113.bedGraph.bgz
+# - Need to index with tabix: tabix -p bed JR3113.bedGraph.bgz
+# - Need to make a manifest of the file locations
+
+# ATAC-seq bedgraph files location
+# - /scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary/bigwig
+# - Use http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/ bigWigToBedGraph to get bedgraphs
+# - Need to compress with samtools bgzip: bgzip < JR3113.bedGraph > JR3113.bedGraph.bgz
+# - Need to index with tabix: tabix -p bed JR3113.bedGraph.bgz
+# - Need to make a manifest of the file locations
+
+# ChIP-seq bedgraph files location
+# - /scratch/Shares/rinn/Michael/firre_timecourse/chipseq/results/bwa/mergedLibrary/bigwig
+# - Use http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/ bigWigToBedGraph to get bedgraphs
+# - Need to compress with samtools bgzip: bgzip < JR3113.bedGraph > JR3113.bedGraph.bgz
+# - Need to index with tabix: tabix -p bed JR3113.bedGraph.bgz
+# - Need to make a manifest of the file locations
+```
+
+Right now for the ATAC-seq and ChIP-seq we have bigWig files as a starting point.
+
+```{r}
+atac_bigwigs <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary/bigwig",
+                           full.names = TRUE,
+                           pattern = "*.bigWig")
+
+chip_bigwigs <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/chipseq/results/bwa/mergedLibrary/bigwig",
+                           full.names = TRUE,
+                           pattern = "*.bigWig")
+
+cutnrun_bigwigs <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/cutnrun/align",
+                              full.names = TRUE,
+                              pattern = "*.bw$")
+
+bw_files <- tibble(experiment = c(rep("atac", length(atac_bigwigs)),
+                                  rep("chip", length(chip_bigwigs)),
+                                  rep("cutnrun", length(cutnrun_bigwigs))),
+                   file = c(atac_bigwigs,
+                            chip_bigwigs,
+                            cutnrun_bigwigs)) %>%
+  rowwise() %>%
+  mutate(bw_name = basename(file),
+         target_name = paste(experiment, gsub(".bigWig|.bw|.mLb.clN|_R1", "", bw_name), sep = "_"))
+
+write_tsv(bw_files %>% dplyr::select(file, target_name), "results/bw_files.tsv", col_names = F)
+```
+
+
