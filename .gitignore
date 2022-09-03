@@ -46,3 +46,4 @@ work/*
 *.broadPeak
 *macs*
 *.bed
+*.ipynb_checkpoints*

@@ -95,6 +95,9 @@ bidir_counts <- featureCounts(fl,
                               strandSpecific = 1,
                               nthreads = 18)
 write_rds(bidir_counts, "../results/bidir_counts_negative_strand.rds")
+
+
+bidir_counts <- read_rds("results/bidir_counts.rds")
 ```
 
 ### Strand-specific differential expression of nascent transcripts
@@ -189,6 +192,11 @@ combined_strands_vs_zero <- pres_vs_zero %>%
 combined_strands_vs_zero <- combined_strands_vs_zero %>%
   mutate(sig_in_both = (padj_pos < 0.05 & padj_neg < 0.05))
 table(combined_strands_vs_zero$sig_in_both)
+ggplot(combined_strands_vs_zero, aes(x = l2fc_pos, y = l2fc_neg, color = sig_in_both)) +
+  facet_wrap(~comparison) +
+  geom_point()
+
+
 ggplot(combined_strands_vs_zero %>%
          filter(sig_in_both == TRUE), aes(x = l2fc_pos, y = l2fc_neg, color = sig_in_both)) +
   facet_wrap(~comparison) +
@@ -282,11 +290,17 @@ ggplot(tpm_5ptrunc %>% filter(grepl("Duox1", id)),
   geom_point() +
   geom_smooth(method = "lm")
 
-
+library(ggpubr)
 ggplot(tpm_5ptrunc %>% filter(grepl("Firre", id)),
        aes(x = timepoint, y = tpm)) +
+ geom_hline(yintercept = 0) +
   geom_point() +
-  geom_smooth(method = "lm")
+  geom_smooth(method = "lm", se = FALSE, color = "black") +
+  ggtitle("Firre expression") +
+  ylab("TPM") +
+  xlab("Time (Min.)") +
+  stat_regline_equation(size = 8)
+ 
 
 samples <- tibble(file = colnames(ugc)) %>%
   mutate(sampid = gsub(".sorted.bam", "", file)) %>%
@@ -306,7 +320,30 @@ res_vs_zero <- bind_rows(results(dds, name = "timepoint_30_vs_0", tidy = T) %>%
   mutate(comparison = "timepoint_30_vs_0"),
   results(dds, name = "timepoint_15_vs_0", tidy = T) %>%
   mutate(comparison = "timepoint_15_vs_0")) %>%
-  dplyr::rename(region_id = row) %>%
-  left_join(bidir_coords)
+  dplyr::rename(gene_id = row)
 write_csv(res_vs_zero, "results/res_vs_zero_gene5ptrunc.csv")
+
+
+res_vs_zero <- res_vs_zero %>%
+  rowwise() %>%
+  mutate(gene_name = unlist(strsplit(gene_id, "_"))[[1]])
+
+res_vs_zero <- res_vs_zero %>%
+  mutate(gene_name = gsub("Gm35612", "CrossFirre", gene_name))
+library(ggrepel)
+ggplot(res_vs_zero, aes(x = log2FoldChange, y = -log10(padj))) +
+  geom_point() + 
+  facet_wrap(~ comparison) +
+  geom_text_repel(data = res_vs_zero %>% filter(log2FoldChange > 4 | -log10(padj) > 75),
+                  aes(label = gene_name))
+
+gene_sig <- res_vs_zero %>%
+  filter(padj < 0.05, abs(log2FoldChange) > 1)
+
+gs_summary <- gene_sig %>%
+  mutate(deg = ifelse(log2FoldChange > 0, 1, -1)) %>%
+  group_by(comparison, deg) %>%
+  summarize(ndeg = n())
+
+table(gene_sig$comparison)
 ```

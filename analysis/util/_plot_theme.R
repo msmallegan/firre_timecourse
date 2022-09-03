@@ -10,7 +10,7 @@
 # font_add("Arial", "../util/Arial.ttf")
 
 theme_paperwhite <- function(
-  base_size = 8L,
+  base_size = 16L,
   base_family = "sans",
   face = c("plain", "bold"),
   aspect_ratio = NULL,
@@ -29,7 +29,7 @@ theme_paperwhite <- function(
     family = "sans",
     face = face,
     colour = "#3d393d",
-    size = 8L
+    size = 16L
   )
   
   # Include the grid lines.
@@ -82,6 +82,27 @@ scale_colour_discrete <- function(...) {
 
 scale_fill_discrete <- function(...) {
   scale_fill_manual(..., values = c("#424242","#a8404c","#024059","#71969F","#F2D6A2","#8B1D3B","#DD1822"))
+}
+
+theme_browser <- function(..., legend = TRUE, axis.text.y = FALSE) {
+  browser.theme <- theme_classic() +
+    theme(
+      strip.background = element_blank(),
+      strip.text.y.left = element_text(angle = 0)
+    )
+  if (!axis.text.y) {
+    browser.theme <- browser.theme +
+      theme(
+        axis.text.y = element_blank()
+      )
+  }
+  if (!legend) {
+    browser.theme <- browser.theme +
+      theme(
+        legend.position = "none"
+      )
+  }
+  return(browser.theme)
 }
 
 
@@ -248,3 +269,14 @@ col_pal11 <- c("#f09648",
                "#779de0")
 col_pal11 <- colorRampPalette(col_pal11)(100)
 col_pal11 <- rev(col_pal11)
+
+discrete_pal1_sns <- c("#5571AB",
+                       "#D1885C",
+                       "#6AA66E",
+                       "#B65656",
+                       "#7F73AF",
+                       "#8F7963",
+                       "#CF8FC0",
+                       "#8C8C8C",
+                       "#C9BA7D",
+                       "#78B3CA")

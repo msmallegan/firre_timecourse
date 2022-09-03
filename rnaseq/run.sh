@@ -23,6 +23,7 @@ nextflow run nf-core/rnaseq -r 1.4.2 \
 --gtf ../../../genomes/Mus_musculus/Gencode/M25/gencode.vM25.annotation.gtf \
 --pseudo_aligner salmon \
 --gencode \
+--skipQC \
 --email michael.smallegan@colorado.edu \
 -c nextflow.config
 

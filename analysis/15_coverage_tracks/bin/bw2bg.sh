@@ -21,8 +21,8 @@ BW_FILE+=("$first")
 TARGET_FILE+=("$second")
 done < /scratch/Shares/rinn/Michael/firre_timecourse/analysis/15_coverage_tracks/results/bw_files.tsv
 
-bigWigToBedGraph ${BW_FILE[$SLURM_ARRAY_TASK_ID]}  ../bedgraphs/${TARGET_FILE[$SLURM_ARRAY_TASK_ID]}.bedGraph
-bgzip < ../bedgraphs/${TARGET_FILE[$SLURM_ARRAY_TASK_ID]}.bedGraph > ../bedgraphs/${TARGET_FILE[$SLURM_ARRAY_TASK_ID]}.bedGraph.bgz
-tabix -p bed ../bedgraphs/${TARGET_FILE[$SLURM_ARRAY_TASK_ID]}.bedGraph.bgz
+bigWigToBedGraph ${BW_FILE[$SLURM_ARRAY_TASK_ID]}  ../results/bedgraphs/${TARGET_FILE[$SLURM_ARRAY_TASK_ID]}.bedGraph
+bgzip < ../results/bedgraphs/${TARGET_FILE[$SLURM_ARRAY_TASK_ID]}.bedGraph > ../results/bedgraphs/${TARGET_FILE[$SLURM_ARRAY_TASK_ID]}.bedGraph.bgz
+tabix -p bed ../results/bedgraphs/${TARGET_FILE[$SLURM_ARRAY_TASK_ID]}.bedGraph.bgz
 
 date

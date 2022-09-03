@@ -72,6 +72,205 @@ bw_files <- tibble(experiment = c(rep("atac", length(atac_bigwigs)),
          target_name = paste(experiment, gsub(".bigWig|.bw|.mLb.clN|_R1", "", bw_name), sep = "_"))
 
 write_tsv(bw_files %>% dplyr::select(file, target_name), "results/bw_files.tsv", col_names = F)
+
+proseq_files <-  list.files("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/bedgraphs",
+                            full.names = TRUE,
+                            pattern = "*.bedGraph$")
+
+proseq_name_map <- tibble(bg_name = c("JR3113", "JR3114", "JR3115", "JR3116", "JR3117", "JR3118", "JR3119", "JR3120" ,"JR3121"),
+                          name = c("0min_R1", "15min_R1", "30min_R1",
+                                   "0min_R2", "15min_R2", "30min_R2",
+                                   "0min_R3", "15min_R3", "30min_R3"))
+proseq_bg <- tibble(experiment = rep("proseq", length(proseq_files)),
+                    file = proseq_files) %>%
+  mutate(bg_name = basename(file),
+         bg_name = gsub(".bedGraph", "", bg_name)) %>%
+  left_join(proseq_name_map) %>%
+  unite(target_name, experiment, bg_name, name) %>%
+  dplyr::select(file, target_name)
+
+write_tsv(proseq_bg, "results/proseq_bg_files.tsv", col_names = F)
+
+
+```
+
+```{r}
+# After running bin/bw2gb, then we can collect the .bedgraph.bgz files
+bgz_files <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/analysis/15_coverage_tracks/results/bedgraphs", 
+                        full.names = T,
+                        pattern = "*.bedGraph.bgz$")
+write_lines(bgz_files, "results/bgz_files.txt")
+```
+
+```{bash}
+
+
+module load samtools
+python3 SparK.py \
+-pr chr2:122328543-122389517 \
+-tf /scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/bedgraphs/JR3113.bedGraph.bgz \
+-cf /scratch/Shares/rinn/Michael/firre_timecourse/analysis/15_coverage_tracks/results/bedgraphs/atac_ESC_KO_control_120.bedGraph.bgz \
+-tg 1 \
+-cg 1 \
+-gl H3K27AC \
+-l HepG2_cells second \
+-gtf /scratch/Shares/rinn/genomes/Mus_musculus/Gencode/M25/gencode.vM25.annotation.gtf
+
+
+python3 SparK.py \
+-pr chr2:122328543-122389517 \
+-cf /scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/bedgraphs/JR3113.bedGraph.bgz \
+-gl H3K27AC \
+-gtf /scratch/Shares/rinn/genomes/Mus_musculus/Gencode/M25/gencode.vM25.annotation.gtf \
+-pt sine \
+-o 10_sine
 ```
 
 
+
+```{r}
+
+old_path <- Sys.getenv("PATH")
+Sys.setenv(PATH = paste(old_path, "/opt/samtools/1.10/bin/", 
+                        "/opt/bedtools/2.28.0/bin/",
+                        "/Users/mism6893/bin", sep = ":"))
+library(bedr)
+hmm <- rtracklayer::import("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/bedgraphs/JR3113.bedGraph")
+?import
+library(GenomicRanges)
+roi <- GRanges(seqnames = "2",
+               ranges = IRanges::IRanges(start = 122340333, end = 122371763))
+
+library(plyranges)
+
+neg13 <- read_bigwig("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig/JR3113.neg.rcc.bw",
+                     overlap_ranges = roi) %>%
+  as.data.frame()
+pos13 <-read_bigwig("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig/JR3113.pos.rcc.bw",
+                    overlap_ranges = roi) %>%
+  as.data.frame()
+
+neg14 <- read_bigwig("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig/JR3114.neg.rcc.bw",
+                     overlap_ranges = roi) %>%
+  as.data.frame()
+pos14 <-read_bigwig("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig/JR3114.pos.rcc.bw",
+                    overlap_ranges = roi) %>%
+  as.data.frame()
+
+pos15 <-read_bigwig("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig/JR3115.pos.rcc.bw",
+                    overlap_ranges = roi) %>%
+  as.data.frame()
+neg15 <- read_bigwig("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig/JR3115.neg.rcc.bw",
+                     overlap_ranges = roi) %>%
+  as.data.frame()
+
+pos_cov <- bind_rows(pos14 %>% mutate(sample = "14"),
+                     pos13 %>% mutate(sample = "13"),
+                     pos15 %>% mutate(sample = "15"))
+
+neg_cov <- bind_rows(neg14 %>% mutate(sample = "14"),
+                     neg13 %>% mutate(sample = "13"),
+                     neg15 %>% mutate(sample = "15"))
+
+library(tidyverse)
+p1 <- ggplot(pos_cov, aes(x = start, y = score)) +
+  geom_area(fill = discrete_pal1_sns[[1]]) +
+  geom_area(data = neg_cov, fill =  discrete_pal1_sns[[4]]) +
+  facet_wrap(facets = ~sample, strip.position = "left", ncol = 1) +
+  theme_browser() +
+  theme(panel.spacing.y = unit(x = 0, units = "line"))
+p1
+```
+
+```{r}
+# BiocManager::install(c('BSgenome.Mmusculus.UCSC.mm10', 'EnsDb.Mmusculus.v79'))
+library(patchwork)
+library(BSgenome.Mmusculus.UCSC.mm10)
+library(EnsDb.Mmusculus.v79)
+# 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
+p2 <- AnnotationPlot(annotation, roi)
+CombineTracks(plotlist = list(p1, p2), heights = c(1, 0.3))
+CombineTracks(plotlist = list(p, p2), heights = c(1, 0.1))
+library(pbapply)
+
+annotation.subset <- subsetByOverlaps(x = annotation, ranges = roi)
+# seqlevelsStyle(annotation) <- "UCSC"
+
+
+
+
+asdf <- annotation.subset %>%
+  as.data.frame()
+asdf1 <- annotation.subset1 %>%
+  as.data.frame()
+annotation.subset <- subsetByOverlaps(x = annotation, ranges = roi)
+
+hmm <- annotation %>% as.data.frame()
+mode <- "gene"
+if (mode == "gene") {
+  genes.keep <- unique(x = annotation.subset$gene_name)
+  annotation.subset <- annotation[
+    fmatch(x = annotation$gene_name, table = genes.keep, nomatch = 0L) > 0L
+  ]
+} else {
+  tx.keep <- unique(x = annotation.subset$tx_id)
+  annotation.subset <- annotation[
+    fmatch(x = annotation$tx_id, table = tx.keep, nomatch = 0L) > 0L
+  ]
+}
+annotation <- annotation.subset
+start.pos <- 122328543
+end.pos <- 122389517
+# hmm <- reformat_annotations(annotation.subset, start)
+
+annotation <- gene_bodies
+
+
+```
+
+
+
+```{r}
+region <- roi
+proseq_bwlist <- list(`0' R1` = list(pos = "/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig/JR3113.pos.rcc.bw",
+                             neg = "/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig/JR3113.neg.rcc.bw"),
+               `0' R2` = list(pos = "/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig/JR3116.pos.rcc.bw",
+                             neg = "/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig/JR3116.neg.rcc.bw"),
+               `0' R3` = list(pos = "/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig/JR3119.pos.rcc.bw",
+                             neg = "/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig/JR3119.neg.rcc.bw"),
+               `15' R1` = list(pos = "/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig/JR3114.pos.rcc.bw",
+                              neg = "/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig/JR3114.neg.rcc.bw"),
+               `15' R2` = list(pos = "/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig/JR3117.pos.rcc.bw",
+                             neg = "/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig/JR3117.neg.rcc.bw"),
+               `15' R3` = list(pos = "/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig/JR3120.pos.rcc.bw",
+                             neg = "/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig/JR3120.neg.rcc.bw"),
+               `30' R1` = list(pos = "/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig/JR3115.pos.rcc.bw",
+                              neg = "/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig/JR3115.neg.rcc.bw"),
+               `30' R2` = list(pos = "/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig/JR3118.pos.rcc.bw",
+                             neg = "/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig/JR3118.neg.rcc.bw"),
+               `30' R3` = list(pos = "/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig/JR3121.pos.rcc.bw",
+                             neg = "/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig/JR3121.neg.rcc.bw"))
+
+library(ggh4x)
+roi <- GRanges(seqnames = 2,
+              ranges = IRanges(start = 122340333,
+                               end = 122371763))
+p_proseq <- BigwigTrack_stranded(roi, proseq_bwlist, y_label = paste0("PRO-seq \n Normalied signal (range ",
+                        as.character(x = ymin), " - ",
+                        as.character(x = ymax), ")"), downsample.rate = 0.25)
+CombineTracks(plotlist = list(p_proseq, p2), heights = c(1, 0.1))
+ggsave("figures/proseq1.pdf", width = 5, height = 8)
+
+
+```
+
+
+```{r}
+
+hmm <- BigwigTrack(roi, list(`0min` = "/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig/JR3113.pos.rcc.bw",
+                             `15min` = "/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig/JR3114.pos.rcc.bw",
+                             `30min` = "/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig/JR3115.pos.rcc.bw"))
+
+# convert region argument to genomic coordinates
+# region can be a string, name of a gene, or GRanges object
+```
