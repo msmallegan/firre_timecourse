@@ -2,6 +2,9 @@
 library(fastmatch)
 library(GenomicRanges)
 library(RcppRoll)
+library(ggh4x)
+library(pbapply)
+library(patchwork)
 
 AnnotationPlot <- function(annotation, region, mode = "gene") {
   if(mode == "gene") {
@@ -493,7 +496,7 @@ BigwigTrack_stranded_allreps <- function(
   extend.upstream = 0,
   extend.downstream = 0,
   type = "coverage",
-  y_label = "bigWig",
+  y_label_prefix = "bigWig",
   bigwig.scale = "common",
   ymax = NULL,
   ymin = NULL,
@@ -580,7 +583,7 @@ BigwigTrack_stranded_allreps <- function(
     percentile.use <- as.numeric(
       x = sub(pattern = "q", replacement = "", x = as.character(x = ymin))
     ) / 100
-    ymax <- covmin * percentile.use
+    ymin <- covmin * percentile.use
   }
   
   # perform clipping
@@ -614,15 +617,17 @@ BigwigTrack_stranded_allreps <- function(
     p <- ggplot(
       data = coverages,
       mapping = aes_string(x = "position", y = "score", fill = "bw")
-    ) + geom_area(data = coverages %>% filter(strand == "pos"), fill = discrete_pal1_sns[[1]]) +
-      geom_area(data = coverages %>% filter(strand == "neg"), fill = discrete_pal1_sns[[4]]) +
+    ) + geom_area(data = coverages %>% dplyr::filter(strand == "pos"), fill = discrete_pal1_sns[[1]]) +
+      geom_area(data = coverages %>% dplyr::filter(strand == "neg"), fill = discrete_pal1_sns[[4]]) +
       facet_nested_wrap(timepoint + replicate ~ ., strip = strip_nested(bleed = TRUE), ncol = 1,
                         strip.position = "left", nest_line = element_line(), shrink = FALSE) +
       scale_fill_grey()
   }
   chromosome <- as.character(x = seqnames(x = region))
   p <- p + theme_browser(axis.text.y = FALSE, legend = TRUE) +
-    ylab(label = y_label) +
+    ylab(label = paste0(y_label_prefix, " (range ",
+                        as.character(x = ymin), " - ",
+                        as.character(x = ymax), ")")) +
     xlab(label = paste0(chromosome, " position (bp)")) +
     theme(panel.spacing.y = unit(x = 0.1, units = "line"))
   return(p)
