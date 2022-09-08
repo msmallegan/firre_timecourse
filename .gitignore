@@ -47,3 +47,4 @@ work/*
 *macs*
 *.bed
 *.ipynb_checkpoints*
+*.bw

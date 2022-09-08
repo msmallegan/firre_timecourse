@@ -22,26 +22,14 @@ annotation <- GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79)
 ```{r proseq-bigwigs}
 proseq_dir <- "/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig"
 
-proseq_bw_all <- list(`0' R1` = list(pos = file.path(proseq_dir, "JR3113.pos.rcc.bw"),
-                                     neg = file.path(proseq_dir, "JR3113.neg.rcc.bw")),
-                      `0' R2` = list(pos = file.path(proseq_dir, "JR3116.pos.rcc.bw"),
+proseq_bw_representative <- list(`0'` = list(pos = file.path(proseq_dir, "JR3116.pos.rcc.bw"),
                                      neg = file.path(proseq_dir, "JR3116.neg.rcc.bw")),
-                      `0' R3` = list(pos = file.path(proseq_dir, "JR3119.pos.rcc.bw"),
-                                     neg = file.path(proseq_dir, "JR3119.neg.rcc.bw")),
-                      `15' R1` = list(pos = file.path(proseq_dir, "JR3114.pos.rcc.bw"),
-                                      neg = file.path(proseq_dir, "JR3114.neg.rcc.bw")),
-                      `15' R2` = list(pos = file.path(proseq_dir, "JR3117.pos.rcc.bw"),
+                      `15'` = list(pos = file.path(proseq_dir, "JR3117.pos.rcc.bw"),
                                       neg = file.path(proseq_dir, "JR3117.neg.rcc.bw")),
-                      `15' R3` = list(pos = file.path(proseq_dir, "JR3120.pos.rcc.bw"),
-                                      neg = file.path(proseq_dir, "JR3120.neg.rcc.bw")),
-                      `30' R1` = list(pos = file.path(proseq_dir, "JR3115.pos.rcc.bw"),
-                                      neg = file.path(proseq_dir, "JR3115.neg.rcc.bw")),
-                      `30' R2` = list(pos = file.path(proseq_dir, "JR3118.pos.rcc.bw"),
-                                      neg = file.path(proseq_dir, "JR3118.neg.rcc.bw")),
-                      `30' R3` = list(pos = file.path(proseq_dir, "JR3121.pos.rcc.bw"),
-                                      neg = file.path(proseq_dir, "JR3121.neg.rcc.bw")))
+                      `30'` = list(pos = file.path(proseq_dir, "JR3118.pos.rcc.bw"),
+                                      neg = file.path(proseq_dir, "JR3118.neg.rcc.bw")))
 
-proseq_bw_representative <- list(`0' R1` = list(pos = file.path(proseq_dir, "JR3113.pos.rcc.bw"),
+proseq_bw_all <- list(`0' R1` = list(pos = file.path(proseq_dir, "JR3113.pos.rcc.bw"),
                                                 neg = file.path(proseq_dir, "JR3113.neg.rcc.bw")),
                                  `0' R2` = list(pos = file.path(proseq_dir, "JR3116.pos.rcc.bw"),
                                                 neg = file.path(proseq_dir, "JR3116.neg.rcc.bw")),
@@ -61,18 +49,112 @@ proseq_bw_representative <- list(`0' R1` = list(pos = file.path(proseq_dir, "JR3
                                                  neg = file.path(proseq_dir, "JR3121.neg.rcc.bw")))
 ```
 
+```{r atacseq-bigwigs}
+atacseq_bw <- list(`0'` =  "/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary/bigwig/ESC_KO_firre_induced_0_R1.mLb.clN.bigWig",
+                   `30'` = "/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary/bigwig/ESC_KO_firre_induced_30_R1.mLb.clN.bigWig",
+                   `60'` = "/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary/bigwig/ESC_KO_firre_induced_60_R1.mLb.clN.bigWig",
+                   `90'` = "/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary/bigwig/ESC_KO_firre_induced_90_R1.mLb.clN.bigWig",
+                   `120'` = "/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary/bigwig/ESC_KO_firre_induced_120_R1.mLb.clN.bigWig",
+                   `150'` = "/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary/bigwig/ESC_KO_firre_induced_150_R1.mLb.clN.bigWig")
+```
+
+
 
 ```{r proseq-coverage-plot}
+ep300_promoter <- GRanges(seqnames = 15, ranges = IRanges(start = 81574507, end = 81597530))
+# 
+# 
+p_annotation <- AnnotationPlot(annotation, ep300_promoter)
+# p_proseq <- BigwigTrack_stranded_allreps(duox_shf_region, proseq_bw_all,
+#                                  y_label_prefix = "PRO-seq \n Normalied signal",
+#                                  downsample.rate = 0.25)
+# p_proseq <- BigwigTrack_stranded(ep300_promoter, proseq_bw_representative,
+#                                  y_label_prefix = "PRO-seq \n Normalied signal",
+#                                  downsample.rate = 0.25)
+
+duox_shf_region <- GRanges(seqnames = 2, ranges = IRanges(start = 122340333, end = 122371763))
+p_proseq <- BigwigTrack_stranded(duox_shf_region, proseq_bw_representative,
+                                 y_label_prefix = "PRO-seq \n Normalied signal",
+                                 downsample.rate = 0.25)
+
+duox_shf_region <-  GRanges(seqnames = "chr2", ranges = IRanges(start = 122340333, end = 122371763))
+p_atacseq <- BigwigTrack(duox_shf_region, atacseq_bw,
+                                 y_label = "ATAC-seq \n Normalied signal",
+                                 downsample.rate = 0.25)
+# Need chr for ATACseq and not chr for pro-seq
 duox_shf_region <- GRanges(seqnames = 2, ranges = IRanges(start = 122340333, end = 122371763))
 p_annotation <- AnnotationPlot(annotation, duox_shf_region)
 
-p_proseq <- BigwigTrack_stranded_allreps(duox_shf_region, proseq_bw_all, 
-                                 y_label_prefix = "PRO-seq \n Normalied signal", 
+
+
+CombineTracks(plotlist = list(p_proseq, p_atacseq, p_annotation), heights = c(0.3, 0.4, 0.1))
+ggsave("figures/duoxshf_atac.pdf", width = 5, height = 7.5)
+```
+
+```{r}
+
+rapgef4_region <- GRanges(seqnames = 2, ranges = IRanges(start = 71976275, end = 72081080))
+p_proseq <- BigwigTrack_stranded(rapgef4_region, proseq_bw_representative,
+                                 y_label_prefix = "PRO-seq \n Normalied signal",
                                  downsample.rate = 0.25)
 
-CombineTracks(plotlist = list(p_proseq, p_annotation), heights = c(1, 0.1))
-ggsave("figures/proseq_tracks.pdf", width = 5, height = 8)
+rapgef4_region <-  GRanges(seqnames = "chr2", ranges = IRanges(start = 71976275, end = 72081080))
+p_atacseq <- BigwigTrack(rapgef4_region, atacseq_bw,
+                                 y_label = "ATAC-seq \n Normalied signal",
+                                 downsample.rate = 0.25)
+# Need chr for ATACseq and not chr for pro-seq
+rapgef4_region <- GRanges(seqnames = 2, ranges = IRanges(start = 71976275, end = 72081080))
+p_annotation <- AnnotationPlot(annotation, rapgef4_region)
+
+
+
+CombineTracks(plotlist = list(p_proseq, p_atacseq, p_annotation), heights = c(0.3, 0.4, 0.1))
+ggsave("figures/rapgef4_atac.pdf", width = 5, height = 7.5)
+
+
+
+rapgef4_region <- GRanges(seqnames = 2, ranges = IRanges(start = 71975242, end = 71997675))
+p_proseq <- BigwigTrack_stranded(rapgef4_region, proseq_bw_representative,
+                                 y_label_prefix = "PRO-seq \n Normalied signal",
+                                 downsample.rate = 0.25)
+
+rapgef4_region <-  GRanges(seqnames = "chr2", ranges = IRanges(start = 71975242, end = 71997675))
+p_atacseq <- BigwigTrack(rapgef4_region, atacseq_bw,
+                                 y_label = "ATAC-seq \n Normalied signal",
+                                 downsample.rate = 0.25)
+# Need chr for ATACseq and not chr for pro-seq
+rapgef4_region <- GRanges(seqnames = 2, ranges = IRanges(start = 71975242, end = 71997675))
+p_annotation <- AnnotationPlot(annotation, rapgef4_region)
+
+
+
+CombineTracks(plotlist = list(p_proseq, p_atacseq, p_annotation), heights = c(0.3, 0.4, 0.1))
+ggsave("figures/rapgef4_atac_zoom.pdf", width = 5, height = 7.5)
+
+
 ```
+
+```{r}
+apod_region <- GRanges(seqnames = 16, ranges = IRanges(start = 31294192, end = 31316808))
+p_proseq <- BigwigTrack_stranded(apod_region, proseq_bw_representative,
+                                 y_label_prefix = "PRO-seq \n Normalied signal",
+                                 downsample.rate = 0.25)
+
+apod_region <-  GRanges(seqnames = "chr16", ranges = IRanges(start = 31294192, end = 31316808))
+p_atacseq <- BigwigTrack(apod_region, atacseq_bw,
+                                 y_label = "ATAC-seq \n Normalied signal",
+                                 downsample.rate = 0.25)
+# Need chr for ATACseq and not chr for pro-seq
+apod_region <- GRanges(seqnames = 16, ranges = IRanges(start = 31294192, end = 31316808))
+p_annotation <- AnnotationPlot(annotation, apod_region)
+
+
+
+CombineTracks(plotlist = list(p_proseq, p_atacseq, p_annotation), heights = c(0.3, 0.4, 0.1))
+ggsave("figures/apod_atac.pdf", width = 5, height = 7.5)
+```
+
+
 
 First let's take an inventory of the files that we would like to include.
 This may help us move toward making a unified UCSC trackHub as well.
@@ -115,7 +197,7 @@ Right now for the ATAC-seq and ChIP-seq we have bigWig files as a starting point
 atac_bigwigs <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary/bigwig",
                            full.names = TRUE,
                            pattern = "*.bigWig")
-
+atac_bigwigs
 chip_bigwigs <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/chipseq/results/bwa/mergedLibrary/bigwig",
                            full.names = TRUE,
                            pattern = "*.bigWig")

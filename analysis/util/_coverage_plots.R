@@ -633,6 +633,146 @@ BigwigTrack_stranded_allreps <- function(
   return(p)
 }
 
+BigwigTrack_stranded <- function(
+  region,
+  bigwig,
+  smooth = 200,
+  extend.upstream = 0,
+  extend.downstream = 0,
+  type = "coverage",
+  y_label_prefix = "bigWig",
+  bigwig.scale = "common",
+  ymax = NULL,
+  ymin = NULL,
+  max.downsample = 3000,
+  downsample.rate = 0.1
+) {
+  if (!inherits(x = bigwig, what = "list")) {
+    bigwig <- list("bigWig" = bigwig)
+  }
+  possible_types <- c("line", "heatmap", "coverage")
+  if (!(type %in% possible_types)) {
+    stop(
+      "Invalid type requested. Choose ",
+      paste(possible_types, collapse = ", ")
+    )
+  }
+  
+  region <- FindRegion(
+    object = NULL,
+    region = region,
+    sep = c("-", "-"),
+    extend.upstream = extend.upstream,
+    extend.downstream = extend.downstream
+  )
+  if (!inherits(x = region, what = "GRanges")) {
+    stop("region should be a GRanges object")
+  }
+  all.data <- data.frame()
+  for (i in seq_along(bigwig)) {
+    for(strand in c("pos", "neg")) {
+      region_data <- rtracklayer::import(
+        con = bigwig[[i]][[strand]],
+        which = region,
+        as = "NumericList"
+      )[[1]]
+      if (!is.null(x = smooth)) {
+        region_data <- roll_mean(x = region_data, n = smooth, fill = 0L)
+      }
+      region_data <- data.frame(
+        position = start(x = region):end(x = region),
+        score = region_data,
+        stringsAsFactors = FALSE,
+        bw = names(x = bigwig)[[i]],
+        strand = strand
+      )
+      if (bigwig.scale == "separate") {
+        # scale to fraction of max for each separately
+        # TODO: this may need to be fixed for strandedness.
+        file.max <- max(abs(region_data$score), na.rm = TRUE)
+        region_data$score <- region_data$score / file.max
+      }
+      all.data <- rbind(all.data, region_data)
+    }
+  }
+  all.data$bw <- factor(x = all.data$bw, levels = names(x = bigwig))
+  window.size = width(x = region)
+  sampling <- max(max.downsample, window.size * downsample.rate)
+  coverages <- slice_sample(.data = all.data, n = sampling)
+  
+  covmax <- signif(x = max(coverages$score, na.rm = TRUE), digits = 2)
+  covmin <- signif(x = min(coverages$score, na.rm = TRUE), digits = 2)
+  if (is.null(x = ymax)) {
+    ymax <- covmax
+  } else if (is.character(x = ymax)) {
+    if (!startsWith(x = ymax, prefix = "q")) {
+      stop("Unknown ymax requested. Must be NULL, a numeric value, or 
+           a quantile denoted by 'qXX' with XX the desired quantile value,
+           e.g. q95 for 95th percentile")
+    }
+    percentile.use <- as.numeric(
+      x = sub(pattern = "q", replacement = "", x = as.character(x = ymax))
+    ) / 100
+    ymax <- covmax * percentile.use
+  }
+  
+  if (is.null(x = ymin)) {
+    ymin <- covmin
+  } else if (is.character(x = ymin)) {
+    if (!startsWith(x = ymin, prefix = "q")) {
+      stop("Unknown ymin requested. Must be NULL, a numeric value, or 
+           a quantile denoted by 'qXX' with XX the desired quantile value,
+           e.g. q95 for 95th percentile")
+    }
+    percentile.use <- as.numeric(
+      x = sub(pattern = "q", replacement = "", x = as.character(x = ymin))
+    ) / 100
+    ymin <- covmin * percentile.use
+  }
+  
+  # perform clipping
+  coverages$score[coverages$score > ymax] <- ymax 
+  coverages$score[coverages$score < ymin] <- ymin
+  
+  if (type == "line") {
+    p <- ggplot(
+      data = coverages,
+      mapping = aes_string(x = "position", y = "score", color = "bw")
+    ) + geom_line() +
+      facet_wrap(facets = ~bw, strip.position = "left", ncol = 1) +
+      scale_color_grey()
+  } else if (type == "heatmap") {
+    # different downsampling needed for heatmap
+    # cut into n bins and average within each bin
+    all.data$bin <- floor(x = all.data$position / smooth)
+    all.data <- group_by(all.data, bin, bw)
+    all.data <- mutate(all.data, score = mean(x = score))
+    all.data <- ungroup(all.data)
+    all.data <- unique(x = all.data[, c("bin", "score", "bw")])
+    p <- ggplot(
+      data = all.data,
+      mapping = aes_string(x = "bin", y = 1, fill = "score")
+    ) + geom_tile() + scale_fill_viridis_c() +
+      facet_wrap(facets = ~bw, strip.position = "left", ncol = 1)
+  } else if (type == "coverage") {
+    p <- ggplot(
+      data = coverages,
+      mapping = aes_string(x = "position", y = "score", fill = "bw")
+    ) + geom_area(data = coverages %>% dplyr::filter(strand == "pos"), fill = discrete_pal1_sns[[1]]) +
+      geom_area(data = coverages %>% dplyr::filter(strand == "neg"), fill = discrete_pal1_sns[[4]]) +
+      facet_wrap(facets = ~ bw, strip.position = "left", ncol = 1) +
+      scale_fill_grey()
+  }
+  chromosome <- as.character(x = seqnames(x = region))
+  p <- p + theme_browser(axis.text.y = FALSE, legend = TRUE) +
+    ylab(label = paste0(y_label_prefix, " (range ",
+                        as.character(x = ymin), " - ",
+                        as.character(x = ymax), ")")) +
+    xlab(label = paste0(chromosome, " position (bp)")) +
+    theme(panel.spacing.y = unit(x = 0.1, units = "line"))
+  return(p)
+}
+
 FindRegion <- function(
   object,
   region,
@@ -720,4 +860,31 @@ Extend <- function(
   ranges(x = x) <- IRanges(start = new_start, end = new_end)
   x <- trim(x = x)
   return(x)
+}
+
+LookupGeneCoords <- function(object, gene, assay = NULL) {
+  assay <- SetIfNull(x = assay, y = DefaultAssay(object = object))
+  if (!inherits(x = object[[assay]], what = "ChromatinAssay")) {
+    stop("The requested assay is not a ChromatinAssay")
+  }
+  annotations <- Annotation(object = object[[assay]])
+  isgene <- annotations$gene_name == gene
+  isgene <- !is.na(x = isgene) & isgene
+  annot.sub <- annotations[isgene]
+  if (length(x = annot.sub) == 0) {
+    return(NULL)
+  } else {
+    gr <- GRanges(seqnames = as.character(x = seqnames(x = annot.sub))[[1]],
+                  ranges = IRanges(start = min(start(x = annot.sub)),
+                                   end = max(end(x = annot.sub))))
+    return(gr)
+  }
+}
+
+SetIfNull <- function(x, y) {
+  if (is.null(x = x)) {
+    return(y)
+  } else {
+    return(x)
+  }
 }
