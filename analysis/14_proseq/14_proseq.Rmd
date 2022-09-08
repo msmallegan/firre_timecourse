@@ -100,6 +100,65 @@ write_rds(bidir_counts, "../results/bidir_counts_negative_strand.rds")
 bidir_counts <- read_rds("results/bidir_counts.rds")
 ```
 
+## ATAC-seq peak quantification
+
+1. What's happening in the 55 differential ATAC peaks?
+
+```{r}
+
+
+# Read in the differential ATAC-seq peaks 
+atac_up <- read_tsv("../12_atacseq/results/atac_up.bed", col_names = c("Chr", "Start", "End")) %>%
+  mutate(GeneID = paste0("up_", 1:n()), .before = 1)
+atac_down <- read_tsv("../12_atacseq/results/atac_down.bed", col_names = c("Chr", "Start", "End")) %>%
+  mutate(GeneID = paste0("down_", 1:n()), .before = 1)
+
+de_atac <- bind_rows(atac_up,
+                     atac_down) %>%
+  mutate(Strand = ".")
+
+write_tsv(de_atac, "results/de_atac.saf")
+?featureCounts
+library(Rsubread)
+library(tidyverse)
+fl <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/bams", 
+                 pattern = "*.bam$",
+                 full.names = TRUE)
+bidir_counts <- featureCounts(fl, 
+                              annot.ext = "results/de_atac.saf",
+                              isPairedEnd = TRUE,
+                              strandSpecific = 0,
+                              nthreads = 9,
+                              tmpDir = "/tmp")
+write_rds(bidir_counts, "results/de_atac_proseq_counts.rds")
+
+```
+
+2. Let's count nascent reads over all ATAC-seq peaks
+
+```{r}
+load("../01_setup/results/atacseq_data.RData", verbose = T)
+atac_saf <- atac_consensus %>%
+  dplyr::select(1:5) %>%
+  dplyr::rename(GeneID = interval_id)
+write_tsv(atac_saf, "results/atac.saf")
+
+library(Rsubread)
+library(tidyverse)
+fl <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/bams", 
+                 pattern = "*.bam$",
+                 full.names = TRUE)
+bidir_counts <- featureCounts(fl, 
+                              annot.ext = "results/atac.saf",
+                              isPairedEnd = TRUE,
+                              strandSpecific = 0,
+                              nthreads = 9,
+                              tmpDir = "/tmp")
+write_rds(bidir_counts, "results/atac_proseq_counts.rds")
+```
+
+
+
 ### Strand-specific differential expression of nascent transcripts
 
 It would be interesting to see the best changing bidirectional nascent transcripts. Therefore, what we'll do here is run DEseq on the +/- strand counts separately. Then look at the correlation and choose those that are the most correlated with the highest fold-change.
@@ -115,8 +174,6 @@ samples <- tibble(file = colnames(counts_matrix)) %>%
                              TRUE ~ "30"),
          timepoint = factor(timepoint, levels = c("0", "15", "30")))
 ```
-
-\
 
 ```{r}
 # Positive strand counts 
