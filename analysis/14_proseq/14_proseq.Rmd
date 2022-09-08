@@ -11,6 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(Rsubread)
 library(DESeq2)
+library(ggpubr)
 source("../util/_util.R")
 source("../util/_plot_theme.R")
 ```
@@ -30,9 +31,32 @@ mumerge_bed <- read_tsv("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/mu
                         col_types = list(Chr = col_character(), Start = col_integer(), End = col_integer())) %>%
   mutate(GeneID = paste0("bidir_", 1:nrow(.)), .before = 1)%>%
   mutate(Strand = ".")
+
 write.table(mumerge_bed, "results/mumerge_bidirs.saf", 
             quote = FALSE, sep = "\t",
             col.names = TRUE, row.names = FALSE)
+
+mumerge_bed <- mumerge_bed %>%
+  mutate(width = End - Start)
+
+ggdensity(mumerge_bed, "width", add = "mean") +
+  stat_central_tendency(type = "median")
+
+median(mumerge_bed$width)
+mean(mumerge_bed$width)  
+min(mumerge_bed$width, na.rm = T)
+# Find the center and make +/- 300bp up and down
+mumerge_uniform_saf <- mumerge_bed %>%
+  mutate(center = Start + round(width/2),
+         strt = center - 300,
+         end = center + 300,
+         new_width = end - strt) %>%
+  dplyr::select(GeneID, Chr, strt, end, Strand) %>%
+  dplyr::rename(Start = strt,
+                End = end)
+
+write_tsv(mumerge_uniform_saf, "results/mumerge_bidirs_600bp.saf")
+
 
 mumerge_bed_positive_strand <- mumerge_bed %>%
   mutate(Strand = "+")
@@ -98,6 +122,19 @@ write_rds(bidir_counts, "../results/bidir_counts_negative_strand.rds")
 
 
 bidir_counts <- read_rds("results/bidir_counts.rds")
+# srun --pty -p short --ntasks 1 --mem 16G /bin/bash
+library(Rsubread)
+library(tidyverse)
+fl <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/bams", 
+                 pattern = "*.bam$",
+                 full.names = TRUE)
+bidir_counts <- featureCounts(fl, 
+                              annot.ext = "/scratch/Shares/rinn/Michael/firre_timecourse/analysis/14_proseq/results/mumerge_bidirs_600bp.saf",
+                              isPairedEnd = TRUE,
+                              strandSpecific = 0,
+                              nthreads = 21,
+                              tmpDir = "/tmp")
+write_rds(bidir_counts, "/scratch/Shares/rinn/Michael/firre_timecourse/analysis/14_proseq/results/bidir_counts_negative_strand.rds")
 ```
 
 ## ATAC-seq peak quantification
