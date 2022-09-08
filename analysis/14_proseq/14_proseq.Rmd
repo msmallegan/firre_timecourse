@@ -224,6 +224,49 @@ bidir_counts <- featureCounts(fl,
                               tmpDir = "/tmp")
 write_rds(bidir_counts, "results/de_atac_proseq_counts.rds")
 
+de_atac_fc <- read_rds("results/de_atac_proseq_counts.rds")
+
+
+
+mapped_list <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/qc/mapstats",
+                          full.names = T,
+                          pattern = "*.millionsmapped") %>%
+  sapply(read_lines) %>%
+  as.data.frame() %>%
+  rownames_to_column("sample_id") %>%
+  mutate(sample_id = gsub("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/qc/mapstats/|.millionsmapped", "", sample_id)) %>%
+  dplyr::rename(reads_mapped = ".") %>%
+  mutate(reads_mapped = as.numeric(reads_mapped))
+  
+
+de_atac_counts <- de_atac_fc$counts  %>%
+    as.data.frame() %>%
+  rownames_to_column("atac_id") %>%
+  pivot_longer(2:ncol(.), names_to = "sample_id", values_to = "count") %>%
+  mutate(sample_id = gsub(".sorted.bam", "", sample_id)) %>%
+  left_join(mapped_list) %>%
+  left_join(sinfo %>% dplyr::rename(sample_id = sampid)) %>%
+  unite(col = "sample_name", sample_id, group) %>%
+  mutate(CPM = (count / reads_mapped) *1e6)
+
+de_atac_cpm <- de_atac_counts %>%
+  dplyr::select(atac_id, sample_name, CPM) %>%
+  pivot_wider(names_from = "sample_name", values_from = "CPM") %>%
+  column_to_rownames("atac_id") %>%
+  as.matrix()
+cat(colnames(de_atac_cpm_scaled))
+de_atac_cpm_scaled <- t(scale(t(de_atac_cpm)))
+de_atac_cpm_scaled <- de_atac_cpm_scaled[,c("JR3113_Control",
+                                            "JR3116_Control",
+                                            "JR3119_Control",
+                                            "JR3114_15minDOX",
+                                            "JR3120_15minDOX",
+                                            "JR3117_15minDOX",
+                                            "JR3118_30minDOX",
+                                            "JR3121_30minDOX",
+                                            "JR3115_30minDOX")]
+pheatmap::pheatmap(de_atac_cpm_scaled, cluster_cols = F)
+
 ```
 
 2. Let's count nascent reads over all ATAC-seq peaks
@@ -525,6 +568,9 @@ ggplot(bidir_contl, aes(x = timepoint, y = l2fc, color = strand, group = bidir_i
 ggplot(bidir_cont, aes(x = l2fc_pos, y = l2fc_neg, color = sig_in_both)) +
   facet_wrap(~comparison) +
   geom_point()
+
+# bidir_68169
+# Does this region come up when we take an unstranded approach?
 ```
 
 
@@ -533,8 +579,9 @@ ggplot(bidir_cont, aes(x = l2fc_pos, y = l2fc_neg, color = sig_in_both)) +
 bidir_counts <- read_rds("results/bidir_counts_pe.rds")
 sinfo <- read_tsv("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/mumerge/sample_info.txt")
 
-bidir_counts <- read_rds("results/bidir_counts_600bp_unstranded.rds")
+# bidir_counts <- read_rds("results/bidir_counts_600bp_unstranded.rds")
 counts_matrix <- bidir_counts$counts
+counts_matrix <- counts_matrix[bidir_filtered,]
 samples <- tibble(file = colnames(counts_matrix)) %>%
   mutate(sampid = gsub(".sorted.bam", "", file)) %>%
   left_join(sinfo) %>%
@@ -577,6 +624,13 @@ res_lrt_res <- bind_rows(results(res_lrt, name = "timepoint_30_vs_0", tidy = T) 
 sig_lrt_res <- res_lrt_res %>%
   filter(padj < 0.05) %>%
   arrange(padj)
+
+ggplot(res_vs_zero %>% filter(bidir_id %in% sig_lrt_res$bidir_id,
+                              abs(log2FoldChange) > log2(2)), aes(x = log2FoldChange, y = -log10(padj))) +
+  geom_point() +
+  facet_wrap(~comparison)
+# Maybe next do a ranked list with the mean FC and submit to TFEA.
+# Or separately for 15 min and 30 min. 
 ```
 
 ## Gene level differential expression
