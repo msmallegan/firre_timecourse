@@ -79,6 +79,12 @@ bidir_coords <- mumerge_bed %>%
   dplyr::select(chrom, start, end, region_id)
 write_tsv(bidir_coords, "results/bidir_coords.bed", col_names = F)
 
+bidir_coords <- read_tsv("results/bidir_coords.bed",
+                         col_names = c("chrom", "start", "end", "bidir_id"),
+                         col_types = list("chrom" = col_character(),
+                                          "start" = col_integer(),
+                                          "end" = col_integer(),
+                                          "bidir_id" = col_character()))
 
 library(Rsubread)
 library(tidyverse)
@@ -91,7 +97,7 @@ bidir_counts <- featureCounts(fl,
                               nthreads = 22)
 write_rds(bidir_counts, "../results/bidir_counts_pe.rds")
 
-bidir_counts <- read_rds("results/bidir_counts.rds")
+
 
 
 # Positive strand read counts
@@ -136,6 +142,55 @@ bidir_counts <- featureCounts(fl,
                               tmpDir = "/tmp")
 write_rds(bidir_counts, "/scratch/Shares/rinn/Michael/firre_timecourse/analysis/14_proseq/results/bidir_counts_600bp_unstranded.rds")
 ```
+
+```{r}
+# Let's calculate strand bias. 
+ncounts <- read_rds("results/bidir_counts_negative_strand.rds")
+pcounts <- read_rds("results/bidir_counts_positive_strand.rds")
+
+ncounts_m <- ncounts$counts %>%
+  as.data.frame() %>%
+  rownames_to_column("bidir_id") %>%
+  pivot_longer(cols = 2:ncol(.), 
+               names_to = "sample_id",
+               values_to = "neg_count") %>%
+  mutate(sample_id = gsub(".sorted.bam", "", sample_id))
+pcounts_m <- pcounts$counts %>%
+  as.data.frame() %>%
+  rownames_to_column("bidir_id") %>%
+  pivot_longer(cols = 2:ncol(.), 
+               names_to = "sample_id",
+               values_to = "pos_count") %>%
+  mutate(sample_id = gsub(".sorted.bam", "", sample_id))
+
+counts_stranded <- pcounts_m %>%
+  left_join(ncounts_m)
+
+counts_stranded <- counts_stranded %>%
+  mutate(strand_bias = log2((pos_count+0.1) / (neg_count+0.1)),
+         abs_strand_bias = abs(strand_bias))
+
+quantile(counts_stranded$abs_strand_bias)
+unbiased_regions <- counts_stranded %>%
+  filter(abs_strand_bias < 1) %>%
+  left_join(bidir_coords) %>%
+  mutate(width = end - start)
+
+hmm <- unbiased_regions %>%
+  filter(pos_count > 100,
+         neg_count > 100,
+         width < 1000)
+
+bidir_counts_filtered <- counts_stranded %>% filter(pos_count > 5, neg_count > 5, abs_strand_bias < 1) %>%
+  left_join(bidir_coords) %>%
+  mutate(width = end - start)
+
+ggdensity(counts_stranded %>% filter(pos_count > 5, neg_count > 5), x = "strand_bias")
+
+# Bidir regions to include
+bidir_filtered <- unique(bidir_counts_filtered$bidir_id)
+```
+
 
 ## ATAC-seq peak quantification
 
@@ -252,7 +307,7 @@ bidir_30_vs_0_ttest <- bidir_30_vs_0 %>%
   t_test(data = ., CPM ~ timepoint) %>%
     adjust_pvalue(method = "bonferroni") %>%
   add_significance("p.adj")
-
+write_rds(bidir_30_vs_0_ttest, "results/bidir_30_vs_0_ttest.rds")
 
 
 bidir_15_vs_0 <- bidir_counts_l %>%
@@ -264,13 +319,57 @@ bidir_15_vs_0_ttest <- bidir_15_vs_0 %>%
   t_test(data = ., CPM ~ timepoint) %>%
     adjust_pvalue(method = "bonferroni") %>%
   add_significance("p.adj")
-
+write_rds(bidir_15_vs_0_ttest, "results/bidir_15_vs_0_ttest.rds")
 bidir_62 <-  bidir_30_vs_0 %>%
   filter(bidir_id == "bidir_62")
 
 bidir_15_vs_0 <- bidir_counts_l %>%
   dplyr::filter(timepoint %in% c("0","15"))
 
+
+bidir_15_vs_0_ttest$padj <- p.adjust(bidir_15_vs_0_ttest$p, method = "BH")
+bidir_30_vs_0_ttest$padj <- p.adjust(bidir_30_vs_0_ttest$p, method = "BH")
+```
+
+So this result is that there are no significantly changing bidirectionals...
+Before we go back to trying DESeq2 or something, let's just calculate the lm of the CPM per bidir.
+Another thing to consider is starting from the coverage filtered bidirectionals
+so that the number of statistical tests performed is smaller.
+
+```{r}
+bidir_counts_l_test <- bidir_counts_l[1:27,]
+library(multidplyr)
+
+cl <- new_cluster(16)
+
+bclm1 <- bidir_counts_l %>%
+  group_by(bidir_id) %>%
+  partition(cluster = cl) %>%
+  do(mod = broom::tidy(lm(CPM ~ timepoint, data = .))) %>%
+  collect() %>%
+  unnest(mod)
+  
+bclm1_tp <- bclm1 %>%
+  filter(term == "timepoint")
+bclm1_tp$padj <- p.adjust(bclm1_tp$p.value, method = "BH")
+
+bcpm_sig <- bclm1_tp %>%
+  filter(padj < 0.1) %>%
+  left_join(mumerge_uniform_saf %>% dplyr::rename(bidir_id = GeneID))
+
+bclm <- bidir_counts_l_test %>%
+  mutate(timepoint = as.numeric(timepoint)) %>%
+  group_by(bidir_id) %>%
+  nest() %>%
+  mutate(test = map(data, ~ lm(.x$CPM ~ .x$timepoint)),
+         tidied = map(test, tidy)) %>%
+  unnest(tidied)
+bidir_counts_l <- bidir_counts_l %>%
+  mutate(timepoint = as.numeric(timepoint))
+ggplot(bidir_counts_l %>% filter(bidir_id == "bidir_106735"), aes(x = timepoint, y = CPM)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  stat_regline_equation()
 ```
 
 
@@ -294,8 +393,11 @@ samples <- tibble(file = colnames(counts_matrix)) %>%
 # Positive strand counts 
 pcounts <- read_rds("results/bidir_counts_positive_strand.rds")
 pcounts_matrix <- pcounts$counts
+# Filter to just those with counts on positive and negative strand
 
 rownames(pcounts_matrix)
+pcounts_matrix <- pcounts_matrix[bidir_filtered,]
+
 samples <- tibble(file = colnames(pcounts_matrix)) %>%
   mutate(sampid = gsub(".sorted.bam", "", file)) %>%
   left_join(sinfo) %>%
@@ -308,13 +410,14 @@ pdds <- DESeqDataSetFromMatrix(countData = pcounts_matrix,
                               colData = samples,
                               design = ~ timepoint)
 # Each timepoint vs zero
-pdds <- DESeq(pdds)
+# pdds <- DESeq(pdds)
+pdds <- DESeq(pdds, test = "LRT", reduced = ~1)
 # write_rds(dds, "results/deseq_dds_vs_zero.rds")
 pres_vs_zero <- bind_rows(results(pdds, name = "timepoint_30_vs_0", tidy = T) %>%
   mutate(comparison = "timepoint_30_vs_0"),
   results(pdds, name = "timepoint_15_vs_0", tidy = T) %>%
   mutate(comparison = "timepoint_15_vs_0")) %>%
-  dplyr::rename(region_id = row) %>%
+  dplyr::rename(bidir_id = row) %>%
   left_join(bidir_coords) %>%
   mutate(strand = "+")
 write_csv(pres_vs_zero, "results/res_vs_zero_positive_strand.csv")
@@ -322,6 +425,8 @@ write_csv(pres_vs_zero, "results/res_vs_zero_positive_strand.csv")
 # Negative strand counts
 ncounts <- read_rds("results/bidir_counts_negative_strand.rds")
 ncounts_matrix <- ncounts$counts
+ncounts_matrix <- ncounts_matrix[bidir_filtered,]
+
 samples <- tibble(file = colnames(ncounts_matrix)) %>%
   mutate(sampid = gsub(".sorted.bam", "", file)) %>%
   left_join(sinfo) %>%
@@ -334,13 +439,14 @@ ndds <- DESeqDataSetFromMatrix(countData = ncounts_matrix,
                               colData = samples,
                               design = ~ timepoint)
 # Each timepoint vs zero
-ndds <- DESeq(ndds)
+# ndds <- DESeq(ndds)
+ndds <- DESeq(ndds, test = "LRT", reduced = ~1)
 # write_rds(dds, "results/deseq_dds_vs_zero.rds")
 nres_vs_zero <- bind_rows(results(ndds, name = "timepoint_30_vs_0", tidy = T) %>%
   mutate(comparison = "timepoint_30_vs_0"),
   results(ndds, name = "timepoint_15_vs_0", tidy = T) %>%
   mutate(comparison = "timepoint_15_vs_0")) %>%
-  dplyr::rename(region_id = row) %>%
+  dplyr::rename(bidir_id = row) %>%
   left_join(bidir_coords) %>%
   mutate(strand = "-")
 write_csv(nres_vs_zero, "results/res_vs_zero_negative_strand.csv")
@@ -351,12 +457,12 @@ nres_vs_zero <- read_csv("results/res_vs_zero_negative_strand.csv")
 pres_vs_zero <- pres_vs_zero %>%
   dplyr::rename(l2fc_pos = log2FoldChange,
                 padj_pos = padj) %>%
-  dplyr::select(region_id, comparison, chrom, start, end, l2fc_pos, padj_pos)
+  dplyr::select(bidir_id, comparison, chrom, start, end, l2fc_pos, padj_pos)
 
 nres_vs_zero <- nres_vs_zero %>%
   dplyr::rename(l2fc_neg = log2FoldChange,
                 padj_neg = padj) %>%
-  dplyr::select(region_id, comparison, l2fc_neg, padj_neg)
+  dplyr::select(bidir_id, comparison, l2fc_neg, padj_neg)
 
 combined_strands_vs_zero <- pres_vs_zero %>%
   left_join(nres_vs_zero)
@@ -364,6 +470,8 @@ combined_strands_vs_zero <- pres_vs_zero %>%
 combined_strands_vs_zero <- combined_strands_vs_zero %>%
   mutate(sig_in_both = (padj_pos < 0.05 & padj_neg < 0.05))
 table(combined_strands_vs_zero$sig_in_both)
+
+
 ggplot(combined_strands_vs_zero, aes(x = l2fc_pos, y = l2fc_neg, color = sig_in_both)) +
   facet_wrap(~comparison) +
   geom_point()
@@ -377,14 +485,63 @@ ggplot(combined_strands_vs_zero %>%
 
 hmm <- combined_strands_vs_zero %>%
   filter(sig_in_both == TRUE,
-         l2fc_pos > 1, l2fc_neg > 1)
+         abs(l2fc_pos) > log2(1.5), abs(l2fc_neg) > log2(1.5))
+
+ggplot(hmm, aes(x = l2fc_pos, y = l2fc_neg, color = sig_in_both)) +
+  facet_wrap(~comparison) +
+  geom_point()
+
+sig_bidirs <- unique(hmm$bidir_id)
+
+
+combined_strands_vs_zero_sig_w <- combined_strands_vs_zero %>%
+  filter(bidir_id %in% sig_bidirs) %>%
+  mutate(timepoint = gsub("timepoint_|_vs_0", "", comparison)) %>%
+  dplyr::select(-comparison, -sig_in_both) %>%
+  pivot_wider(id_cols = c(bidir_id, chrom, start, end),
+              names_from = timepoint,
+              values_from = l2fc_pos:padj_neg)
+
+combined_strands_vs_zero_sig_w <- combined_strands_vs_zero_sig_w %>%
+  mutate(continued_pos = ifelse(l2fc_pos_15 > 0, l2fc_pos_30 > l2fc_pos_15,
+                                l2fc_pos_30 < l2fc_pos_15),
+         continued_neg = ifelse(l2fc_neg_15 > 0, l2fc_neg_30 > l2fc_neg_15,
+                                l2fc_neg_30 < l2fc_neg_15))
+
+
+bidir_cont <- combined_strands_vs_zero_sig_w %>%
+  filter(continued_pos == TRUE,
+         continued_neg == TRUE)
+
+bidir_contl <- bidir_cont %>%
+  dplyr::select(bidir_id, chrom, start, end, contains("l2fc")) %>%
+  pivot_longer(cols = l2fc_pos_30:l2fc_neg_15, names_to = "l2fc_condition", values_to = "l2fc") %>%
+  separate(col = l2fc_condition, into = c("none", "strand", "timepoint")) %>%
+  mutate(timepoint = as.numeric(timepoint))
+
+ggplot(bidir_contl, aes(x = timepoint, y = l2fc, color = strand, group = bidir_id)) +
+  geom_point()+geom_line() +
+  facet_wrap(~strand)
+ggplot(bidir_cont, aes(x = l2fc_pos, y = l2fc_neg, color = sig_in_both)) +
+  facet_wrap(~comparison) +
+  geom_point()
 ```
 
-\
+
 
 ```{r}
+bidir_counts <- read_rds("results/bidir_counts_pe.rds")
+sinfo <- read_tsv("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/mumerge/sample_info.txt")
 
-
+bidir_counts <- read_rds("results/bidir_counts_600bp_unstranded.rds")
+counts_matrix <- bidir_counts$counts
+samples <- tibble(file = colnames(counts_matrix)) %>%
+  mutate(sampid = gsub(".sorted.bam", "", file)) %>%
+  left_join(sinfo) %>%
+  mutate(timepoint = case_when(group == "Control" ~ "0",
+                               group == "15minDOX" ~ "15",
+                             TRUE ~ "30"),
+         timepoint = factor(timepoint, levels = c("0", "15", "30")))
 
 dds <- DESeqDataSetFromMatrix(countData = counts_matrix,
                               colData = samples,
@@ -396,10 +553,13 @@ res_vs_zero <- bind_rows(results(dds, name = "timepoint_30_vs_0", tidy = T) %>%
   mutate(comparison = "timepoint_30_vs_0"),
   results(dds, name = "timepoint_15_vs_0", tidy = T) %>%
   mutate(comparison = "timepoint_15_vs_0")) %>%
-  dplyr::rename(region_id = row) %>%
-  left_join(bidir_coords)
+  dplyr::rename(bidir_id = row) %>%
+  left_join(mumerge_uniform_saf %>% dplyr::rename(bidir_id = GeneID))
 write_csv(res_vs_zero, "results/res_vs_zero.csv")
 
+res_vs_zero_sig <- res_vs_zero %>%
+  filter(padj < 0.05) %>%
+  mutate(width = End - Start)
 ggplot(res_vs_zero, aes(x = log2FoldChange, y = -log10(padj))) +
   geom_point() +
   facet_wrap(~comparison)
@@ -410,8 +570,9 @@ write_rds(res_lrt, "results/deseq_dds_vs_zero_lrt.rds")
 
 res_lrt_res <- bind_rows(results(res_lrt, name = "timepoint_30_vs_0", tidy = T) %>%
   mutate(comparison = "timepoint_30_vs_0_lrt")) %>%
-  dplyr::rename(region_id = row) %>%
-  left_join(bidir_coords)
+  dplyr::rename(bidir_id = row) %>%
+  left_join(bidir_coords) %>%
+  mutate(width = end - start)
 
 sig_lrt_res <- res_lrt_res %>%
   filter(padj < 0.05) %>%
