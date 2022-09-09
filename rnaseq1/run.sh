@@ -18,6 +18,7 @@ module load singularity/3.1.1
 nextflow run nf-core/rnaseq -r 3.8.1 \
 -resume \
 -profile singularity \
+--outdir /scratch/Shares/rinn/Michael/firre_timecourse/rnaseq1/results \
 --input 'rnaseq_samples.csv' \
 --fasta ../../../genomes/Mus_musculus/Gencode/M25/GRCm38.p6.genome.fa \
 --gtf ../../../genomes/Mus_musculus/Gencode/M25/gencode.vM25.annotation.gtf \
