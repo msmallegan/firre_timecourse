@@ -5,7 +5,7 @@
 #SBATCH --mail-user=michael.smallegan@colorado.edu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --array=0-95
+#SBATCH --array=0-227
 #SBATCH --mem=8gb
 #SBATCH --time=2:00:00
 #SBATCH --output=rnaseq2bw_%a.out
@@ -25,7 +25,7 @@ conda activate deeptools
 module load samtools
 samtools index ${BAM[$SLURM_ARRAY_TASK_ID]}
 
-bamCoverage -b ${BAM[$SLURM_ARRAY_TASK_ID]} -o /scratch/Shares/rinn/Michael/firre_timecourse/rnaseq/bw/${BW[$SLURM_ARRAY_TASK_ID]}
+bamCoverage -b ${BAM[$SLURM_ARRAY_TASK_ID]} -o /scratch/Shares/rinn/Michael/firre_timecourse/rnaseq1/bw/${BW[$SLURM_ARRAY_TASK_ID]}
 
 date
 

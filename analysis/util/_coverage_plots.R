@@ -676,6 +676,9 @@ BigwigTrack_stranded <- function(
         which = region,
         as = "NumericList"
       )[[1]]
+      if(max(region_data) > 0 & strand == "neg") {
+        region_data <- region_data * -1
+      }
       if (!is.null(x = smooth)) {
         region_data <- roll_mean(x = region_data, n = smooth, fill = 0L)
       }
