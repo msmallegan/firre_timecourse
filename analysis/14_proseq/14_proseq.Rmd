@@ -1,50 +1,129 @@
 ---
-title: "PRO-seq"
-output: html_document
-editor_options: 
-  chunk_output_type: console
+title: "Nascent transcription upon *Firre* induction"
+author: "Michael Smallegan"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_notebook: 
+    css: /scratch/Shares/rinn/Michael/firre_timecourse/analysis/util/style.css
+    theme: simplex
+    toc: yes
 ---
 
 ```{r setup, include=FALSE}
 options(stringsAsFactors = FALSE)
 knitr::opts_chunk$set(echo = TRUE)
+
 library(tidyverse)
 library(Rsubread)
 library(DESeq2)
 library(ggpubr)
+library(broom)
 source("../util/_util.R")
 source("../util/_plot_theme.R")
+
+proseq_dir <- "/scratch/Shares/rinn/Michael/firre_timecourse/proseq"
+genome_dir <- "/scratch/Shares/rinn/genomes/Mus_musculus/hisat2"
 ```
 
-## Nascent transcription upon Firre induction
 
-PRO-seq libraries were sequenced on a HiSeq 4000 using paired-end 150bp reads to an average read depth of 120M reads. Mapping and QC were handled by the NascentFlow Nextflow pipeline (DOI 10.17605/OSF.IO/NDHJ2). Reads were mapped to mm10 using HISAT2
+## Pipeline
 
-```{r}
+PRO-seq libraries were sequenced on a HiSeq 4000 using paired-end 150bp reads to an average read depth of 120M reads. Mapping and QC were handled by the [NascentFlow Nextflow pipeline](https://github.com/Dowell-Lab/Nascent-Flow) (DOI 10.17605/OSF.IO/NDHJ2). Reads were mapped to mm10 using HISAT2.
+
+Bidirectional transcripts were called with Tfit and Dreg using the [Bidirectional-Flow Nextflow pipeline](https://github.com/Dowell-Lab/Bidirectional-Flow). Annotations of bidirectional transcripts were merged across all nine samples using [muMerge](https://github.com/Dowell-Lab/mumerge) (PMID: 34079046). Read counts across consensus bidirectional transcripts are calculated here using featureCounts.
+
+## Read counts over bidirectional transcripts
+
+There are two methods for selecting consensus regions to quantify over: 1.) Take the muMerge regions directly. 2.) Take regions that are a uniform size +/- 300bp from the muMerge center. 
+
+The reason for the two approaches is that muMerge regions represent the confidence interval in which you're likely to have the center of the bidirectional transcript. Therefore, this region shrinks when you add more samples & have higher confidence. 
+
+### Method 1: Quantify directly over muMerge outputted regions
+
+```{r create-mumerge-saf, warning=FALSE, message=FALSE, include=FALSE}
 # Create SAF file for featurecounts
+if(!(file.exists("results/mumerge_bidirs.saf") &
+     file.exists("results/bidir_coords.bed"))) {
+  
+  chr_sizes <- read_tsv(file.path(genome_dir, "mm10_chrom_sizes.txt"),
+                        col_names = c("Chr", "chr_length"))
+  
+  mumerge_bed <- read_tsv(file.path(proseq_dir, 
+                                    "mumerge/split_bidir_predictions_mumerge_MUMERGE.bed"),
+                          col_names = c("Chr", "Start", "End"),
+                          col_types = list(Chr = col_character(), 
+                                           Start = col_integer(), 
+                                           End = col_integer())) %>%
+    mutate(GeneID = paste0("bidir_", 1:nrow(.)), .before = 1) %>%
+    mutate(Strand = ".")
+  
+  write.table(mumerge_bed, "results/mumerge_bidirs.saf", 
+              quote = FALSE, sep = "\t",
+              col.names = TRUE, row.names = FALSE)
+  
+  bidir_coords <- mumerge_bed %>%
+    dplyr::rename(region_id = GeneID,
+                  chrom = Chr,
+                  start = Start,
+                  end = End) %>%
+    dplyr::select(-Strand) %>%
+    dplyr::select(chrom, start, end, region_id)
+  
+  write_tsv(bidir_coords, "results/bidir_coords.bed", col_names = F)
+}
 
-# 
-# chr_sizes <- read_tsv("/scratch/Shares/rinn/genomes/Mus_musculus/hisat2/mm10_chrom_sizes.txt",
-#                       col_names = c("Chr", "chr_length"))
-mumerge_bed <- read_tsv("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/mumerge/split_bidir_predictions_mumerge_MUMERGE.bed",
-                        col_names = c("Chr", "Start", "End"),
-                        col_types = list(Chr = col_character(), Start = col_integer(), End = col_integer())) %>%
-  mutate(GeneID = paste0("bidir_", 1:nrow(.)), .before = 1)%>%
-  mutate(Strand = ".")
+bidir_coords <- read_tsv("results/bidir_coords.bed",
+                         col_names = c("chrom", "start", "end", "bidir_id"),
+                         col_types = list("chrom" = col_character(),
+                                          "start" = col_integer(),
+                                          "end" = col_integer(),
+                                          "bidir_id" = col_character()))
+```
 
-write.table(mumerge_bed, "results/mumerge_bidirs.saf", 
-            quote = FALSE, sep = "\t",
-            col.names = TRUE, row.names = FALSE)
-
-mumerge_bed <- mumerge_bed %>%
+```{r import-mumerge-saf}
+mumerge_bed <- read_tsv("results/mumerge_bidirs.saf",
+                        col_types = list(
+                          GeneID = col_character(),
+                          Chr = col_character(),
+                          Start = col_double(),
+                          End = col_double(),
+                          Strand = col_character()
+                        )) %>%
   mutate(width = End - Start)
 
-ggdensity(mumerge_bed, "width", add = "mean") +
-  stat_central_tendency(type = "median")
+tidy(summary(mumerge_bed$width))
+```
 
-median(mumerge_bed$width)
-mean(mumerge_bed$width)  
-min(mumerge_bed$width, na.rm = T)
+```{r mumerge-region-width, warning=FALSE, message=FALSE}
+ggdensity(mumerge_bed, "width", add = "mean") +
+  stat_central_tendency(type = "median", color = "red") +
+  ggtitle("muMerged bidirectional widths")
+```
+
+The mean region width corresponds well to what the Dowell lab has seen across other PRO-seq datasets -- a bidirectional transcript lenth of ~600bp. This justifies a window size of +/-300bp. And as we can see, there are some potentially high confidence bidirectional calls with a muMerge region size of 4bp. 
+
+We'll ultimately use the 600bp fixed window size since it has good theoretical justification, but we'll compare that with the unmodified muMerge regions.
+
+```{r counts-mumerge-windows}
+# Generate counts over muMerge windows
+proseq_bams <- list.files(file.path(proseq_dir,
+                                    "results/mapped/bams"),
+                          pattern = "*.bam$",
+                          full.names = TRUE)
+
+if(!file.exists("results/bidir_counts_pe.rds")) {
+  bidir_counts <- featureCounts(proseq_bams, 
+                                annot.ext = "results/mumerge_bidirs.saf",
+                                isPairedEnd = TRUE,
+                                nthreads = 22)
+  write_rds(bidir_counts, "results/bidir_counts_pe.rds")
+}
+```
+
+
+### Method 2: Fixed width of 600bp centered on muMerge region centers
+
+```{r}
 # Find the center and make +/- 300bp up and down
 mumerge_uniform_saf <- mumerge_bed %>%
   mutate(center = Start + round(width/2),
@@ -57,96 +136,96 @@ mumerge_uniform_saf <- mumerge_bed %>%
 
 write_tsv(mumerge_uniform_saf, "results/mumerge_bidirs_600bp.saf")
 
-
-mumerge_bed_positive_strand <- mumerge_bed %>%
-  mutate(Strand = "+")
-write.table(mumerge_bed_positive_strand, "results/mumerge_bidirs_positive_strand.saf", 
-            quote = FALSE, sep = "\t",
-            col.names = TRUE, row.names = FALSE)
-
-mumerge_bed_negative_strand <- mumerge_bed %>%
-  mutate(Strand = "-")
-write.table(mumerge_bed_negative_strand, "results/mumerge_bidirs_negative_strand.saf", 
-            quote = FALSE, sep = "\t",
-            col.names = TRUE, row.names = FALSE)
-
-bidir_coords <- mumerge_bed %>%
-  dplyr::rename(region_id = GeneID,
-                chrom = Chr,
-                start = Start,
-                end = End) %>%
-  dplyr::select(-Strand) %>%
-  dplyr::select(chrom, start, end, region_id)
-write_tsv(bidir_coords, "results/bidir_coords.bed", col_names = F)
-
-bidir_coords <- read_tsv("results/bidir_coords.bed",
-                         col_names = c("chrom", "start", "end", "bidir_id"),
-                         col_types = list("chrom" = col_character(),
-                                          "start" = col_integer(),
-                                          "end" = col_integer(),
-                                          "bidir_id" = col_character()))
-
-library(Rsubread)
-library(tidyverse)
-fl <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/bams", 
-                 pattern = "*.bam$",
-                 full.names = TRUE)
-bidir_counts <- featureCounts(fl, 
-                              annot.ext = "/scratch/Shares/rinn/Michael/firre_timecourse/analysis/14_proseq/results/mumerge_bidirs.saf",
-                              isPairedEnd = TRUE,
-                              nthreads = 22)
-write_rds(bidir_counts, "../results/bidir_counts_pe.rds")
-
-
-
-
-# Positive strand read counts
-library(Rsubread)
-library(tidyverse)
-fl <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/bams", 
-                 pattern = "*.bam$",
-                 full.names = TRUE)
-bidir_counts <- featureCounts(fl, 
-                              annot.ext = "/scratch/Shares/rinn/Michael/firre_timecourse/analysis/14_proseq/results/mumerge_bidirs_positive_strand.saf",
-                              isPairedEnd = TRUE,
-                              strandSpecific = 1,
-                              nthreads = 22)
-write_rds(bidir_counts, "../results/bidir_counts_positive_strand.rds")
-
-# Negative strand read counts
-library(Rsubread)
-library(tidyverse)
-fl <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/bams", 
-                 pattern = "*.bam$",
-                 full.names = TRUE)
-bidir_counts <- featureCounts(fl, 
-                              annot.ext = "/scratch/Shares/rinn/Michael/firre_timecourse/analysis/14_proseq/results/mumerge_bidirs_negative_strand.saf",
-                              isPairedEnd = TRUE,
-                              strandSpecific = 1,
-                              nthreads = 18)
-write_rds(bidir_counts, "../results/bidir_counts_negative_strand.rds")
-
-
-bidir_counts <- read_rds("results/bidir_counts.rds")
-# srun --pty -p short --ntasks 22 --time=12:00:00 --mem 16G /bin/bash 
-library(Rsubread)
-library(tidyverse)
-fl <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/bams", 
-                 pattern = "*.bam$",
-                 full.names = TRUE)
-bidir_counts <- featureCounts(fl, 
-                              annot.ext = "/scratch/Shares/rinn/Michael/firre_timecourse/analysis/14_proseq/results/mumerge_bidirs_600bp.saf",
-                              isPairedEnd = TRUE,
-                              strandSpecific = 0,
-                              nthreads = 21,
-                              tmpDir = "/tmp")
-write_rds(bidir_counts, "/scratch/Shares/rinn/Michael/firre_timecourse/analysis/14_proseq/results/bidir_counts_600bp_unstranded.rds")
+if(!file.exists("results/bidir_counts_600bp_unstranded.rds")) {
+  bidir_counts <- featureCounts(proseq_bams, 
+                                annot.ext = "results/mumerge_bidirs_600bp.saf",
+                                isPairedEnd = TRUE,
+                                nthreads = 22)
+  write_rds(bidir_counts, "results/bidir_counts_600bp_unstranded.rds")
+}
 ```
+
+
+#### Stranded bidirectional quantification
+
+Additionally, we'll quantify the reads on each strand in these fixed 600bp bidirectional regions.
+
+```{r stranded-counts}
+# Positive strand SAF
+mumerge_bed_positive_strand <- mumerge_uniform_saf %>%
+  mutate(Strand = "+")
+
+write.table(mumerge_bed_positive_strand, "results/mumerge_bidirs_positive_strand_600bp.saf", 
+            quote = FALSE, sep = "\t",
+            col.names = TRUE, row.names = FALSE)
+
+if(!file.exists("results/bidir_counts_positive_strand_600bp.rds")) {
+  bidir_counts <- featureCounts(proseq_bams, 
+                                annot.ext = "results/mumerge_bidirs_positive_strand_600bp.saf",
+                                isPairedEnd = TRUE,
+                                nthreads = 22)
+  write_rds(bidir_counts, "results/bidir_counts_positive_strand_600bp.rds")
+}
+
+# Negative strand SAF
+mumerge_bed_negative_strand <- mumerge_uniform_saf %>%
+  mutate(Strand = "-")
+
+write.table(mumerge_bed_negative_strand, "results/mumerge_bidirs_negative_strand_600bp.saf", 
+            quote = FALSE, sep = "\t",
+            col.names = TRUE, row.names = FALSE)
+
+if(!file.exists("results/bidir_counts_negative_strand_600bp.rds")) {
+  bidir_counts <- featureCounts(proseq_bams, 
+                                annot.ext = "mumerge_bidirs_negative_strand_600bp.saf",
+                                isPairedEnd = TRUE,
+                                nthreads = 22)
+  write_rds(bidir_counts, "results/bidir_counts_negative_strand_600bp.rds")
+}
+```
+
+
+```{r run-counts-slurm, include=FALSE, eval=FALSE}
+# # Run jobs in R session on fiji compute node using slurm interactive job -- since they 
+# # take a while, but not long enough to justifiy a script? Questionable, but I'm feeling lazy.
+#
+# # srun --pty -p short --ntasks 22 --time=12:00:00 --mem 16G /bin/bash 
+# # Positive strand read counts
+# library(Rsubread)
+# library(tidyverse)
+# proseq_bams <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/bams", 
+#                           pattern = "*.bam$",
+#                           full.names = TRUE)
+# bidir_counts <- featureCounts(proseq_bams, 
+#                               annot.ext = "/scratch/Shares/rinn/Michael/firre_timecourse/analysis/14_proseq/results/mumerge_bidirs_positive_strand_600bp.saf",
+#                               isPairedEnd = TRUE,
+#                               strandSpecific = 1,
+#                               nthreads = 22,
+#                               tmpDir = "/tmp")
+# write_rds(bidir_counts, "results/bidir_counts_positive_strand_600bp.rds")
+# 
+# # Negative strand read counts
+# library(Rsubread)
+# library(tidyverse)
+# proseq_bams <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/bams", 
+#                           pattern = "*.bam$",
+#                           full.names = TRUE)
+# bidir_counts <- featureCounts(proseq_bams, 
+#                               annot.ext = "/scratch/Shares/rinn/Michael/firre_timecourse/analysis/14_proseq/results/mumerge_bidirs_negative_strand_600bp.saf",
+#                               isPairedEnd = TRUE,
+#                               strandSpecific = 1,
+#                               nthreads = 18,
+#                               tmpDir = "/tmp")
+# write_rds(bidir_counts, "../results/bidir_counts_negative_strand_600bp.rds")
+```
+
+
+
 
 ```{r}
 # Let's calculate strand bias. 
-ncounts <- read_rds("results/bidir_counts_negative_strand.rds")
-pcounts <- read_rds("results/bidir_counts_positive_strand.rds")
+ncounts <- read_rds("results/bidir_counts_negative_strand_600bp.rds")
+pcounts <- read_rds("results/bidir_counts_positive_strand_600bp.rds")
 
 ncounts_m <- ncounts$counts %>%
   as.data.frame() %>%
@@ -191,10 +270,9 @@ ggdensity(counts_stranded %>% filter(pos_count > 5, neg_count > 5), x = "strand_
 bidir_filtered <- unique(bidir_counts_filtered$bidir_id)
 ```
 
-
 ## ATAC-seq peak quantification
 
-1. What's happening in the 55 differential ATAC peaks?
+1.  What's happening in the 55 differential ATAC peaks?
 
 ```{r}
 
@@ -213,10 +291,10 @@ write_tsv(de_atac, "results/de_atac.saf")
 ?featureCounts
 library(Rsubread)
 library(tidyverse)
-fl <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/bams", 
-                 pattern = "*.bam$",
-                 full.names = TRUE)
-bidir_counts <- featureCounts(fl, 
+proseq_bams <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/bams", 
+                          pattern = "*.bam$",
+                          full.names = TRUE)
+bidir_counts <- featureCounts(proseq_bams, 
                               annot.ext = "results/de_atac.saf",
                               isPairedEnd = TRUE,
                               strandSpecific = 0,
@@ -237,10 +315,10 @@ mapped_list <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/
   mutate(sample_id = gsub("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/qc/mapstats/|.millionsmapped", "", sample_id)) %>%
   dplyr::rename(reads_mapped = ".") %>%
   mutate(reads_mapped = as.numeric(reads_mapped))
-  
+
 
 de_atac_counts <- de_atac_fc$counts  %>%
-    as.data.frame() %>%
+  as.data.frame() %>%
   rownames_to_column("atac_id") %>%
   pivot_longer(2:ncol(.), names_to = "sample_id", values_to = "count") %>%
   mutate(sample_id = gsub(".sorted.bam", "", sample_id)) %>%
@@ -269,7 +347,7 @@ pheatmap::pheatmap(de_atac_cpm_scaled, cluster_cols = F)
 
 ```
 
-2. Let's count nascent reads over all ATAC-seq peaks
+2.  Let's count nascent reads over all ATAC-seq peaks
 
 ```{r}
 load("../01_setup/results/atacseq_data.RData", verbose = T)
@@ -280,9 +358,9 @@ write_tsv(atac_saf, "results/atac.saf")
 
 library(Rsubread)
 library(tidyverse)
-fl <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/bams", 
-                 pattern = "*.bam$",
-                 full.names = TRUE)
+proseq_bams <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/bams", 
+                          pattern = "*.bam$",
+                          full.names = TRUE)
 bidir_counts <- featureCounts(fl, 
                               annot.ext = "results/atac.saf",
                               isPairedEnd = TRUE,
@@ -296,7 +374,6 @@ write_rds(bidir_counts, "results/atac_proseq_counts.rds")
 hmm <- read_rds("results/atac_proseq_counts.rds")
 colnames(hmm$counts)
 ```
-
 
 ### Differential expression of nascent transcripts -- unstranded
 
@@ -314,10 +391,10 @@ mapped_list <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/
   mutate(sample_id = gsub("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/qc/mapstats/|.millionsmapped", "", sample_id)) %>%
   dplyr::rename(reads_mapped = ".") %>%
   mutate(reads_mapped = as.numeric(reads_mapped))
-  
+
 
 bidir_counts_l <- bidir_counts$counts %>%
-    as.data.frame() %>%
+  as.data.frame() %>%
   rownames_to_column("bidir_id") %>%
   pivot_longer(2:ncol(.), names_to = "sample_id", values_to = "count") %>%
   mutate(sample_id = gsub(".sorted.bam", "", sample_id))
@@ -332,9 +409,9 @@ bidir_counts_l <- bidir_counts_l %>%
 sinfo <- read_tsv("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/mumerge/sample_info.txt") %>%
   dplyr::rename(sample_id = sampid) %>%
   dplyr::select(sample_id, group) %>%
-    mutate(timepoint = case_when(group == "Control" ~ "0",
+  mutate(timepoint = case_when(group == "Control" ~ "0",
                                group == "15minDOX" ~ "15",
-                             TRUE ~ "30"),
+                               TRUE ~ "30"),
          timepoint = factor(timepoint, levels = c("0", "15", "30")))
 bidir_counts_l <- bidir_counts_l %>%
   left_join(sinfo)
@@ -348,7 +425,7 @@ library(tidyverse)
 bidir_30_vs_0_ttest <- bidir_30_vs_0 %>%
   group_by(bidir_id) %>%
   t_test(data = ., CPM ~ timepoint) %>%
-    adjust_pvalue(method = "bonferroni") %>%
+  adjust_pvalue(method = "bonferroni") %>%
   add_significance("p.adj")
 write_rds(bidir_30_vs_0_ttest, "results/bidir_30_vs_0_ttest.rds")
 
@@ -360,7 +437,7 @@ library(tidyverse)
 bidir_15_vs_0_ttest <- bidir_15_vs_0 %>%
   group_by(bidir_id) %>%
   t_test(data = ., CPM ~ timepoint) %>%
-    adjust_pvalue(method = "bonferroni") %>%
+  adjust_pvalue(method = "bonferroni") %>%
   add_significance("p.adj")
 write_rds(bidir_15_vs_0_ttest, "results/bidir_15_vs_0_ttest.rds")
 bidir_62 <-  bidir_30_vs_0 %>%
@@ -374,10 +451,7 @@ bidir_15_vs_0_ttest$padj <- p.adjust(bidir_15_vs_0_ttest$p, method = "BH")
 bidir_30_vs_0_ttest$padj <- p.adjust(bidir_30_vs_0_ttest$p, method = "BH")
 ```
 
-So this result is that there are no significantly changing bidirectionals...
-Before we go back to trying DESeq2 or something, let's just calculate the lm of the CPM per bidir.
-Another thing to consider is starting from the coverage filtered bidirectionals
-so that the number of statistical tests performed is smaller.
+So this result is that there are no significantly changing bidirectionals... Before we go back to trying DESeq2 or something, let's just calculate the lm of the CPM per bidir. Another thing to consider is starting from the coverage filtered bidirectionals so that the number of statistical tests performed is smaller.
 
 ```{r}
 bidir_counts_l_test <- bidir_counts_l[1:27,]
@@ -391,7 +465,7 @@ bclm1 <- bidir_counts_l %>%
   do(mod = broom::tidy(lm(CPM ~ timepoint, data = .))) %>%
   collect() %>%
   unnest(mod)
-  
+
 bclm1_tp <- bclm1 %>%
   filter(term == "timepoint")
 bclm1_tp$padj <- p.adjust(bclm1_tp$p.value, method = "BH")
@@ -415,7 +489,6 @@ ggplot(bidir_counts_l %>% filter(bidir_id == "bidir_106735"), aes(x = timepoint,
   stat_regline_equation()
 ```
 
-
 ### Strand-specific differential expression of nascent transcripts
 
 It would be interesting to see the best changing bidirectional nascent transcripts. Therefore, what we'll do here is run DEseq on the +/- strand counts separately. Then look at the correlation and choose those that are the most correlated with the highest fold-change.
@@ -428,7 +501,7 @@ samples <- tibble(file = colnames(counts_matrix)) %>%
   left_join(sinfo) %>%
   mutate(timepoint = case_when(group == "Control" ~ "0",
                                group == "15minDOX" ~ "15",
-                             TRUE ~ "30"),
+                               TRUE ~ "30"),
          timepoint = factor(timepoint, levels = c("0", "15", "30")))
 ```
 
@@ -446,20 +519,20 @@ samples <- tibble(file = colnames(pcounts_matrix)) %>%
   left_join(sinfo) %>%
   mutate(timepoint = case_when(group == "Control" ~ "0",
                                group == "15minDOX" ~ "15",
-                             TRUE ~ "30"),
+                               TRUE ~ "30"),
          timepoint = factor(timepoint, levels = c("0", "15", "30")))
 
 pdds <- DESeqDataSetFromMatrix(countData = pcounts_matrix,
-                              colData = samples,
-                              design = ~ timepoint)
+                               colData = samples,
+                               design = ~ timepoint)
 # Each timepoint vs zero
 # pdds <- DESeq(pdds)
 pdds <- DESeq(pdds, test = "LRT", reduced = ~1)
 # write_rds(dds, "results/deseq_dds_vs_zero.rds")
 pres_vs_zero <- bind_rows(results(pdds, name = "timepoint_30_vs_0", tidy = T) %>%
-  mutate(comparison = "timepoint_30_vs_0"),
-  results(pdds, name = "timepoint_15_vs_0", tidy = T) %>%
-  mutate(comparison = "timepoint_15_vs_0")) %>%
+                            mutate(comparison = "timepoint_30_vs_0"),
+                          results(pdds, name = "timepoint_15_vs_0", tidy = T) %>%
+                            mutate(comparison = "timepoint_15_vs_0")) %>%
   dplyr::rename(bidir_id = row) %>%
   left_join(bidir_coords) %>%
   mutate(strand = "+")
@@ -475,20 +548,20 @@ samples <- tibble(file = colnames(ncounts_matrix)) %>%
   left_join(sinfo) %>%
   mutate(timepoint = case_when(group == "Control" ~ "0",
                                group == "15minDOX" ~ "15",
-                             TRUE ~ "30"),
+                               TRUE ~ "30"),
          timepoint = factor(timepoint, levels = c("0", "15", "30")))
 
 ndds <- DESeqDataSetFromMatrix(countData = ncounts_matrix,
-                              colData = samples,
-                              design = ~ timepoint)
+                               colData = samples,
+                               design = ~ timepoint)
 # Each timepoint vs zero
 # ndds <- DESeq(ndds)
 ndds <- DESeq(ndds, test = "LRT", reduced = ~1)
 # write_rds(dds, "results/deseq_dds_vs_zero.rds")
 nres_vs_zero <- bind_rows(results(ndds, name = "timepoint_30_vs_0", tidy = T) %>%
-  mutate(comparison = "timepoint_30_vs_0"),
-  results(ndds, name = "timepoint_15_vs_0", tidy = T) %>%
-  mutate(comparison = "timepoint_15_vs_0")) %>%
+                            mutate(comparison = "timepoint_30_vs_0"),
+                          results(ndds, name = "timepoint_15_vs_0", tidy = T) %>%
+                            mutate(comparison = "timepoint_15_vs_0")) %>%
   dplyr::rename(bidir_id = row) %>%
   left_join(bidir_coords) %>%
   mutate(strand = "-")
@@ -573,8 +646,6 @@ ggplot(bidir_cont, aes(x = l2fc_pos, y = l2fc_neg, color = sig_in_both)) +
 # Does this region come up when we take an unstranded approach?
 ```
 
-
-
 ```{r}
 bidir_counts <- read_rds("results/bidir_counts_pe.rds")
 sinfo <- read_tsv("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/mumerge/sample_info.txt")
@@ -587,7 +658,7 @@ samples <- tibble(file = colnames(counts_matrix)) %>%
   left_join(sinfo) %>%
   mutate(timepoint = case_when(group == "Control" ~ "0",
                                group == "15minDOX" ~ "15",
-                             TRUE ~ "30"),
+                               TRUE ~ "30"),
          timepoint = factor(timepoint, levels = c("0", "15", "30")))
 
 dds <- DESeqDataSetFromMatrix(countData = counts_matrix,
@@ -597,9 +668,9 @@ dds <- DESeqDataSetFromMatrix(countData = counts_matrix,
 dds <- DESeq(dds)
 # write_rds(dds, "results/deseq_dds_vs_zero.rds")
 res_vs_zero <- bind_rows(results(dds, name = "timepoint_30_vs_0", tidy = T) %>%
-  mutate(comparison = "timepoint_30_vs_0"),
-  results(dds, name = "timepoint_15_vs_0", tidy = T) %>%
-  mutate(comparison = "timepoint_15_vs_0")) %>%
+                           mutate(comparison = "timepoint_30_vs_0"),
+                         results(dds, name = "timepoint_15_vs_0", tidy = T) %>%
+                           mutate(comparison = "timepoint_15_vs_0")) %>%
   dplyr::rename(bidir_id = row) %>%
   left_join(mumerge_uniform_saf %>% dplyr::rename(bidir_id = GeneID))
 write_csv(res_vs_zero, "results/res_vs_zero.csv")
@@ -616,7 +687,7 @@ res_lrt <- DESeq(dds, test = "LRT", reduced = ~1)
 write_rds(res_lrt, "results/deseq_dds_vs_zero_lrt.rds")
 
 res_lrt_res <- bind_rows(results(res_lrt, name = "timepoint_30_vs_0", tidy = T) %>%
-  mutate(comparison = "timepoint_30_vs_0_lrt")) %>%
+                           mutate(comparison = "timepoint_30_vs_0_lrt")) %>%
   dplyr::rename(bidir_id = row) %>%
   left_join(bidir_coords) %>%
   mutate(width = end - start)
@@ -680,21 +751,21 @@ ggplot(tpm_5ptrunc %>% filter(grepl("Duox1", id)),
 library(ggpubr)
 ggplot(tpm_5ptrunc %>% filter(grepl("Firre", id)),
        aes(x = timepoint, y = tpm)) +
- geom_hline(yintercept = 0) +
+  geom_hline(yintercept = 0) +
   geom_point() +
   geom_smooth(method = "lm", se = FALSE, color = "black") +
   ggtitle("Firre expression") +
   ylab("TPM") +
   xlab("Time (Min.)") +
   stat_regline_equation(size = 8)
- 
+
 sinfo <- read_tsv("/scratch/Shares/rinn/Michael/firre_timecourse/proseq/mumerge/sample_info.txt")
 samples <- tibble(file = colnames(ugc)) %>%
   mutate(sampid = gsub(".sorted.bam", "", file)) %>%
   left_join(sinfo) %>%
   mutate(timepoint = case_when(group == "Control" ~ "0",
                                group == "15minDOX" ~ "15",
-                             TRUE ~ "30"),
+                               TRUE ~ "30"),
          timepoint = factor(timepoint, levels = c("0", "15", "30")))
 
 dds <- DESeqDataSetFromMatrix(countData = ugc,
@@ -704,9 +775,9 @@ dds <- DESeqDataSetFromMatrix(countData = ugc,
 dds <- DESeq(dds)
 
 res_vs_zero <- bind_rows(results(dds, name = "timepoint_30_vs_0", tidy = T) %>%
-  mutate(comparison = "timepoint_30_vs_0"),
-  results(dds, name = "timepoint_15_vs_0", tidy = T) %>%
-  mutate(comparison = "timepoint_15_vs_0")) %>%
+                           mutate(comparison = "timepoint_30_vs_0"),
+                         results(dds, name = "timepoint_15_vs_0", tidy = T) %>%
+                           mutate(comparison = "timepoint_15_vs_0")) %>%
   dplyr::rename(gene_id = row)
 write_csv(res_vs_zero, "results/res_vs_zero_gene5ptrunc.csv")
 

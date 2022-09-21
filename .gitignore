@@ -48,3 +48,5 @@ work/*
 *.bed
 *.ipynb_checkpoints*
 *.bw
+*bw*
+
