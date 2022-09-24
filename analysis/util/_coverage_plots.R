@@ -374,6 +374,7 @@ BigwigTrack <- function(
   extend.downstream = 0,
   type = "coverage",
   y_label = "bigWig",
+  track_fill = "#E17A3F",
   bigwig.scale = "common",
   ymax = NULL,
   max.downsample = 3000,
@@ -477,10 +478,13 @@ BigwigTrack <- function(
   } else if (type == "coverage") {
     p <- ggplot(
       data = coverages,
-      mapping = aes_string(x = "position", y = "score", fill = "bw")
-    ) + geom_area() +
+      mapping = aes_string(x = "position", y = "score", fill = "bw", alpha = "bw")
+    ) + 
+      # geom_area(fill = "#759676") +
+      geom_area(fill = track_fill) +
       facet_wrap(facets = ~bw, strip.position = "left", ncol = 1) +
-      scale_fill_grey()
+      scale_alpha_discrete(range = c(0.4, 0.9)) +
+      guides(fill = "none", alpha = "none")
   }
   chromosome <- as.character(x = seqnames(x = region))
   p <- p + theme_browser(axis.text.y = TRUE) +
@@ -760,11 +764,12 @@ BigwigTrack_stranded <- function(
   } else if (type == "coverage") {
     p <- ggplot(
       data = coverages,
-      mapping = aes_string(x = "position", y = "score", fill = "bw")
-    ) + geom_area(data = coverages %>% dplyr::filter(strand == "pos"), fill = discrete_pal1_sns[[1]]) +
-      geom_area(data = coverages %>% dplyr::filter(strand == "neg"), fill = discrete_pal1_sns[[4]]) +
+      mapping = aes_string(x = "position", y = "score", fill = "bw", alpha = "bw")
+    ) + geom_area(data = coverages %>% dplyr::filter(strand == "pos"), fill = "#AC404D") +
+      geom_area(data = coverages %>% dplyr::filter(strand == "neg"), fill = "#7F8999") +
       facet_wrap(facets = ~ bw, strip.position = "left", ncol = 1) +
-      scale_fill_grey()
+      scale_alpha_discrete(range = c(0.7,0.9)) +
+      guides(fill = "none", alpha = "none")
   }
   chromosome <- as.character(x = seqnames(x = region))
   p <- p + theme_browser(axis.text.y = FALSE, legend = TRUE) +

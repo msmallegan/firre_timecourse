@@ -383,6 +383,15 @@ ggplot(sig_res_vs_zero, aes(x = timepoint, y = log2FoldChange, group = bidir_id)
   geom_point(alpha = 0.3) + 
   geom_line(alpha = 0.1)
 
+# Let's look at those that continue their trajectory
+hmm <- sig_res_vs_zero %>%
+  dplyr::filter(timepoint %in% c(15,30)) %>%
+  dplyr::select(-comparison) %>%
+  distinct() %>%
+  pivot_wider(id_cols = c("bidir_id", "baseMean", "Chr", "Start", "End", "Strand", "max_fc"), names_from = "timepoint", 
+              values_from = c("log2FoldChange","lfcSE", "pvalue", "padj")) %>%
+  mutate(monotonic = abs(log2FoldChange_30) > abs(log2FoldChange_15))
+
 ```
 
 Are the bidirs that continue their trajectory more likely to be those associated with ATAC-seq peaks?

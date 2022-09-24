@@ -19,189 +19,114 @@ source("bin/track_location_lists.R")
 annotation <- GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79)
 ```
 
-
-```{r proseq-bigwigs}
-
-```
-
-```{r atacseq-bigwigs}
-atacseq_bw <- list(`0'` =  "/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary/bigwig/ESC_KO_firre_induced_0_R1.mLb.clN.bigWig",
-                   `30'` = "/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary/bigwig/ESC_KO_firre_induced_30_R1.mLb.clN.bigWig",
-                   `60'` = "/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary/bigwig/ESC_KO_firre_induced_60_R1.mLb.clN.bigWig",
-                   `90'` = "/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary/bigwig/ESC_KO_firre_induced_90_R1.mLb.clN.bigWig",
-                   `120'` = "/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary/bigwig/ESC_KO_firre_induced_120_R1.mLb.clN.bigWig",
-                   `150'` = "/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary/bigwig/ESC_KO_firre_induced_150_R1.mLb.clN.bigWig")
-```
-
-```{r rnaseq-bw}
-source("bin/rnaseq_coverage_track_lists.R")
-
-# esc_ko_short_all
-test_short_bws <- esc_ko_short_all[1:6]
-duox_shf_region <- GRanges(seqnames = "chr2", ranges = IRanges(start = 122340333, end = 122371763))
-rapgef4_region <-  GRanges(seqnames = "chr2", ranges = IRanges(start = 71976275, end = 72081080))
-apod_region <-  GRanges(seqnames = "chr16", ranges = IRanges(start = 31294192, end = 31316808))
-p_rnaseq <- BigwigTrack(duox_shf_region, test_short_bws,
+```{r shf}
+region <- GRanges(seqnames = 2, ranges = IRanges(start = 122340333, end = 122371763))
+p_annotation <- AnnotationPlot(annotation, region)
+p_proseq <- BigwigTrack_stranded(region, proseq_bw_representative,
+                                 y_label_prefix = "PRO-seq \n Normalied signal",
+                                 downsample.rate = 0.25)
+region <- GRanges(seqnames = "chr2", ranges = IRanges(start = 122340333, end = 122371763))
+p_rnaseq <- BigwigTrack(region, esc_ko_short_all,
                          y_label = "RNA-seq \n Normalied signal",
-                         downsample.rate = 0.25)
+                         downsample.rate = 0.25,
+                        track_fill = "#2E456E")
 
-
-duox_shf_region <- GRanges(seqnames = 2, ranges = IRanges(start = 122340333, end = 122371763))
-rapgef4_region <-  GRanges(seqnames = 2, ranges = IRanges(start = 71976275, end = 72081080))
-apod_region <-  GRanges(seqnames = 16, ranges = IRanges(start = 31294192, end = 31316808))
-p_annotation <- AnnotationPlot(annotation, apod_region)
-
-
-
-CombineTracks(plotlist = list(p_rnaseq, p_annotation), heights = c(0.9,0.1))
-ggsave("figures/duoxshf_atac.pdf", width = 5, height = 7.5)
+p_atacseq <- BigwigTrack(region, atacseq_bw,
+                         y_label = "ATAC-seq \n Normalied signal",
+                         downsample.rate = 0.25,
+                         track_fill = "#385B56")
+CombineTracks(plotlist = list(p_proseq, p_atacseq, p_rnaseq, p_annotation), heights = c(0.12, 0.32, 1.2, 0.1))
+ggsave("figures/duoxshf_atac.pdf", width = 5, height = 19.5)
 ```
 
-Okay, so the RNA-seq doesn't appear to be from a stranded library prep. Therefore it would be better to plot this in an unstranded way.
+
+```{r rapgef4}
+region <- GRanges(seqnames = 2, ranges = IRanges(start = 71976275, end = 72081080))
+p_annotation <- AnnotationPlot(annotation, region)
+p_proseq <- BigwigTrack_stranded(region, proseq_bw_representative,
+                                 y_label_prefix = "PRO-seq \n Normalied signal",
+                                 downsample.rate = 0.25)
+region <- GRanges(seqnames = "chr2", ranges = IRanges(start = 71976275, end = 72081080))
+p_rnaseq <- BigwigTrack(region, esc_ko_short_all,
+                         y_label = "RNA-seq \n Normalied signal",
+                         downsample.rate = 0.25,
+                        track_fill = "#2E456E")
+
+p_atacseq <- BigwigTrack(region, atacseq_bw,
+                         y_label = "ATAC-seq \n Normalied signal",
+                         downsample.rate = 0.25,
+                         track_fill = "#385B56")
+CombineTracks(plotlist = list(p_proseq, p_atacseq, p_rnaseq, p_annotation), heights = c(0.12, 0.32, 1.2, 0.1))
+ggsave("figures/rapgef4.pdf", width = 5, height = 19.5)
+```
+
+
+```{r apod}
+region <-  GRanges(seqnames = 16, ranges = IRanges(start = 31294192, end = 31316808))
+p_annotation <- AnnotationPlot(annotation, region)
+p_proseq <- BigwigTrack_stranded(region, proseq_bw_representative,
+                                 y_label_prefix = "PRO-seq \n Normalied signal",
+                                 downsample.rate = 0.25)
+region <-  GRanges(seqnames = "chr16", ranges = IRanges(start = 31294192, end = 31316808))
+p_rnaseq <- BigwigTrack(region, esc_ko_short_all,
+                         y_label = "RNA-seq \n Normalied signal",
+                         downsample.rate = 0.25,
+                        track_fill = "#2E456E")
+
+p_atacseq <- BigwigTrack(region, atacseq_bw,
+                         y_label = "ATAC-seq \n Normalied signal",
+                         downsample.rate = 0.25,
+                         track_fill = "#385B56")
+CombineTracks(plotlist = list(p_proseq, p_atacseq, p_rnaseq, p_annotation), heights = c(0.12, 0.32, 1.2, 0.1))
+ggsave("figures/apod.pdf", width = 5, height = 19.5)
+```
+
 
 ```{r}
-rs_bw <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/rnaseq1/bw")
-```
+# "chr6" 124908079 124912220
+region <-  GRanges(seqnames = 6, ranges = IRanges(start = 124908079, end = 124912220))
+p_annotation <- AnnotationPlot(annotation, region)
+p_proseq <- BigwigTrack_stranded(region, proseq_bw_representative,
+                                 y_label_prefix = "PRO-seq \n Normalied signal",
+                                 downsample.rate = 0.25)
+region <-  GRanges(seqnames = "chr6", ranges = IRanges(start = 124908079, end = 124912220))
+p_rnaseq <- BigwigTrack(region, esc_ko_short_all,
+                         y_label = "RNA-seq \n Normalied signal",
+                         downsample.rate = 0.25,
+                        track_fill = "#2E456E")
 
+p_atacseq <- BigwigTrack(region, atacseq_bw,
+                         y_label = "ATAC-seq \n Normalied signal",
+                         downsample.rate = 0.25,
+                         track_fill = "#385B56")
+CombineTracks(plotlist = list(p_proseq, p_atacseq, p_rnaseq, p_annotation), heights = c(0.12, 0.32, 1.2, 0.1))
+
+CombineTracks(plotlist = list(p_proseq, p_atacseq, p_annotation), heights = c(0.3, 0.4, 0.1))
+ggsave("figures/decreasing_region.pdf", width = 5, height = 7.5)
+
+```
 
 ```{r}
-# Make RNA-seq to bw list
-rnaseq_bams <- tibble(file = list.files("/scratch/Shares/rinn/Michael/firre_timecourse/rnaseq1/results/star_salmon",
-                          full.names = T,
-                          pattern = "*.bam$")) %>%
-  mutate(fn = basename(file),
-         fn = gsub(".markdup.sorted.bam", ".bigWig", fn))
-write.table(rnaseq_bams, "data/rnaseq2bw.txt",
-            quote = F, sep = "\t",
-            col.names = F, row.names = F)
-```
+# chr7 44607575 44611597
+region <-  GRanges(seqnames = 7, ranges = IRanges(start = 44607575, end = 44611597))
+p_annotation <- AnnotationPlot(annotation, region)
+p_proseq <- BigwigTrack_stranded(region, proseq_bw_representative,
+                                 y_label_prefix = "PRO-seq \n Normalied signal",
+                                 downsample.rate = 0.25)
+region <-  GRanges(seqnames = "chr7", ranges = IRanges(start = 44607575, end = 44611597))
+p_rnaseq <- BigwigTrack(region, esc_ko_short_all,
+                         y_label = "RNA-seq \n Normalied signal",
+                         downsample.rate = 0.25,
+                        track_fill = "#2E456E")
 
+p_atacseq <- BigwigTrack(region, atacseq_bw,
+                         y_label = "ATAC-seq \n Normalied signal",
+                         downsample.rate = 0.25,
+                         track_fill = "#385B56")
+CombineTracks(plotlist = list(p_proseq, p_atacseq, p_rnaseq, p_annotation), heights = c(0.12, 0.32, 1.2, 0.1))
 
-
-```{r rnaseq-bigwigs}
-load("../01_setup/results/rnaseq_data.RData")
-
-samples <- read.csv("../../rnaseq/rnaseq_samplesheet.csv") %>%
-  mutate(raw_data_read1 = gsub("/rinnlab/rinngrp/Taeyoung/RinnLab_RNAseq/", "/rinnlab/rinngrp/LAB_RAW_DATA/", raw_data_read1),
-         raw_data_read2 = gsub("/rinnlab/rinngrp/Taeyoung/RinnLab_RNAseq/", "/rinnlab/rinngrp/LAB_RAW_DATA/", raw_data_read2),
-         f1_exists = file.exists(raw_data_read1),
-         f2_exists = file.exists(raw_data_read2),
-         scratch_read1 = paste0("/scratch/Shares/rinn/Michael/firre_timecourse/rnaseq1/fastq/", sample_id, "_R1.fq.gz"),
-         scratch_read2 = paste0("/scratch/Shares/rinn/Michael/firre_timecourse/rnaseq1/fastq/", sample_id, "_R2.fq.gz"))
-
-# Let's make a script to copy to scratch
-cp2scratch <- bind_rows(samples %>%
-                          dplyr::select(raw_data_read1, scratch_read1) %>%
-                          dplyr::rename(origin = raw_data_read1,
-                                        destination = scratch_read1),
-                        samples %>%
-                          dplyr::select(raw_data_read2, scratch_read2) %>%
-                          dplyr::rename(origin = raw_data_read2,
-                                        destination = scratch_read2)) %>%
-  mutate(cp_cmd = paste0("cp ", origin, " ", destination))
-
-write_lines(cp2scratch[,3], "bin/cp2scratch.sh")
-# parallel --jobs 20 < bin/cp2scratch.sh
-
-# Let's make a script to check the md5sums
-md5check <- bind_rows(samples %>%
-                        dplyr::select(scratch_read1) %>%
-                        dplyr::rename(file = scratch_read1),
-                      samples %>%
-                        dplyr::select(scratch_read2) %>%
-                        dplyr::rename(file = scratch_read2)) %>%
-  mutate(sample_name = basename(file),
-         sample_name = gsub(".fq.gz", "", sample_name),
-         outfile = paste0("/scratch/Shares/rinn/Michael/firre_timecourse/analysis/15_coverage_tracks/bin/md5check/", sample_name, "_md5.txt"),
-         md5_cmd = paste0("md5sum ", file, " > ", outfile))
-write_lines(md5check[,4], "bin/md5check.sh")
-# parallel --jobs 20 < bin/md5check.sh
-
-
-md5res <- sapply(list.files("bin/md5check", full.names = T, pattern = "*.txt"),
-                 read_lines) %>%
-  unlist() %>%
-  cbind()
-md5res <- md5res %>%
-  as.data.frame()
-
-md5compare <- md5res %>%
-  separate(col = ".", into = c("md5_scratch", "file"), sep = "  ")
-
-md5compare_fq1 <- md5compare %>%
-  filter(grepl("_R1.fq.gz", file)) %>%
-  dplyr::rename(scratch_read1 = file) %>%
-  left_join(samples %>% dplyr::select(scratch_read1, md5_read1)) %>%
-  mutate(md5match = md5_read1 == md5_scratch)
-
-table(md5compare_fq1$md5match)
-
-md5compare_fq2 <- md5compare %>%
-  filter(grepl("_R2.fq.gz", file)) %>%
-  dplyr::rename(scratch_read2 = file) %>%
-  left_join(samples %>% dplyr::select(scratch_read2, md5_read2)) %>%
-  mutate(md5match = md5_read2 == md5_scratch)
-
-table(md5compare_fq2$md5match)
-
-
-# Now let's create the samplesheet that will be used for the RNA-seq run.
-# sample,fastq_1,fastq_2,strandedness
-# celltype_gene_genotype_induced_timepoint_timecourselength_replicate
-# mESC_Firre_OE_control_0min_dox_long_rep1
-ssamples <- samples %>%
-  filter(date_sequenced != "2018-09") %>%
-  rowwise() %>%
-  mutate(replicate_numeric = replicate, 
-         replicate = paste0("rep", replicate),
-         timepoint_numeric = as.numeric(as.character(timepoint)),
-         timepoint = paste0(timepoint, "min"),
-         treatment = "dox") %>%
-  unite(sample, cell_type, firre_ko, firre_induced, timepoint, treatment, 
-        timecourse_length, replicate, remove = FALSE) %>%
-  dplyr::select(sample, scratch_read1, scratch_read2) %>%
-  dplyr::rename(fastq_1 = scratch_read1,
-                fastq_2 = scratch_read2) %>%
-  mutate(strandedness = "unstranded")
-write_csv(ssamples, "/scratch/Shares/rinn/Michael/firre_timecourse/rnaseq1/rnaseq_samples.csv")
-
-
-geo_rnaseq_samples <- samples %>%
-  filter(cell_type == "ESC") %>%
-  rowwise() %>%
-  mutate(replicate_numeric = replicate, 
-         replicate = paste0("rep", replicate),
-         timepoint_numeric = as.numeric(as.character(timepoint)),
-         timepoint = paste0(timepoint, "min"),
-         treatment = "dox") %>%
-  unite(geo_sample_name, experiment, firre_induced, timepoint, treatment, 
-        timecourse_length, replicate, remove = FALSE) %>%
-  unite(og_geo_sample_name, experiment, firre_induced, timepoint, treatment, replicate, remove = FALSE) %>%
-  mutate(geo_sample_name = gsub("ESC_KO", "mESC_Firre_Rescue", geo_sample_name),
-         geo_sample_name = gsub("ESC_WT", "mESC_Firre_OE", geo_sample_name)) %>%
-  arrange(firre_ko, timecourse_length, firre_induced, timepoint_numeric, replicate_numeric) %>%
-  mutate(fastq1 = paste0(sample_id, "_read1.fastq.gz"),
-         fastq2 = paste0(sample_id, "_read2.fastq.gz"),
-         geo_fastq1 = paste0(geo_sample_name, "_read1.fastq.gz"),
-         geo_fastq2 = paste0(geo_sample_name, "_read2.fastq.gz")) %>%
-  mutate(type = "RNAseq",
-         raw_read1_exists = file.exists(raw_data_read1),
-         raw_read2_exists = file.exists(raw_data_read2))
-
-# geo_samples <- read_csv("../01_setup/geo_rnaseq_samples.csv")
-rnaseq_bw_all <- tibble(file = list.files("/scratch/Shares/rinn/Michael/firre_timecourse/rnaseq/bw",
-                                          pattern = "*.bw",
-                                          full.names = TRUE)) %>%
-  mutate(sample_id = basename(file),
-         sample_id = gsub(".bw", "", sample_id)) %>%
-  left_join(samples)
-
-atacseq_bw <- list(`0'` =  "/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary/bigwig/ESC_KO_firre_induced_0_R1.mLb.clN.bigWig",
-                   `30'` = "/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary/bigwig/ESC_KO_firre_induced_30_R1.mLb.clN.bigWig",
-                   `60'` = "/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary/bigwig/ESC_KO_firre_induced_60_R1.mLb.clN.bigWig",
-                   `90'` = "/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary/bigwig/ESC_KO_firre_induced_90_R1.mLb.clN.bigWig",
-                   `120'` = "/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary/bigwig/ESC_KO_firre_induced_120_R1.mLb.clN.bigWig",
-                   `150'` = "/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary/bigwig/ESC_KO_firre_induced_150_R1.mLb.clN.bigWig")
+CombineTracks(plotlist = list(p_proseq, p_atacseq, p_annotation), heights = c(0.3, 0.4, 0.1))
+ggsave("figures/decreasing_region_1.pdf", width = 5, height = 7.5)
 ```
 
 
@@ -209,15 +134,19 @@ atacseq_bw <- list(`0'` =  "/scratch/Shares/rinn/Michael/firre_timecourse/atacse
 
 ```{r proseq-coverage-plot}
 ep300_promoter <- GRanges(seqnames = 15, ranges = IRanges(start = 81574507, end = 81597530))
-# 
-# 
 p_annotation <- AnnotationPlot(annotation, ep300_promoter)
-# p_proseq <- BigwigTrack_stranded_allreps(duox_shf_region, proseq_bw_all,
-#                                  y_label_prefix = "PRO-seq \n Normalied signal",
-#                                  downsample.rate = 0.25)
-# p_proseq <- BigwigTrack_stranded(ep300_promoter, proseq_bw_representative,
-#                                  y_label_prefix = "PRO-seq \n Normalied signal",
-#                                  downsample.rate = 0.25)
+p_proseq <- BigwigTrack_stranded(ep300_promoter, proseq_bw_representative,
+                                 y_label_prefix = "PRO-seq \n Normalied signal",
+                                 downsample.rate = 0.25)
+ep300_promoter <- GRanges(seqnames = "chr15", ranges = IRanges(start = 81574507, end = 81597530))
+p_atacseq <- BigwigTrack(ep300_promoter, atacseq_bw,
+                         y_label = "ATAC-seq \n Normalied signal",
+                         downsample.rate = 0.25,
+                         track_fill = "#DA5A31")
+CombineTracks(plotlist = list(p_proseq, p_atacseq, p_annotation), heights = c(0.3, 0.4, 0.1))
+ggsave("figures/duoxshf_atac.pdf", width = 5, height = 7.5)
+
+
 
 duox_shf_region <- GRanges(seqnames = 2, ranges = IRanges(start = 122340333, end = 122371763))
 p_proseq <- BigwigTrack_stranded(duox_shf_region, proseq_bw_representative,
@@ -365,3 +294,11 @@ bw_files <- tibble(experiment = c(rep("atac", length(atac_bigwigs)),
 
 write_tsv(bw_files %>% dplyr::select(file, target_name), "results/bw_files.tsv", col_names = F)
 ```
+
+
+```{r}
+# p_proseq <- BigwigTrack_stranded_allreps(ep300_promoter, proseq_bw_all,
+#                                  y_label_prefix = "PRO-seq \n Normalied signal",
+#                                  downsample.rate = 0.25)
+```
+
