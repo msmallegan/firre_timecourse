@@ -1,8 +1,15 @@
 ---
 title: "Long timecourse rescue"
-output: github_document
+author: "Michael Smallegan"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_notebook:
+    code_folding: hide
+    css: /scratch/Shares/rinn/Michael/firre_timecourse/analysis/util/style.css
+    theme: simplex
+    toc: yes
 editor_options: 
-  chunk_output_type: console
+  chunk_output_type: inline
 ---
 
 ```{r setup, include=FALSE}

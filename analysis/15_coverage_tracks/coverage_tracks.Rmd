@@ -12,6 +12,7 @@ library(tidyverse)
 library(EnsDb.Mmusculus.v79)
 source("../util/_coverage_plots.R")
 source("../util/_plot_theme.R")
+source("bin/track_location_lists.R")
 ```
 
 ```{r annotation}
@@ -20,33 +21,7 @@ annotation <- GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79)
 
 
 ```{r proseq-bigwigs}
-proseq_dir <- "/scratch/Shares/rinn/Michael/firre_timecourse/proseq/results/mapped/rcc_bigwig"
 
-proseq_bw_representative <- list(`0'` = list(pos = file.path(proseq_dir, "JR3116.pos.rcc.bw"),
-                                             neg = file.path(proseq_dir, "JR3116.neg.rcc.bw")),
-                                 `15'` = list(pos = file.path(proseq_dir, "JR3117.pos.rcc.bw"),
-                                              neg = file.path(proseq_dir, "JR3117.neg.rcc.bw")),
-                                 `30'` = list(pos = file.path(proseq_dir, "JR3118.pos.rcc.bw"),
-                                              neg = file.path(proseq_dir, "JR3118.neg.rcc.bw")))
-
-proseq_bw_all <- list(`0' R1` = list(pos = file.path(proseq_dir, "JR3113.pos.rcc.bw"),
-                                     neg = file.path(proseq_dir, "JR3113.neg.rcc.bw")),
-                      `0' R2` = list(pos = file.path(proseq_dir, "JR3116.pos.rcc.bw"),
-                                     neg = file.path(proseq_dir, "JR3116.neg.rcc.bw")),
-                      `0' R3` = list(pos = file.path(proseq_dir, "JR3119.pos.rcc.bw"),
-                                     neg = file.path(proseq_dir, "JR3119.neg.rcc.bw")),
-                      `15' R1` = list(pos = file.path(proseq_dir, "JR3114.pos.rcc.bw"),
-                                      neg = file.path(proseq_dir, "JR3114.neg.rcc.bw")),
-                      `15' R2` = list(pos = file.path(proseq_dir, "JR3117.pos.rcc.bw"),
-                                      neg = file.path(proseq_dir, "JR3117.neg.rcc.bw")),
-                      `15' R3` = list(pos = file.path(proseq_dir, "JR3120.pos.rcc.bw"),
-                                      neg = file.path(proseq_dir, "JR3120.neg.rcc.bw")),
-                      `30' R1` = list(pos = file.path(proseq_dir, "JR3115.pos.rcc.bw"),
-                                      neg = file.path(proseq_dir, "JR3115.neg.rcc.bw")),
-                      `30' R2` = list(pos = file.path(proseq_dir, "JR3118.pos.rcc.bw"),
-                                      neg = file.path(proseq_dir, "JR3118.neg.rcc.bw")),
-                      `30' R3` = list(pos = file.path(proseq_dir, "JR3121.pos.rcc.bw"),
-                                      neg = file.path(proseq_dir, "JR3121.neg.rcc.bw")))
 ```
 
 ```{r atacseq-bigwigs}
@@ -61,13 +36,15 @@ atacseq_bw <- list(`0'` =  "/scratch/Shares/rinn/Michael/firre_timecourse/atacse
 ```{r rnaseq-bw}
 source("bin/rnaseq_coverage_track_lists.R")
 
+# esc_ko_short_all
 test_short_bws <- esc_ko_short_all[1:6]
 duox_shf_region <- GRanges(seqnames = "chr2", ranges = IRanges(start = 122340333, end = 122371763))
 rapgef4_region <-  GRanges(seqnames = "chr2", ranges = IRanges(start = 71976275, end = 72081080))
 apod_region <-  GRanges(seqnames = "chr16", ranges = IRanges(start = 31294192, end = 31316808))
-p_rnaseq <- BigwigTrack_stranded(apod_region, test_short_bws,
-                                 y_label_prefix = "RNA-seq \n Normalied signal",
-                                 downsample.rate = 0.25)
+p_rnaseq <- BigwigTrack(duox_shf_region, test_short_bws,
+                         y_label = "RNA-seq \n Normalied signal",
+                         downsample.rate = 0.25)
+
 
 duox_shf_region <- GRanges(seqnames = 2, ranges = IRanges(start = 122340333, end = 122371763))
 rapgef4_region <-  GRanges(seqnames = 2, ranges = IRanges(start = 71976275, end = 72081080))
@@ -79,6 +56,13 @@ p_annotation <- AnnotationPlot(annotation, apod_region)
 CombineTracks(plotlist = list(p_rnaseq, p_annotation), heights = c(0.9,0.1))
 ggsave("figures/duoxshf_atac.pdf", width = 5, height = 7.5)
 ```
+
+Okay, so the RNA-seq doesn't appear to be from a stranded library prep. Therefore it would be better to plot this in an unstranded way.
+
+```{r}
+rs_bw <- list.files("/scratch/Shares/rinn/Michael/firre_timecourse/rnaseq1/bw")
+```
+
 
 ```{r}
 # Make RNA-seq to bw list
