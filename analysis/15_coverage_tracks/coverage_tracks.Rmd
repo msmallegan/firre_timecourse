@@ -82,6 +82,27 @@ ggsave("figures/apod.pdf", width = 5, height = 19.5)
 ```
 
 
+```{r ep300-promoter}
+region <- GRanges(seqnames = 15, ranges = IRanges(start = 81574507, end = 81597530))
+p_annotation <- AnnotationPlot(annotation, region)
+p_proseq <- BigwigTrack_stranded(region, proseq_bw_representative,
+                                 y_label_prefix = "PRO-seq \n Normalied signal",
+                                 downsample.rate = 0.25)
+region <-  GRanges(seqnames = "chr15", ranges = IRanges(start = 81574507, end = 81597530))
+p_rnaseq <- BigwigTrack(region, esc_ko_short_all,
+                         y_label = "RNA-seq \n Normalied signal",
+                         downsample.rate = 0.25,
+                        track_fill = "#2E456E")
+
+p_atacseq <- BigwigTrack(region, atacseq_bw,
+                         y_label = "ATAC-seq \n Normalied signal",
+                         downsample.rate = 0.25,
+                         track_fill = "#385B56")
+CombineTracks(plotlist = list(p_proseq, p_atacseq, p_rnaseq, p_annotation), heights = c(0.12, 0.32, 1.2, 0.1))
+ggsave("figures/ep300_promoter.pdf", width = 5, height = 19.5)
+```
+
+
 ```{r}
 # "chr6" 124908079 124912220
 region <-  GRanges(seqnames = 6, ranges = IRanges(start = 124908079, end = 124912220))

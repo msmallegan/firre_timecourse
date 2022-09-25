@@ -221,4 +221,3 @@ atacseq_bw <- list(`0'` =  "/scratch/Shares/rinn/Michael/firre_timecourse/atacse
                    `120'` = "/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary/bigwig/ESC_KO_firre_induced_120_R1.mLb.clN.bigWig",
                    `150'` = "/scratch/Shares/rinn/Michael/firre_timecourse/atacseq/results/bwa/mergedLibrary/bigwig/ESC_KO_firre_induced_150_R1.mLb.clN.bigWig")
 
-

@@ -3,14 +3,14 @@ title: "Nascent transcription upon *Firre* induction"
 author: "Michael Smallegan"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: 
-  html_notebook:
-    code_folding: show
+  html_notebook: 
     css: /scratch/Shares/rinn/Michael/firre_timecourse/analysis/util/style.css
     theme: simplex
     toc: yes
     fig_caption: yes
+    number_sections: yes
 editor_options: 
-  chunk_output_type: console
+  chunk_output_type: inline
 ---
 
 ```{r setup, include=FALSE}
@@ -29,7 +29,6 @@ proseq_dir <- "/scratch/Shares/rinn/Michael/firre_timecourse/proseq"
 genome_dir <- "/scratch/Shares/rinn/genomes/Mus_musculus/hisat2"
 ```
 
-
 # Pipeline
 
 PRO-seq libraries were sequenced on a HiSeq 4000 using paired-end 150bp reads to an average read depth of 120M reads. Mapping and QC were handled by the [NascentFlow Nextflow pipeline](https://github.com/Dowell-Lab/Nascent-Flow) (DOI 10.17605/OSF.IO/NDHJ2). Reads were mapped to mm10 using HISAT2.
@@ -38,9 +37,9 @@ Bidirectional transcripts were called with Tfit and Dreg using the [Bidirectiona
 
 # Read counts over bidirectional transcripts
 
-There are two methods for selecting consensus regions to quantify over: 1.) Take the muMerge regions directly. 2.) Take regions that are a uniform size +/- 300bp from the muMerge center. 
+There are two methods for selecting consensus regions to quantify over: 1.) Take the muMerge regions directly. 2.) Take regions that are a uniform size +/- 300bp from the muMerge center.
 
-The reason for the two approaches is that muMerge regions represent the confidence interval in which you're likely to have the center of the bidirectional transcript. Therefore, this region shrinks when you add more samples & have higher confidence. 
+The reason for the two approaches is that muMerge regions represent the confidence interval in which you're likely to have the center of the bidirectional transcript. Therefore, this region shrinks when you add more samples & have higher confidence.
 
 ## Method 1: Quantify directly over muMerge outputted regions
 
@@ -104,7 +103,7 @@ ggdensity(mumerge_bed, "width", add = "mean") +
   ggtitle("muMerged bidirectional widths")
 ```
 
-The mean region width corresponds well to what the Dowell lab has seen across other PRO-seq datasets -- a bidirectional transcript lenth of ~600bp. This justifies a window size of +/-300bp. And as we can see, there are some potentially high confidence bidirectional calls with a muMerge region size of 4bp. 
+The mean region width corresponds well to what the Dowell lab has seen across other PRO-seq datasets -- a bidirectional transcript lenth of \~600bp. This justifies a window size of +/-300bp. And as we can see, there are some potentially high confidence bidirectional calls with a muMerge region size of 4bp.
 
 We'll ultimately use the 600bp fixed window size since it has good theoretical justification, but we'll compare that with the unmodified muMerge regions.
 
@@ -188,7 +187,6 @@ if(!file.exists("results/bidir_counts_negative_strand_600bp.rds")) {
 }
 ```
 
-
 ```{r run-counts-slurm, include=FALSE, eval=FALSE}
 # # Run jobs in R session on fiji compute node using slurm interactive job -- since they 
 # # take a while, but not long enough to justifiy a script? Questionable, but I'm feeling lazy.
@@ -223,8 +221,7 @@ if(!file.exists("results/bidir_counts_negative_strand_600bp.rds")) {
 # write_rds(bidir_counts, "../results/bidir_counts_negative_strand_600bp.rds")
 ```
 
-Having done so, we can calculate the strand bias on bidirectional regions. According to the Dowell lab, their expectation based on previous PRO-seq data is to have a neutral strand bias, which is what we see here in this data. However, we are seeing the Firre transgene exons being called as bidirectionals since although it is a nacscent transcript, it lacks introns, so when it's mapped to the reference genome, the reads map only to exons and look more like a bidirectional nascent transcript than a nascent gene body. 
-
+Having done so, we can calculate the strand bias on bidirectional regions. According to the Dowell lab, their expectation based on previous PRO-seq data is to have a neutral strand bias, which is what we see here in this data. However, we are seeing the Firre transgene exons being called as bidirectionals since although it is a nacscent transcript, it lacks introns, so when it's mapped to the reference genome, the reads map only to exons and look more like a bidirectional nascent transcript than a nascent gene body.
 
 ```{r}
 # Let's calculate strand bias. 
@@ -263,10 +260,9 @@ quantile(counts_stranded$abs_strand_bias)
 
 We'll impose a read depth cutoff of at least 5 reads on the positive strand and 5 reads on the negative strand.
 
-
 ```{r, message=FALSE, warning=FALSE}
 bidir_counts_filtered <- counts_stranded %>% 
-  filter(pos_count >= 5, neg_count >= 5)
+  dplyr::filter(pos_count >= 5, neg_count >= 5)
 ```
 
 This leaves us with `r length(unique(bidir_counts_filtered$bidir_id))` bidirectionals detected. Let's plot the strand bias.
@@ -277,7 +273,7 @@ ggdensity(bidir_counts_filtered, x = "strand_bias")
 
 ```{r}
 bidir_counts_sbfiltered <- counts_stranded %>% 
-  filter(pos_count >= 5, neg_count >= 5, abs_strand_bias <= 1)
+  dplyr::filter(pos_count >= 5, neg_count >= 5, abs_strand_bias <= 1)
 ```
 
 If we additionally filter on a low strand bias (true "bi"directionals), then we have `r length(unique(bidir_counts_sbfiltered$bidir_id))` bidirectionals.
@@ -318,17 +314,13 @@ res_lrt_res <- bind_rows(results(dds, name = "timepoint_30_vs_0", tidy = T) %>%
   mutate(width = end - start)
 
 sig_lrt_res <- res_lrt_res %>%
-  filter(padj < 0.05) %>%
+  dplyr::filter(padj < 0.05) %>%
   arrange(padj)
 
 length(unique(sig_lrt_res$bidir_id))
 ```
 
 
-
-```{r}
-
-```
 
 ```{r}
 dds <- DESeqDataSetFromMatrix(countData = counts_matrix,
@@ -352,7 +344,7 @@ res_vs_zero <- bind_rows(lfcShrink(dds, coef = "timepoint_30_vs_0", type = "ashr
 
 # Let's filter to just those that were sig in LRT
 sig_res_vs_zero <- res_vs_zero %>%
-  filter(bidir_id %in% sig_lrt_res$bidir_id)
+  dplyr::filter(bidir_id %in% sig_lrt_res$bidir_id)
 
 bidir_maxfc <- sig_res_vs_zero %>%
   group_by(bidir_id) %>%
@@ -360,7 +352,10 @@ bidir_maxfc <- sig_res_vs_zero %>%
 
 sig_res_vs_zero <- sig_res_vs_zero %>%
   left_join(bidir_maxfc) %>%
-  filter(max_fc >= log2(1.5))
+  dplyr::filter(max_fc >= log2(1.5))
+length(unique(sig_res_vs_zero$bidir_id))
+write_csv(sig_res_vs_zero, "results/proseq_bidir_de_sig.csv")
+
 ```
 
 ```{r}
@@ -394,17 +389,15 @@ hmm <- sig_res_vs_zero %>%
 
 ```
 
-Are the bidirs that continue their trajectory more likely to be those associated with ATAC-seq peaks?
-Is there a correlation with read counts? In other words, may this be an artifact of the DESeq2 dispersion normalization?
+Are the bidirs that continue their trajectory more likely to be those associated with ATAC-seq peaks? Is there a correlation with read counts? In other words, may this be an artifact of the DESeq2 dispersion normalization?
 
 ```{r}
-ggplot(res_vs_zero %>% filter(comparison == "timepoint_15_vs_0_shrnk"), aes(x = log10(baseMean), y = log2FoldChange)) +
+ggplot(res_vs_zero %>% dplyr::filter(comparison == "timepoint_15_vs_0_shrnk"), aes(x = log10(baseMean), y = log2FoldChange)) +
   geom_point()
 
-ggplot(res_vs_zero %>% filter(comparison == "timepoint_30_vs_0_shrnk"), aes(x = log10(baseMean), y = log2FoldChange)) +
+ggplot(res_vs_zero %>% dplyr::filter(comparison == "timepoint_30_vs_0_shrnk"), aes(x = log10(baseMean), y = log2FoldChange)) +
   geom_point()
 ```
-
 
 ```{r}
 ggplot(res_vs_zero %>% filter(bidir_id %in% sig_lrt_res$bidir_id), 
@@ -436,9 +429,6 @@ ggplot(res_vs_zero, aes(x = log2FoldChange, y = -log10(padj))) +
 # Maybe next do a ranked list with the mean FC and submit to TFEA.
 # Or separately for 15 min and 30 min. 
 ```
-
-
-
 
 ## ATAC-seq peak quantification
 
@@ -816,7 +806,6 @@ ggplot(bidir_cont, aes(x = l2fc_pos, y = l2fc_neg, color = sig_in_both)) +
 # Does this region come up when we take an unstranded approach?
 ```
 
-
 ## Gene level differential expression
 
 ```{r}
@@ -943,3 +932,30 @@ dox_sig <- esc_ko_control_short %>%
 dox_sig_genes <- dox_sig$gene_name
 length(which(dox_sig_genes %in% gene_sig$gene_name))
 ```
+
+
+
+
+## Heatmap of differential bidirectionals
+
+```{r}
+# We jut need to plot the 0 and 15 minute heatmaps. 
+# In order to do that we need to:
+# 1. Get a list of the differential pro-seq regions. 
+# 2. Retrieve the read count vectors from the positive and negative strands.
+# 3. Look at how the heatmap is created in the seurat code.
+# 4. Explore how to plot it in ggplot so that it looks like. https://www.google.com/url?sa=i&url=https%3A%2F%2Fwww.researchgate.net%2Ffigure%2FGDNF-activates-transcriptional-regulatory-elements-A-Heatmap-depicting-PRO-seq_fig1_324211287&psig=AOvVaw02DJqeN5uiXTmmJrFC_2o2&ust=1664153481979000&source=images&cd=vfe&ved=0CAwQjRxqFwoTCNiukf_crvoCFQAAAAAdAAAAABAD
+
+de_bidirs <- read_csv("results/proseq_bidir_de_sig.csv")
+
+de_bidir_coords <- de_bidirs %>%
+  dplyr::select(Chr, Start, End) %>%
+  distinct()
+
+write_csv(de_bidir_coords, "results/de_bidir_coords.csv")
+
+```
+
+
+
+
