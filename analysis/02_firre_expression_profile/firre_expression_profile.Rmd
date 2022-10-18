@@ -21,6 +21,60 @@ source("../util/_util.R")
 load("../01_setup/results/rnaseq_data.RData")
 ```
 
+### Interpolation of Firre expression at 15 minutes
+
+```{r}
+firre_0_30 <- tpm %>%
+  filter(gene_name == "Firre") %>%
+  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
+  left_join(samples) %>%
+  filter(cell_type == "ESC", timecourse_length == "short", timepoint %in% c(0,30, 60),
+         firre_induced == "firre_induced", experiment == "ESC_KO") %>%
+  group_by(gene_name, timepoint) %>%
+  summarize(tpm = mean(tpm)) %>%
+  mutate(timepoint = as.numeric(as.character(timepoint)))
+
+
+firre_expr_at_15 <- (firre_0_30$tpm[which(firre_0_30$timepoint == 30)] - firre_0_30$tpm[which(firre_0_30$timepoint == 0)]) / 2
+
+firre_wt_range <- tpm %>%
+  filter(gene_name == "Firre") %>%
+  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
+  left_join(samples) %>%
+  filter(cell_type == "ESC", timepoint %in% c(0), experiment == "ESC_WT",
+         firre_induced == "control")
+
+
+a <- mean(firre_wt_range$tpm)
+s <-  sd(firre_wt_range$tpm)
+n <- 5
+error <- qnorm(0.975)*s/sqrt(n)
+left <- a-error
+right <- a+error
+crossing_df <- tibble(gene_name = "Firre", x1 = 15, x2 = 15, y1 = 0, y2 = firre_expr_at_15)
+
+firre_expr_at_15 / a
+
+ggplot(firre_0_30 %>% filter(timepoint %in% c(0,30)), aes(x = timepoint, y = tpm)) +
+  geom_hline(yintercept = a, lty = 2, color = "red") +
+  geom_hline(yintercept = left, alpha = 0.3) +
+  geom_hline(yintercept = right, alpha = 0.3) +
+  geom_segment(mapping = aes(x = x1, xend = x2, y = y1, yend = y2), data = crossing_df, lty = 2) +
+  geom_point() +
+  geom_line(lty = 2, alpha = .3, aes(group = gene_name)) +
+  annotate(geom = "text", x = 18, y = 70, label = paste0("y=",round(firre_expr_at_15)), size = 6) +
+  ggtitle("Firre expr. in Firre RESCUE") +
+  scale_x_continuous(breaks = seq(0,30,5)) +
+  theme(plot.title = element_text(size = 13, face = "bold")) +
+  xlab("Time (min)") +
+  ylab("TPM")
+ggsave("figures/firre_rescue_15min_crossing_point.pdf", height = 2.6, width = 3.5)
+
+ggplot(firre_wt_range, aes(x = gene_name, y = tpm, color = firre_induced)) +
+  geom_point()
+```
+
+
 We would like to check that Firre's expression is actually induced by the addition of
 doxycycline.
 
@@ -32,6 +86,8 @@ huh <- tpm %>%
   group_by(gene_id, firre_induced, firre_ko) %>%
   summarize(sd = sd(tpm),
             tpm = mean(tpm))
+
+
 
 huh <- huh %>%
   left_join(hmm)

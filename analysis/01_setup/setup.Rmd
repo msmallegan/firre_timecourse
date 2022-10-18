@@ -140,6 +140,7 @@ save(genes, g2s, tpm, atac_samples, atac_counts, atac_consensus, atac_consensus_
 
 # GEO Submission
 
+
 ```{r}
 # save sample info for GEO submission
 geo_rnaseq_samples <- samples %>%
