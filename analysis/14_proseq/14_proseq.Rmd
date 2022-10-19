@@ -145,50 +145,53 @@ if(!file.exists("results/bidir_counts_600bp_unstranded.rds")) {
                                 nthreads = 22)
   write_rds(bidir_counts, "results/bidir_counts_600bp_unstranded.rds")
 }
-
-proseq_samples <- read_csv("../../proseq/proseq_samplesheet.csv")
-bidir_counts <- read_rds("results/bidir_counts.rds")
-bidir_count_table <- bidir_counts$counts %>%
-  as.data.frame() %>%
-  rownames_to_column("bidir_id") %>%
-  pivot_longer(2:ncol(.), names_to = "sample_id", values_to = "count") %>%
-  mutate(sample_id = gsub(".sorted.bam", "", sample_id)) %>%
-  left_join(proseq_samples %>% dplyr::select(sample_id, geo_sample_name)) %>%
-  dplyr::select(bidir_id, geo_sample_name, count) %>%
-  dplyr::rename(sample_name = geo_sample_name)
-write_csv(bidir_count_table, "../../geo_upload/geo_submission_proseq_oct18/bidirectional_600bp_counts.csv")
-
-tfit_mumerge_bidirectionals_600bp <- read_tsv("results/mumerge_bidirs_600bp.saf", col_types = cols(
-  "GeneID" = col_character(),
-  "Chr" = col_character(),
-  "Start" = col_double(),
-  "End" = col_double(),
-  "Strand" = col_character()
-)) %>%
-  rowwise() %>%
-  mutate(chr_prefix = "chr",
-         chromosome = paste0(chr_prefix, Chr),
-         score = ".") %>%
-  dplyr::select(chromosome, Start, End, GeneID, score, Strand)
-write_tsv(tfit_mumerge_bidirectionals_600bp, 
-          "../../geo_upload/geo_submission_proseq_oct18/tfit_mumerge_bidirectionals_600bp.bed", col_names = FALSE)
-
-all_bidir_coords <- mumerge_bed <- read_tsv("results/mumerge_bidirs.saf",
-                        col_types = list(
-                          GeneID = col_character(),
-                          Chr = col_character(),
-                          Start = col_double(),
-                          End = col_double(),
-                          Strand = col_character()
-                        )) %>%
-  rowwise() %>%
-  mutate(chr_prefix = "chr",
-         chromosome = paste0(chr_prefix, Chr),
-         score = ".") %>%
-  dplyr::select(chromosome, Start, End, GeneID, score, Strand)
-write_tsv(all_bidir_coords, 
-          "../../geo_upload/geo_submission_proseq_oct18/tfit_mumerge_bidirectionals.bed", col_names = FALSE)
 ```
+
+```{r}
+# proseq_samples <- read_csv("../../proseq/proseq_samplesheet.csv")
+# bidir_counts <- read_rds("results/bidir_counts.rds")
+# bidir_count_table <- bidir_counts$counts %>%
+#   as.data.frame() %>%
+#   rownames_to_column("bidir_id") %>%
+#   pivot_longer(2:ncol(.), names_to = "sample_id", values_to = "count") %>%
+#   mutate(sample_id = gsub(".sorted.bam", "", sample_id)) %>%
+#   left_join(proseq_samples %>% dplyr::select(sample_id, geo_sample_name)) %>%
+#   dplyr::select(bidir_id, geo_sample_name, count) %>%
+#   dplyr::rename(sample_name = geo_sample_name)
+# write_csv(bidir_count_table, "../../geo_upload/geo_submission_proseq_oct18/bidirectional_600bp_counts.csv")
+# 
+# tfit_mumerge_bidirectionals_600bp <- read_tsv("results/mumerge_bidirs_600bp.saf", col_types = cols(
+#   "GeneID" = col_character(),
+#   "Chr" = col_character(),
+#   "Start" = col_double(),
+#   "End" = col_double(),
+#   "Strand" = col_character()
+# )) %>%
+#   rowwise() %>%
+#   mutate(chr_prefix = "chr",
+#          chromosome = paste0(chr_prefix, Chr),
+#          score = ".") %>%
+#   dplyr::select(chromosome, Start, End, GeneID, score, Strand)
+# write_tsv(tfit_mumerge_bidirectionals_600bp, 
+#           "../../geo_upload/geo_submission_proseq_oct18/tfit_mumerge_bidirectionals_600bp.bed", col_names = FALSE)
+# 
+# all_bidir_coords <- mumerge_bed <- read_tsv("results/mumerge_bidirs.saf",
+#                         col_types = list(
+#                           GeneID = col_character(),
+#                           Chr = col_character(),
+#                           Start = col_double(),
+#                           End = col_double(),
+#                           Strand = col_character()
+#                         )) %>%
+#   rowwise() %>%
+#   mutate(chr_prefix = "chr",
+#          chromosome = paste0(chr_prefix, Chr),
+#          score = ".") %>%
+#   dplyr::select(chromosome, Start, End, GeneID, score, Strand)
+# write_tsv(all_bidir_coords, 
+#           "../../geo_upload/geo_submission_proseq_oct18/tfit_mumerge_bidirectionals.bed", col_names = FALSE)
+```
+
 
 ### Stranded bidirectional quantification
 

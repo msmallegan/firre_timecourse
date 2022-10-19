@@ -96,6 +96,28 @@ counts <- read_rds("results/merged_peak_counts.rds")
 nrow(counts$counts)
 ```
 
+```{r geo}
+# chipseq_samples <- read_csv("../../chipseq/chipseq_samplesheet.csv")
+# merged_peaks <- rtracklayer::import("macs/FIRRE_H3K27me3_chipseq_combined_peaks.broadPeak")
+# consensus_peaks <- read_tsv("macs/FIRRE_H3K27me3_chipseq_combined_peaks.broadPeak",
+#                             col_names = c("chr","start",
+#                                           "end","peak_id", "score",
+#                                           "strand","signal_value","p_value","q_value"))
+# counts <- read_rds("results/merged_peak_counts.rds")
+# counts_df <- counts$counts %>%
+#   as.data.frame() %>%
+#   rownames_to_column("peak_id") %>%
+#   pivot_longer(2:ncol(.), names_to = "bam_name", values_to = "count") %>%
+#   mutate(bam_name = gsub(".R1.mLb.clN.sorted.bam", "", bam_name)) %>%
+#   left_join(chipseq_samples %>% dplyr::select(geo_sample_name, bam_name)) %>%
+#   dplyr::select(peak_id, geo_sample_name, count) %>%
+#   dplyr::rename(sample_name = geo_sample_name)
+# write_csv(counts_df, "../../geo_upload/geo_submission_chipseq_oct18/H3K27me3_chipseq_consensus_peak_counts.csv")
+# write_csv(consensus_peaks, "../../geo_upload/geo_submission_chipseq_oct18/H3K27me3_chipseq_consensus_peaks.csv")
+
+```
+
+
 ```{r}
 # chipr_peaks <- read.table("data/chipr/h3k27me3_ip_chipr_optimal.bed") 
 # names(chipr_peaks) <- c("chr",	"start", "end", "name", "score", "strand", "signalValue", "pval", "qval")
