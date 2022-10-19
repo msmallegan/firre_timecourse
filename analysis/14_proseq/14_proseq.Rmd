@@ -402,7 +402,7 @@ sig_res_vs_zero <- sig_res_vs_zero %>%
   dplyr::filter(max_fc >= log2(1.5))
 length(unique(sig_res_vs_zero$bidir_id))
 write_csv(sig_res_vs_zero, "results/proseq_bidir_de_sig.csv")
-
+sig_res_vs_zero <- read_csv("results/proseq_bidir_de_sig.csv")
 
 sig_summary <- sig_res_vs_zero %>%
   filter(comparison == "timepoint_15_vs_0_shrnk") %>%
