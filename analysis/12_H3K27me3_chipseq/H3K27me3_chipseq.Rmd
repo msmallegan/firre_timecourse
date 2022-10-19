@@ -93,7 +93,7 @@ counts <- featureCounts(bam_files,
                         isPairedEnd = TRUE, nthreads = 16)
 write_rds(counts, "results/merged_peak_counts.rds")
 counts <- read_rds("results/merged_peak_counts.rds")
-nrow(counts$counts)
+
 ```
 
 ```{r geo}
@@ -164,6 +164,7 @@ ip_samples <- samples %>% filter(h3k27me3 == "IP")
 ip_counts <- count_matrix[,as.character(ip_samples$sample_id)]
 
 stopifnot(all(colnames(ip_counts) == ip_samples$sample_id))
+ip_samples$firre_itg <- factor(ip_samples$firre_itg, levels = c("CTL", "ITG"))
 
 library(DESeq2)
 
@@ -171,67 +172,64 @@ dds <- DESeqDataSetFromMatrix(countData = ip_counts,
                               colData = ip_samples,
                               design = ~ firre_itg)
 dds <- DESeq(dds)
-hmm <- assay(dds)
-rlog_ip_counts <- rlog(dds, blind = TRUE)
-
-rlogipcounts <- assay(rlog_ip_counts) %>%
-  as.data.frame() %>%
-  rownames_to_column("peak_id")
+# rlog_ip_counts <- rlog(dds, blind = TRUE)
+# 
+# rlogipcounts <- assay(rlog_ip_counts) %>%
+#   as.data.frame() %>%
+#   rownames_to_column("peak_id")
 
 dds <- estimateSizeFactors(dds)
-colnames(rlogipcounts)
+
 normalized_counts <- counts(dds, normalized=TRUE) %>%
   as.data.frame() %>%
   rownames_to_column("peak_id")
+write_csv(normalized_counts, "results/normalized_counts.csv")
 library(ggpubr)
+colnames(normalized_counts)
+# FirreOE
 ggplot(normalized_counts, aes(x = WT_ITG_0_IP, y = WT_ITG_48_IP)) +
   geom_abline(slope = 1, lty = 2) +
-  # geom_point() +
+  geom_point() +
   stat_cor() +
-  ggtitle("H3K27me3 WT (OE) Peak counts") +
+  ggtitle("H3K27me3 Firre OE") +
   xlab("Pre-Firre induction (0h)") +
   ylab("Post-Firre induction (48h)")+
   xlim(0,10000) +
   ylim(0,10000)
-ggsave("figures/h3k27me3_WT_0_vs_48_normalized_counts_noshow.pdf", height = 2.5, width = 2.5, useDingbats = FALSE)
-ggplot(normalized_counts, aes(x = WT_ITG_0_IP, y = WT_ITG_48_IP)) +
+ggsave("figures/h3k27me3_FirreOE_0_vs_48_normalized_counts.pdf", height = 3.5, width = 3.5, useDingbats = FALSE)
+# WT
+ggplot(normalized_counts, aes(x = WT_CTL_0_IP, y = WT_CTL_48_IP)) +
   geom_abline(slope = 1, lty = 2) +
   geom_point() +
-  # stat_cor() +
-  ggtitle("H3K27me3 WT (OE) Peak counts") +
-  xlab("Pre-Firre induction (0h)") +
-  ylab("Post-Firre induction (48h)") +
-    xlim(0,10000) +
-  ylim(0,10000)
-ggsave("figures/h3k27me3_WT_0_vs_48_normalized_counts_noshow.png", height = 2.5, width = 2.5)
-
-ggplot(normalized_counts, aes(x = KO_ITG_0_IP, y = KO_ITG_48_IP)) +
-  geom_abline(slope = 1, lty = 2) +
-  # geom_point() +
   stat_cor() +
-    ggtitle("H3K27me3 KO (Rescue) Peak counts") +
+  ggtitle("H3K27me3 Firre WT") +
   xlab("Pre-Firre induction (0h)") +
-  ylab("Post-Firre induction (48h)")  +
-  xlim(0,11000) +
-  ylim(0,11000)
-ggsave("figures/h3k27me3_KO_0_vs_48_normalized_counts_noshow.pdf", height = 2.5, width = 2.5, useDingbats = FALSE)
-
+  ylab("Post-Firre induction (48h)")+
+  xlim(0,10000) +
+  ylim(0,10000)
+ggsave("figures/h3k27me3_WT_0_vs_48_normalized_counts.pdf", height = 3.5, width = 3.5, useDingbats = FALSE)
+# FirreRescue
 ggplot(normalized_counts, aes(x = KO_ITG_0_IP, y = KO_ITG_48_IP)) +
   geom_abline(slope = 1, lty = 2) +
   geom_point() +
-  # stat_cor() +
-    ggtitle("H3K27me3 KO (Rescue) Peak counts") +
+  stat_cor() +
+  ggtitle("H3K27me3 Firre RESCUE") +
   xlab("Pre-Firre induction (0h)") +
-  ylab("Post-Firre induction (48h)")  +
-  xlim(0,11000) +
-  ylim(0,11000)
-ggsave("figures/h3k27me3_KO_0_vs_48_normalized_counts_noshow.png", height = 2.5, width = 2.5)
-
-ggplot(rlogipcounts, aes(x = WT_ITG_0_IP, y = WT_ITG_48_IP)) +
-  geom_point()
-
-ggplot(rlogipcounts, aes(x = KO_ITG_0_IP, y = KO_ITG_48_IP)) +
-  geom_point()
+  ylab("Post-Firre induction (48h)")+
+  xlim(0,10000) +
+  ylim(0,10000)
+ggsave("figures/h3k27me3_FirreRESCUE_0_vs_48_normalized_counts.pdf", height = 3.5, width = 3.5, useDingbats = FALSE)
+# FirreKO
+ggplot(normalized_counts, aes(x = KO_CTL_0_IP, y = KO_CTL_48_IP)) +
+  geom_abline(slope = 1, lty = 2) +
+  geom_point() +
+  stat_cor() +
+  ggtitle("H3K27me3 Firre KO") +
+  xlab("Pre-Firre induction (0h)") +
+  ylab("Post-Firre induction (48h)")+
+  xlim(0,10000) +
+  ylim(0,10000)
+ggsave("figures/h3k27me3_FirreKO_0_vs_48_normalized_counts.pdf", height = 3.5, width = 3.5, useDingbats = FALSE)
 
 
 resultsNames(dds)
