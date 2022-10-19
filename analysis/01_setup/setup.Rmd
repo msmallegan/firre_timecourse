@@ -22,9 +22,6 @@ proseq_samples <- read_csv("../../proseq/proseq_samplesheet.csv")
 
 table(file.exists(chipseq_samples$raw_data_read1, chipseq_samples$raw_data_read2))
 table(file.exists(rnaseq_samples$raw_data_read1, rnaseq_samples$raw_data_read2))
-
-hmm_rnaseq <- rnaseq_samples %>% filter(file.exists(raw_data_read1) == FALSE)
-
 table(file.exists(atacseq_samples$raw_data_read1, atacseq_samples$raw_data_read2))
 table(file.exists(proseq_samples$raw_data_read1, proseq_samples$raw_data_read2))
 ```
