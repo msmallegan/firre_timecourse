@@ -939,7 +939,7 @@ loyal_rap_peaks_gr <- GRanges(seqnames = loyal_rap_peaks$V1,
 # Firre responder GR.
 load("../11_short_timecourse_combined/results/short_vszero_sig.RData", verbose = T)
 
-fr_genes <- genes[genes$gene_id %in% short_vszero_sig$gene_id]
+fr_genes <- gencode_genes[gencode_genes$gene_id %in% short_vszero_sig$gene_id]
 # Extend 50kb on either side
 extend_region <- 5e4
 orig_widths <- width(fr_genes)
@@ -947,7 +947,7 @@ start(fr_genes) <- start(fr_genes) - extend_region
 end(fr_genes) <- end(fr_genes) + extend_region
 stopifnot(all(width(fr_genes) - orig_widths == extend_region *2))
 
-promoters_gr <- promoters(genes, upstream = 1, downstream = 1)
+promoters_gr <- promoters(gencode_genes, upstream = 1, downstream = 1)
 promoters_df <- promoters_gr %>% as.data.frame() %>%
   filter(gene_type %in% c("protein_coding", "processed_transcript", "bidirectional_promoter_lncRNA",
                           "antisense", "lincRNA", "sense_intronic"))
@@ -985,7 +985,7 @@ all_firre_responder_genes <- unique(c(short_vszero_sig$gene_id,
                                       wt_overexp_long_vszero_sig$gene_id,
                                       wt_overexp_short_vszero_sig$gene_id))
 
-fr_genes <- genes[genes$gene_id %in% all_firre_responder_genes]
+fr_genes <- gencode_genes[gencode_genes$gene_id %in% all_firre_responder_genes]
 length(fr_genes)
 # Extend 50kb on either side
 extend_region <- 5e4
@@ -994,7 +994,7 @@ start(fr_genes) <- start(fr_genes) - extend_region
 end(fr_genes) <- end(fr_genes) + extend_region
 stopifnot(all(width(fr_genes) - orig_widths == extend_region *2))
 
-promoters_gr <- promoters(genes, upstream = 1, downstream = 1)
+promoters_gr <- promoters(gencode_genes, upstream = 1, downstream = 1)
 promoters_df <- promoters_gr %>% as.data.frame() %>%
   filter(gene_type %in% c("protein_coding", "processed_transcript", "bidirectional_promoter_lncRNA",
                           "antisense", "lincRNA", "sense_intronic"))
@@ -1014,6 +1014,100 @@ findOverlaps(loyal_rap_peaks_gr, fr_genes)
 findOverlaps(pub_rap_peaks_gr, fr_promoters_gr)
 findOverlaps(loyal_rap_peaks_gr, fr_promoters_gr)
 ```
+
+```{r}
+library(valr)
+
+load("../11_short_timecourse_combined/results/short_vszero_sig.RData", verbose = T)
+load("../05_long_timecourse_rescue/results/ko_rescue_long_vszero_sig.RData", verbose = T)
+load("../06_short_timecourse_rescue/results/ko_rescue_short_vszero_sig.RData", verbose = T)
+load("../08_long_timecourse_overexpression/results/wt_overexp_long_vszero_sig.RData", verbose = T)
+load("../09_short_timecourse_overexpression/results/wt_overexp_short_vszero_sig.RData", verbose = T)
+
+all_firre_responder_genes <- unique(c(short_vszero_sig$gene_id,
+                                      ko_rescue_long_vszero_sig$gene_id,
+                                      ko_rescue_short_vszero_sig$gene_id,
+                                      wt_overexp_long_vszero_sig$gene_id,
+                                      wt_overexp_short_vszero_sig$gene_id))
+
+short_robust_firre_responder_genes <- unique(short_vszero_sig$gene_id)
+
+# Take out Firre
+short_robust_firre_responder_genes <- short_robust_firre_responder_genes[short_robust_firre_responder_genes!="ENSMUSG00000085396.7"]
+all_firre_responder_genes <- all_firre_responder_genes[all_firre_responder_genes!="ENSMUSG00000085396.7"]
+
+# Make TSS
+tss_df <- promoters(gencode_genes, upstream = 0, downstream = 0) %>% 
+  as.data.frame() %>%
+  filter(gene_type %in% c("protein_coding", "processed_transcript", "bidirectional_promoter_lncRNA",
+                          "antisense", "lincRNA", "sense_intronic")) %>%
+  dplyr::rename(chrom = seqnames) %>%
+  mutate(chrom = as.character(chrom)) %>%
+  ungroup()
+
+fr_fast <- tss_df %>%
+  filter(gene_id %in% short_robust_firre_responder_genes)
+fr_all <- tss_df %>%
+  filter(gene_id %in% all_firre_responder_genes)
+
+# Make RAP peaks valr bed
+pub_rap_peaks <- read_tsv("data/Significant Firre RAP trans sites copy.txt",
+                          col_names = c("chrom", "start", "end")) %>%
+  mutate(chrom = gsub("mm", "chr", chrom)) %>%
+  ungroup()
+
+fr_fast_nearby <- bed_closest(fr_fast, pub_rap_peaks) %>%
+  mutate(test = "Rapid Responders N=29")
+fr_all_nearby <- bed_closest(fr_all, pub_rap_peaks) %>%
+  mutate(test = "All Responders N=519")
+genome_nearby <- bed_closest(fr_all, pub_rap_peaks) %>%
+  mutate(test = "All Genes N=31784")
+
+
+rap_nearby <- bind_rows(fr_fast_nearby,fr_all_nearby,genome_nearby) %>%
+  mutate(abs_dist = abs(.dist),
+         abs_dist_mb = abs_dist / 1e6)
+
+ggplot(rap_nearby, aes(x = abs(.dist))) +
+  geom_density(fill = "#424242", alpha = 0.6) +
+  facet_grid(test~.)
+
+ggplot(rap_nearby, aes(x = test, y = abs(.dist))) +
+  geom_boxplot() 
+ggboxplot(rap_nearby, x = "test", y = "abs_dist",
+          fill = "test", palette = c("#a8404c", "#a8404c", "#424242")) +
+  stat_compare_means(aes(label = ..p.signif..),
+                  method = "t.test", ref.group = "All Genes N=31784") +
+     stat_summary(fun.data = function(x) data.frame(y=1e8, label = paste("Mean=",round(mean(x)/1e6), " Mb")), geom="text") +
+     theme(legend.position="none")
+
+ggboxplot(rap_nearby, x = "test", y = "abs_dist",
+          fill = "test", palette = c("#a8404c", "#a8404c", "#424242")) +
+  stat_compare_means(aes(label = ..p.signif..),
+                  method = "t.test", ref.group = "All Genes N=31784") +
+     stat_summary(fun.data = function(x) data.frame(y=1e8, label = paste("Mean=",round(mean(x)/1e6), " Mb")), geom="text") +
+     theme(legend.position="none") +
+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  ggtitle("Firre RAP Peak distance n= 39") +
+  ylab("Dist. to TSS (bp)")
+ggsave("figures/FirreRAP_dist_to_TSS_200Mb.pdf", height = 4.5, width = 4, useDingbats = FALSE)
+library(ggrepel)
+ggboxplot(rap_nearby %>% filter(abs_dist_mb < 1), x = "test", y = "abs_dist",
+          fill = "test", palette = c("#a8404c", "#a8404c", "#424242"), add = "dotplot") +
+     stat_summary(fun.data = function(x) data.frame(y=1e8, label = paste("Mean=",round(mean(x)/1e6), " Mb")), geom="text") +
+     theme(legend.position="none") +
+  ylim(0,1e6) +
+  geom_text_repel(aes(label = gene_name.x), data = rap_nearby %>% filter((abs_dist_mb < 0.5)|(abs_dist_mb <1 & test == "Rapid Responders N=29"))) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  ggtitle("Firre RAP Peak distance n= 39") +
+  ylab("Dist. to TSS (bp)")
+ggsave("figures/FirreRAP_dist_to_TSS_1Mb.pdf", height = 4.5, width = 4, useDingbats = FALSE)
+
+# Rapgef4 is 785 Kb away.
+
+
+```
+
 
 
 
