@@ -1060,7 +1060,7 @@ fr_fast_nearby <- bed_closest(fr_fast, pub_rap_peaks) %>%
   mutate(test = "Rapid Responders N=29")
 fr_all_nearby <- bed_closest(fr_all, pub_rap_peaks) %>%
   mutate(test = "All Responders N=519")
-genome_nearby <- bed_closest(fr_all, pub_rap_peaks) %>%
+genome_nearby <- bed_closest(tss_df, pub_rap_peaks) %>%
   mutate(test = "All Genes N=31784")
 
 
@@ -1091,13 +1091,14 @@ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
   ggtitle("Firre RAP Peak distance n= 39") +
   ylab("Dist. to TSS (bp)")
 ggsave("figures/FirreRAP_dist_to_TSS_200Mb.pdf", height = 4.5, width = 4, useDingbats = FALSE)
+table(rap_nearby$test)
 library(ggrepel)
 ggboxplot(rap_nearby %>% filter(abs_dist_mb < 1), x = "test", y = "abs_dist",
           fill = "test", palette = c("#a8404c", "#a8404c", "#424242"), add = "dotplot") +
      stat_summary(fun.data = function(x) data.frame(y=1e8, label = paste("Mean=",round(mean(x)/1e6), " Mb")), geom="text") +
      theme(legend.position="none") +
   ylim(0,1e6) +
-  geom_text_repel(aes(label = gene_name.x), data = rap_nearby %>% filter((abs_dist_mb < 0.5)|(abs_dist_mb <1 & test == "Rapid Responders N=29"))) +
+  geom_text_repel(aes(label = gene_name.x), data = rap_nearby %>% filter((abs_dist_mb < 0.5 & test != "All Genes N=31784")|(abs_dist_mb <1 & test == "Rapid Responders N=29"))) +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
   ggtitle("Firre RAP Peak distance n= 39") +
   ylab("Dist. to TSS (bp)")

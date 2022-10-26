@@ -441,7 +441,7 @@ pheatmap::pheatmap(sig_bidir_counts_matrix_scaled, show_rownames = FALSE,
                    breaks = seq(-2, 2, length.out = length(col_pal10)),
                    color = col_pal10,
                    # color = rev(pals::brewer.rdbu(100)),
-         border_color = NA)
+                   border_color = NA)
 dev.off()
 
 
@@ -469,7 +469,7 @@ ggplot(sig_res_vs_zero, aes(x = timepoint, y = log2FoldChange, group = bidir_id)
 ggsave("figures/proseq_sig_vs_zero_scatter.pdf")
 
 # Let's look at those that continue their trajectory
-hmm <- sig_res_vs_zero %>%
+monotonic_bidirs <- sig_res_vs_zero %>%
   dplyr::filter(timepoint %in% c(15,30)) %>%
   dplyr::select(-comparison) %>%
   distinct() %>%
@@ -480,7 +480,7 @@ hmm <- sig_res_vs_zero %>%
   distinct()
 
 sig_res_vs_zero <- sig_res_vs_zero %>%
-  left_join(hmm)
+  left_join(monotonic_bidirs)
 
 ggplot(sig_res_vs_zero %>% filter(monotonic == TRUE), aes(x = timepoint, y = log2FoldChange, group = bidir_id)) +
   geom_hline(yintercept = 0) +
@@ -491,6 +491,8 @@ monoton <- sig_res_vs_zero %>%
   filter(monotonic == TRUE)
 
 length(unique(monoton$bidir_id))
+
+write_csv(monoton, "results/monotonic_bidirectionals.csv")
 
 ```
 
@@ -1654,6 +1656,301 @@ pheatmap(huh_mat, cluster_cols = FALSE, show_colnames = FALSE, show_rownames = F
 plot(region_data)
 ```
 
+#### Overlaps with monotonic bidirs and ATAC/FR genes
+
+```{r}
+library(valr)
+# RAP
+pub_rap_peaks <- read_tsv("../12_atacseq/data/Significant Firre RAP trans sites copy.txt",
+                          col_names = c("chrom", "start", "end")) %>%
+  mutate(chrom = gsub("mm", "chr", chrom)) %>%
+  ungroup() %>%
+  mutate(type = "RAP",
+         test = "FIRRE RAP N=39")
+
+# ATAC
+atac_up <- read.table("/scratch/Shares/rinn/Michael/firre_timecourse/analysis/12_atacseq/results/atac_up.bed", col.names = c("chrom", "start", "end")) %>%
+  mutate(type = "ATAC",
+         test = "ATAC up N=51")
+atac_down <- read.table("/scratch/Shares/rinn/Michael/firre_timecourse/analysis/12_atacseq/results/atac_down.bed", col.names = c("chrom", "start", "end")) %>%
+  mutate(type = "atac_down") %>%
+    mutate(type = "ATAC",
+         test = "ATAC down N=4")
+
+# PRO-seq
+length(unique(monotonic$bidir_id))
+monotonic <- read_csv("results/monotonic_bidirectionals.csv") %>%
+  filter(timepoint != 0) %>%
+  dplyr::rename(chrom = Chr,
+                start = Start,
+                end = End,
+                strand = Strand) %>%
+  mutate(chrom  = paste0("chr", chrom)) %>%
+  mutate(direction = ifelse(log2FoldChange > 0, "up", "down")) %>%
+  dplyr::select(bidir_id, direction, chrom, start, end) %>%
+  distinct() %>%
+  mutate(type = "PROseq",
+         test = "DE BIDIR MONOTONIC N=41")
+
+# FR genes
+load("../11_short_timecourse_combined/results/short_vszero_sig.RData", verbose = T)
+load("../05_long_timecourse_rescue/results/ko_rescue_long_vszero_sig.RData", verbose = T)
+load("../06_short_timecourse_rescue/results/ko_rescue_short_vszero_sig.RData", verbose = T)
+load("../08_long_timecourse_overexpression/results/wt_overexp_long_vszero_sig.RData", verbose = T)
+load("../09_short_timecourse_overexpression/results/wt_overexp_short_vszero_sig.RData", verbose = T)
+
+all_firre_responder_genes <- unique(c(short_vszero_sig$gene_id,
+                                      ko_rescue_long_vszero_sig$gene_id,
+                                      ko_rescue_short_vszero_sig$gene_id,
+                                      wt_overexp_long_vszero_sig$gene_id,
+                                      wt_overexp_short_vszero_sig$gene_id))
+
+short_robust_firre_responder_genes <- unique(short_vszero_sig$gene_id)
+
+# Take out Firre
+# short_robust_firre_responder_genes <- short_robust_firre_responder_genes[short_robust_firre_responder_genes!="ENSMUSG00000085396.7"]
+# all_firre_responder_genes <- all_firre_responder_genes[all_firre_responder_genes!="ENSMUSG00000085396.7"]
+
+# Make TSS
+gencode_genes <- rtracklayer::import("../util/gencode.vM25.annotation.genes.gtf")
+tss_df <- promoters(gencode_genes, upstream = 0, downstream = 0) %>% 
+  as.data.frame() %>%
+  filter(gene_type %in% c("protein_coding", "processed_transcript", "bidirectional_promoter_lncRNA",
+                          "antisense", "lincRNA", "sense_intronic")) %>%
+  dplyr::rename(chrom = seqnames) %>%
+  mutate(chrom = as.character(chrom)) %>%
+  ungroup()
+
+fr_fast <- tss_df %>%
+  filter(gene_id %in% short_robust_firre_responder_genes)
+fr_all <- tss_df %>%
+  filter(gene_id %in% all_firre_responder_genes)
+
+fr_fast %<>%
+   mutate(test = "Rapid Responders N=29",
+          type = "gene")
+fr_all %<>%
+ mutate(test = "All Responders N=519",
+        type = "gene")
+
+fr_all %<>%
+  filter(!(gene_id %in% fr_fast$gene_id))
+
+
+# DATADATADATA
+length(which(is.na(all_data$test)))
+all_data <- bind_rows(pub_rap_peaks, atac_up, atac_down, monotonic, fr_fast, fr_all)
+
+
+clustered_data <- bed_cluster(all_data, max_dist = 3e6) %>%
+  group_by(.id) %>%
+  mutate(cluster_count = n())
+table(clustered_data$cluster_count)
+write_csv(clustered_data, "results/omics_combined_clustered.csv")
+
+occupied_clusters <- clustered_data %>%
+  filter(cluster_count > 2)
+
+length(unique(occupied_clusters$.id))
+
+occupied_clusters %<>%
+  group_by(.id) %>%
+  mutate(cluster_diversity = length(unique(type)))
+
+od_clusters <- occupied_clusters %>%
+  filter(cluster_diversity > 2)
+
+mono_clusters <- occupied_clusters %>%
+  filter(cluster_diversity == 1)
+table(table(od_clusters$.id))
+c1 <- od_clusters %>% filter(.id == 150)
+ggplot(c1, aes(x = start, y = 1, color = test)) +
+  geom_segment(aes(y = 1, yend = 0, x = start, xend = start),
+               data = c1 %>% filter(type == "ATAC")) +
+   geom_segment(aes(y = 0.5, yend = 0, x = start, xend = start),
+               data = c1 %>% filter(type == "RAP")) +
+  geom_segment(aes(y = 1.5, yend = 0, x = start, xend = start),
+               data = c1 %>% filter(type == "gene"))+
+  geom_text_repel(aes(label = gene_name, y = 2, x = start)) +
+  ggtitle("Chr2: qC2")
+
+c2 <- od_clusters %>% filter(.id == 269)
+ggplot(c2, aes(color = type)) +
+  geom_segment(aes(y = 1, yend = 0, x = start, xend = start),
+               data = c2 %>% filter(type == "ATAC")) +
+   geom_segment(aes(y = 0.5, yend = 0, x = start, xend = start),
+               data = c2 %>% filter(type == "PROseq")) +
+  geom_segment(aes(y = 1.5, yend = 0, x = start, xend = start),
+               data = c2 %>% filter(type == "gene"))+
+  geom_text_repel(aes(label = gene_name, y = 2, x = start),
+                  data = c2 %>% filter(!is.na(gene_name))) +
+  ggtitle("Chr7: 7qB3")
+c3$test
+c3 <- od_clusters %>% filter(.id == 172)
+ggplot(c3, aes(color = type)) +
+  geom_segment(aes(y = 1, yend = 0, x = start, xend = start),
+               data = c3 %>% filter(type == "ATAC")) +
+   geom_segment(aes(y = 0.5, yend = 0, x = start, xend = start),
+               data = c3 %>% filter(type == "PROseq")) +
+  geom_segment(aes(y = 2, yend = 0, x = start, xend = start),
+               data = c3 %>% filter(test == "Rapid Responders N=29"))+
+    geom_segment(aes(y = 1.5, yend = 0, x = start, xend = start),
+               data = c3 %>% filter(test == "All Responders N=519")) +
+  geom_text_repel(aes(label = gene_name, y = 2, x = start),
+                  data = c3 %>% filter(!is.na(gene_name))) +
+  ggtitle("Chr2: 2qE5")
+
+
+c4 <- od_clusters %>% filter(.id == 119)
+ggplot(c4, aes(color = test)) +
+  geom_segment(aes(y = 1, yend = 0, x = start, xend = start),
+               data = c4 %>% filter(type == "ATAC")) +
+   geom_segment(aes(y = 0.5, yend = 0, x = start, xend = start),
+               data = c4 %>% filter(type == "PROseq")) +
+  geom_segment(aes(y = 2, yend = 0, x = start, xend = start),
+               data = c4 %>% filter(test == "Rapid Responders N=29"))+
+    geom_segment(aes(y = 1.5, yend = 0, x = start, xend = start),
+               data = c4 %>% filter(test == "All Responders N=519")) +
+  geom_text_repel(aes(label = gene_name, y = 2, x = start),
+                  data = c4 %>% filter(!is.na(gene_name))) +
+  ggtitle("Chr16: 16qB2")
+
+
+c5 <- od_clusters %>% filter(.id == 127)
+ggplot(c5, aes(color = test)) +
+  geom_segment(aes(y = 1, yend = 0, x = start, xend = start),
+               data = c5 %>% filter(type == "ATAC")) +
+   geom_segment(aes(y = 0.5, yend = 0, x = start, xend = start),
+               data = c5 %>% filter(type == "PROseq")) +
+  # geom_segment(aes(y = 2, yend = 0, x = start, xend = start),
+  #              data = c5 %>% filter(test == "Rapid Responders N=29"))+
+    geom_segment(aes(y = 1.5, yend = 0, x = start, xend = start),
+               data = c5 %>% filter(test == "All Responders N=519")) +
+  geom_text_repel(aes(label = gene_name, y = 2, x = start),
+                  data = c5 %>% filter(!is.na(gene_name))) +
+  ggtitle("Chr17: 17qA3.3")
+
+
+c6 <- od_clusters %>% filter(.id == 109)
+ggplot(c6, aes(color = test)) +
+  geom_segment(aes(y = 1, yend = 0, x = start, xend = start),
+               data = c6 %>% filter(type == "PROseq")) +
+   geom_segment(aes(y = 0.5, yend = 0, x = start, xend = start),
+               data = c6 %>% filter(type == "RAP")) +
+  # geom_segment(aes(y = 2, yend = 0, x = start, xend = start),
+  #              data = c5 %>% filter(test == "Rapid Responders N=29"))+
+    geom_segment(aes(y = 1.5, yend = 0, x = start, xend = start),
+               data = c6 %>% filter(test == "All Responders N=519")) +
+  geom_text_repel(aes(label = gene_name, y = 2, x = start),
+                  data = c6 %>% filter(!is.na(gene_name))) +
+  ggtitle("Chr15: 15qd3")
+
+  
+c1$type
+
+?geom_segment
+
+what <- hmm %>%
+  group_by(.id)
+# MONOTONIC BIDIRS AND FIRRE RESPONDER GENES
+fr_fast_nearby <- bed_closest(fr_fast, monotonic) %>%
+  mutate(test = "Rapid Responders N=29")
+fr_all_nearby <- bed_closest(fr_all, monotonic) %>%
+  mutate(test = "All Responders N=519")
+genome_nearby <- bed_closest(fr_all, monotonic) %>%
+  mutate(test = "All Genes N=31784")
+
+
+bidir_nearby <- bind_rows(fr_fast_nearby,fr_all_nearby,genome_nearby) %>%
+  mutate(abs_dist = abs(.dist),
+         abs_dist_mb = abs_dist / 1e6)
+
+rapid_bidir_gene <- bidir_nearby %>%
+  filter(test == "Rapid Responders N=29")
+
+
+# ATAC-seq vs BIDIRS
+# MONOTONIC BIDIRS AND FIRRE RESPONDER GENES
+
+atac_up_nearby <- bed_closest(atac_up, monotonic) %>%
+  mutate(test = "ATAC up N=51")
+atac_down_nearby <- bed_closest(atac_down, monotonic) %>%
+  mutate(test = "ATAC down N=4")
+
+atac_bidir_nearby <- bind_rows(atac_up_nearby, atac_down_nearby) %>%
+  mutate(abs_dist = abs(.dist),
+         abs_dist_mb = abs_dist / 1e6)
+
+bidir_overlapping_atac <- atac_bidir_nearby %>%
+  filter(.overlap > 0)
+nrow(pub_rap_peaks)
+# RAP vs BIDIRS
+rap_bidir_nearby <- bed_closest(pub_rap_peaks, monotonic) %>%
+  mutate(test = "RAP peaks N=39") %>%
+    mutate(abs_dist = abs(.dist),
+         abs_dist_mb = abs_dist / 1e6)
+
+monotonic_bidir_nearby <- bind_rows(rap_bidir_nearby,
+                                    atac_bidir_nearby,
+                                    bidir_nearby)
+
+write_csv(monotonic_bidir_nearby, "results/monotonic_bidir_nearby.csv")
+unique(monotonic_bidir_nearby$test)
+bidir_3mb <- monotonic_bidir_nearby %>%filter(abs_dist_mb < 3,
+                                              test != "All Responders N=519",
+                                              test != "All Genes N=31784")
+bidir_3mb$label <- bidir_3mb$gene_name.x
+bidir_3mb$label[bidir_3mb$start.x == 74916973] <- "chr15 lymphocyte antigens & Adgrb1 (FR slow)"
+bidir_3mb$label[bidir_3mb$start.x == 31299422] <- "Apod peak"
+bidir_3mb$label[bidir_3mb$start.x == 122333918] <- "Duox1 Peak"
 
 
 
+# Chr 15 LY6 lymphocyte antigen locus
+# Chr 15 RAP peak is in Adgrb1
+ggplot(bidir_3mb, aes(x = test, y = abs_dist_mb)) +
+  geom_point() +
+  ylim(0,3) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  geom_text_repel(aes(label = label), data = bidir_3mb %>%
+                    filter(!is.na(label)))  +
+  ggtitle("Monotonic bidir (N=41) dist. to feature")
+ggsave("figures/monotonic_bidir_dist_to_feature.pdf")
+
+# ggplot(bidir_nearby, aes(x = abs(.dist))) +
+#   geom_density(fill = "#424242", alpha = 0.6) +
+#   facet_grid(test~.)
+
+ggplot(bidir_nearby, aes(x = test, y = abs(.dist))) +
+  geom_boxplot() 
+ggboxplot(bidir_nearby, x = "test", y = "abs_dist",
+          fill = "test", palette = c("#a8404c", "#a8404c", "#424242")) +
+  stat_compare_means(aes(label = ..p.signif..),
+                     method = "t.test", ref.group = "All Genes N=31784") +
+  stat_summary(fun.data = function(x) data.frame(y=1e8, label = paste("Mean=",round(mean(x)/1e6), " Mb")), geom="text") +
+  theme(legend.position="none")
+
+ggboxplot(rap_nearby, x = "test", y = "abs_dist",
+          fill = "test", palette = c("#a8404c", "#a8404c", "#424242")) +
+  stat_compare_means(aes(label = ..p.signif..),
+                     method = "t.test", ref.group = "All Genes N=31784") +
+  stat_summary(fun.data = function(x) data.frame(y=1e8, label = paste("Mean=",round(mean(x)/1e6), " Mb")), geom="text") +
+  theme(legend.position="none") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  ggtitle("Firre RAP Peak distance n= 39") +
+  ylab("Dist. to TSS (bp)")
+ggsave("figures/FirreRAP_dist_to_TSS_200Mb.pdf", height = 4.5, width = 4, useDingbats = FALSE)
+library(ggrepel)
+ggboxplot(rap_nearby %>% filter(abs_dist_mb < 1), x = "test", y = "abs_dist",
+          fill = "test", palette = c("#a8404c", "#a8404c", "#424242"), add = "dotplot") +
+  stat_summary(fun.data = function(x) data.frame(y=1e8, label = paste("Mean=",round(mean(x)/1e6), " Mb")), geom="text") +
+  theme(legend.position="none") +
+  ylim(0,1e6) +
+  geom_text_repel(aes(label = gene_name.x), data = rap_nearby %>% filter((abs_dist_mb < 0.5)|(abs_dist_mb <1 & test == "Rapid Responders N=29"))) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  ggtitle("Firre RAP Peak distance n= 39") +
+  ylab("Dist. to TSS (bp)")
+ggsave("figures/FirreRAP_dist_to_TSS_1Mb.pdf", height = 4.5, width = 4, useDingbats = FALSE)
+
+# Rapgef4 is 785 Kb away.
+```
