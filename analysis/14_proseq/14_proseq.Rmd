@@ -1293,8 +1293,10 @@ write_rds(proseq_signal, "results/de_proseq_signal_2600bp.rds")
 
 proseq_signal %<>%
   mutate(timepoint = gsub("\\'.*", "", sample_name))
-
-
+unique(proseq_signal$bidir_list)
+num_up_and_down <- proseq_signal %>%
+  group_by(bidir_list) %>%
+  summarize(bidir_count = length(unique(bidir_number)))
 library(slider)
 
 meta_signal <- proseq_signal %>%
