@@ -192,7 +192,6 @@ if(!file.exists("results/bidir_counts_600bp_unstranded.rds")) {
 #           "../../geo_upload/geo_submission_proseq_oct18/tfit_mumerge_bidirectionals.bed", col_names = FALSE)
 ```
 
-
 ### Stranded bidirectional quantification
 
 Additionally, we'll quantify the reads on each strand in these fixed 600bp bidirectional regions.
@@ -366,8 +365,6 @@ sig_lrt_res <- res_lrt_res %>%
 
 length(unique(sig_lrt_res$bidir_id))
 ```
-
-
 
 ```{r}
 dds <- DESeqDataSetFromMatrix(countData = counts_matrix,
@@ -1018,6 +1015,23 @@ res_lrt <- results(dds, name = "timepoint_30_vs_0") %>%
   as.data.frame() %>%
   rownames_to_column("gene_id")
 
+write_csv(res_lrt, "results/gene_body5ptrunc_DEseq2_lrt.csv")
+library(ggrepel)
+ggplot(res_lrt, aes(x = log2FoldChange, y = -log10(padj))) +
+  geom_point() +
+  geom_text_repel(aes(label = gene_id), data = res_lrt %>% filter(-log10(padj) > 70))
+sig_res_lrt <- res_lrt %>%
+  filter(padj < 0.05, abs(log2FoldChange) > log2(2)) %>%
+  mutate(gene_name = gsub("\\_.*", "", gene_id)) %>%
+  mutate(direction = ifelse(log2FoldChange > 0, "up", "down")) %>%
+  dplyr::select(gene_name, direction) %>%
+  distinct()
+
+sig_summary_res_lrt <- sig_res_lrt  %>%
+  group_by(direction) %>%
+  summarize(n())
+
+
 fr_res <- res_lrt %>%
   filter(grepl(paste(svz_sig_genes, collapse = "|"), gene_id)) %>%
   mutate(sig = padj < 0.05) %>%
@@ -1026,7 +1040,14 @@ fr_res <- res_lrt %>%
   group_by(gene_name) %>%
   slice_max(abs(log2FoldChange), n = 1)
 
-table(fr_res$sig)
+fr_res_sig <- fr_res %>%
+  group_by(gene_name) %>%
+  slice_max(abs(log2FoldChange), n = 1) %>%
+  dplyr::select(gene_name, sig) %>%
+  distinct() %>%
+  filter(!is.na(gene_name))
+
+table(fr_res_sig$sig)
 
 ggplot(fr_res, aes(x = log2FoldChange, y = -log10(padj), color = sig)) +
   geom_vline(xintercept = 0) +
@@ -1127,9 +1148,6 @@ dox_sig <- esc_ko_control_short %>%
 dox_sig_genes <- dox_sig$gene_name
 length(which(dox_sig_genes %in% gene_sig$gene_name))
 ```
-
-
-
 
 ## Heatmap of differential bidirectionals
 
@@ -1328,10 +1346,6 @@ ggsave("figures/proseq_de_metasignal.pdf")
 ```{r}
 
 ```
-
-
-
-
 
 ```{r}
 
@@ -1553,8 +1567,6 @@ pheatmap_2layer <- function( hmat.plus, hmat.minus, breaks.plus=NULL, breaks.min
 pheatmap_2layer(de_proseq_0_pos, de_proseq_0_neg, breaks.plus = c(0,1.5),
                 breaks.minus = c(-1.5,0))
 ```
-
-
 
 ```{r}
 
