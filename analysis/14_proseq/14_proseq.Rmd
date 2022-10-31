@@ -1750,8 +1750,9 @@ fr_all %<>%
 
 
 # DATADATADATA
-length(which(is.na(all_data$test)))
+
 all_data <- bind_rows(pub_rap_peaks, atac_up, atac_down, monotonic, fr_fast, fr_all)
+length(which(is.na(all_data$test)))
 
 
 clustered_data <- bed_cluster(all_data, max_dist = 3e6) %>%
@@ -1759,6 +1760,16 @@ clustered_data <- bed_cluster(all_data, max_dist = 3e6) %>%
   mutate(cluster_count = n())
 table(clustered_data$cluster_count)
 write_csv(clustered_data, "results/omics_combined_clustered.csv")
+table(clustered_data$type)
+
+
+monotonic_bidir_clusters <- clustered_data %>%
+  filter(type == "PROseq") %>%
+  dplyr::pull(.id) %>%
+  unique()
+
+monotonic_bidir_data <- clustered_data %>%
+  filter(.id %in% monotonic_bidir_clusters)
 
 occupied_clusters <- clustered_data %>%
   filter(cluster_count > 2)
