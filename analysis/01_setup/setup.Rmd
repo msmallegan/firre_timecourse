@@ -4,7 +4,7 @@ output: github_document
 editor_options: 
   chunk_output_type: console
 ---
-
+# Going to sync with manuscript
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 options(stringsAsFactors = FALSE,
