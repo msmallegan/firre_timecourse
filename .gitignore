@@ -49,4 +49,5 @@ work/*
 *.ipynb_checkpoints*
 *.bw
 *bw*
+*.gz
 

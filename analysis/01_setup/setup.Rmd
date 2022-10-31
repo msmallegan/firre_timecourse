@@ -1,40 +1,107 @@
 ---
 title: "Setup"
 output: github_document
+author: "Michael Smallegan"
 editor_options: 
   chunk_output_type: console
 ---
-# Going to sync with manuscript
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 options(stringsAsFactors = FALSE,
         dplyr.summarise.inform = FALSE,
         tidyverse.quiet = TRUE)
 library(tidyverse)
+library(testit)
+
+if(!file.exists("data")) dir.create("data")
+if(!file.exists("results")) dir.create("results")
+if(!file.exists("figures")) dir.create("figures")
 ```
 
-```{r}
+```{r import-samplesheets}
 # Check raw data file locations
-chipseq_samples <- read_csv("../../chipseq/chipseq_samplesheet.csv")
-rnaseq_samples <- read_csv("../../rnaseq/rnaseq_samplesheet.csv")
-atacseq_samples <- read_csv("../../atacseq/atacseq_samplesheet.csv")
-proseq_samples <- read_csv("../../proseq/proseq_samplesheet.csv")
-
-table(file.exists(chipseq_samples$raw_data_read1, chipseq_samples$raw_data_read2))
-table(file.exists(rnaseq_samples$raw_data_read1, rnaseq_samples$raw_data_read2))
-table(file.exists(atacseq_samples$raw_data_read1, atacseq_samples$raw_data_read2))
-table(file.exists(proseq_samples$raw_data_read1, proseq_samples$raw_data_read2))
+chipseq_samples <- read_csv("../../chipseq/chipseq_samplesheet.csv",
+                            col_types = cols(
+                              .default = col_character(),
+                              replicate = col_double(),
+                              experiment_replicate = col_double()
+                            ))
+rnaseq_samples <- read_csv("../../rnaseq/rnaseq_samplesheet.csv",
+                           col_types = cols(
+                             sample_id = col_character(),
+                             cell_type = col_character(),
+                             firre_ko = col_character(),
+                             firre_induced = col_character(),
+                             timepoint = col_double(),
+                             replicate = col_double(),
+                             experiment_replicate = col_double(),
+                             timecourse_length = col_character(),
+                             date_sequenced = col_character(),
+                             sample_name = col_character(),
+                             raw_data_read1 = col_character(),
+                             raw_data_read2 = col_character(),
+                             raw_data_read1_file_name = col_character(),
+                             raw_data_read2_file_name = col_character(),
+                             md5_read1 = col_character(),
+                             md5_read2 = col_character()
+                           ))
+atacseq_samples <- read_csv("../../atacseq/atacseq_samplesheet.csv",
+                            col_types = cols(
+                              sample_id = col_character(),
+                              cell_type = col_character(),
+                              firre_ko = col_character(),
+                              firre_induced = col_character(),
+                              timepoint_minutes = col_double(),
+                              replicate = col_double(),
+                              date_sequenced = col_character(),
+                              sample_name = col_character(),
+                              raw_data_read1 = col_character(),
+                              raw_data_read2 = col_character(),
+                              raw_data_read1_file_name = col_character(),
+                              raw_data_read2_file_name = col_character(),
+                              md5_read1 = col_character(),
+                              md5_read2 = col_character()
+                            ))
+proseq_samples <- read_csv("../../proseq/proseq_samplesheet.csv",
+                           col_types = cols(
+                             sample_id = col_character(),
+                             cell_type = col_character(),
+                             firre_ko = col_character(),
+                             firre_induced = col_character(),
+                             timepoint = col_double(),
+                             replicate = col_double(),
+                             experiment_replicate = col_double(),
+                             timecourse_length = col_character(),
+                             date_sequenced = col_date(format = ""),
+                             sample_name = col_character(),
+                             geo_sample_name = col_character(),
+                             geo_sample_read1 = col_character(),
+                             geo_sample_read2 = col_character(),
+                             raw_data_read1 = col_character(),
+                             raw_data_read2 = col_character(),
+                             raw_data_read1_file_name = col_character(),
+                             raw_data_read2_file_name = col_character(),
+                             md5_read1 = col_character(),
+                             md5_read2 = col_character()
+                           ))
+# Check that raw files exist
+assert(all(file.exists(chipseq_samples$raw_data_read1, chipseq_samples$raw_data_read2)))
+assert(all(file.exists(rnaseq_samples$raw_data_read1, rnaseq_samples$raw_data_read2)))
+assert(all(file.exists(atacseq_samples$raw_data_read1, atacseq_samples$raw_data_read2)))
+assert(all(file.exists(proseq_samples$raw_data_read1, proseq_samples$raw_data_read2)))
 ```
 
 
 # RNA-seq count data setup
 
-```{r}
+```{r annotations}
 ### ANNOTATIONS
 if(!file.exists("../util/gencode.vM25.annotation.genes.gtf")) {
-  gencode <- rtracklayer::import(file.path("../../../../genomes/Mus_musculus/",
-                                           "Gencode/M25/",
-                                           "gencode.vM25.annotation.gtf"))
+  download.file("https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M25/gencode.vM25.annotation.gtf.gz",
+                "../util/gencode.vM25.annotation.gtf.gz")
+  gencode <- rtracklayer::import(file.path("../util",
+                                           "gencode.vM25.annotation.gtf.gz"))
   genes <- gencode[gencode$type == "gene"]
   rtracklayer::export(genes, 
                       "../util/gencode.vM25.annotation.genes.gtf")
@@ -45,17 +112,15 @@ names(genes) <- genes$gene_id
 # Remove pseudogenes
 genes <- genes[!grepl("pseudogene", genes$gene_type), ]
 
-hmm <- genes %>% as.data.frame() %>% dplyr::select(gene_id, gene_type, gene_name)
-
-
 g2s <- genes %>% as.data.frame() %>%
   dplyr::select(gene_id, gene_name)
 
-tx2gene <- read.csv("../../rnaseq/results/salmon/tx2gene.csv")
+tx2gene <- read.csv("/scratch/Shares/rinn/Michael/firre_timecourse/rnaseq/results/salmon/tx2gene.csv")
+```
 
-
+```{r rnaseq-expression-data}
 ### COUNTS
-tpm <- read.csv("../../rnaseq/results/salmon/salmon_merged_gene_tpm.csv") %>%
+tpm <- read.csv("/scratch/Shares/rinn/Michael/firre_timecourse/rnaseq/results/salmon/salmon_merged_gene_tpm.csv") %>%
   merge(g2s) %>%
   dplyr::select(gene_id, gene_name, everything()) %>%
   filter(gene_id %in% genes$gene_id)
@@ -63,19 +128,18 @@ tpm <- read.csv("../../rnaseq/results/salmon/salmon_merged_gene_tpm.csv") %>%
 # There are some genes in this list which were not quantified by salmon. 
 genes <- genes[genes$gene_id %in% tpm$gene_id,]
 
-salmon_gene_counts <- read.csv(file.path("../../rnaseq/results/salmon/",
-                                         "salmon_merged_gene_counts.csv")) %>%
-  column_to_rownames("gene_id") %>%
-  as.matrix()
+
+salmon_gene_counts <- read_rds("data/salmon_gene_counts.rds")
 mode(salmon_gene_counts) <- "integer"
 
 # Filter to relevant genes
 salmon_gene_counts <- salmon_gene_counts[rownames(salmon_gene_counts) %in% genes$gene_id,]
 # Put in order
 genes <- genes[rownames(salmon_gene_counts)]
+assert(names(genes) == rownames(salmon_gene_counts))
 
 ### SAMPLE INFO
-samples <- read.csv("../../rnaseq/rnaseq_samplesheet.csv") %>%
+rnaseq_samples <- rnaseq_samples %>%
   filter(cell_type != "pMEF",
          date_sequenced != "2018-09") %>%
   mutate(firre_ko = factor(firre_ko, levels = c("WT", "KO")),
@@ -87,17 +151,19 @@ samples <- read.csv("../../rnaseq/rnaseq_samplesheet.csv") %>%
          cell_type = factor(cell_type, levels = c("ESC", "NPC")),
          experiment_replicate = factor(experiment_replicate, levels = c(1,2))) %>%
   unite(experiment, cell_type, firre_ko, remove = FALSE)
-rownames(samples) <- samples$sample_id
+rownames(rnaseq_samples) <- rnaseq_samples$sample_id
 
-counts <- salmon_gene_counts[,as.character(samples$sample_id)]
-stopifnot(all(rownames(samples) == colnames(counts)))
-stopifnot(all(rownames(salmon_gene_counts) == genes$gene_id))
+assert(all(colnames(salmon_gene_counts) %in% rnaseq_samples$sample_id))
+
+counts <- salmon_gene_counts[,as.character(rnaseq_samples$sample_id)]
+assert(all(rownames(rnaseq_samples) == colnames(counts)))
+assert(all(rownames(salmon_gene_counts) == genes$gene_id))
 
 nonzero_genes <- counts[rowSums(counts) > 0,]
 num_measured_genes <- nrow(nonzero_genes)
 
 # Save as a bundle of objects.
-save(genes, g2s, tx2gene, tpm, salmon_gene_counts, samples, counts, num_measured_genes,
+save(genes, g2s, tx2gene, tpm, rnaseq_samples, counts, num_measured_genes,
      file = "results/rnaseq_data.RData")
 ```
 
@@ -214,7 +280,7 @@ md5_r1 <- md5_df %>%
 md5_r2 <- md5_df %>%
   filter(grepl("read2", filename)) %>%
   dplyr::rename(geo_fastq2 = filename,
-                 md5_geo_read2 = md5sum)
+                md5_geo_read2 = md5sum)
 geo_rnaseq_samples <- geo_rnaseq_samples %>%
   left_join(md5_r1) %>%
   left_join(md5_r2)
@@ -240,7 +306,7 @@ md5_r1 <- md5_df %>%
 md5_r2 <- md5_df %>%
   filter(grepl("read2", filename)) %>%
   dplyr::rename(geo_fastq2 = filename,
-                 md5_geo_read2 = md5sum)
+                md5_geo_read2 = md5sum)
 geo_atacseq_samples <- geo_atacseq_samples %>%
   left_join(md5_r1) %>%
   left_join(md5_r2) %>%
