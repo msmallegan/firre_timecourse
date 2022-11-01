@@ -39,7 +39,7 @@ deseq_vs_zero <- function(ct, tc_len, fko, fi) {
   shrnklfc <- lapply(dynamic_res, function(x) {
     lfcShrink(dds, 
               coef = x,
-              type = "ashr") %>%
+              type = "apeglm") %>%
       as.data.frame() %>%
       rownames_to_column("gene_id") %>% 
       merge(g2s) %>%
