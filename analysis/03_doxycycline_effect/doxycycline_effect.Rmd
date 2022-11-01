@@ -19,6 +19,7 @@ source("../util/_plot_theme.R")
 source("../util/_util.R")
 source("../util/deseq.R")
 source("../util/figures.R")
+source("../util/")
 source("../01_setup/assumptions.R")
 
 if(!file.exists("data")) dir.create("data")
@@ -54,7 +55,7 @@ if(!file.exists("results/esc_ko_control_long.RData")) {
 load("results/esc_ko_control_long.RData", verbose = T)
 ```
 
-```{r}
+```{r sig-deseq-esc-ko-control}
 esc_ko_control_long <- esc_ko_control_long %>%
   mutate(sig = padj <= pval_thresh & max_abs_l2fc_shrunken > l2fc_thresh)
 
@@ -62,7 +63,7 @@ esc_ko_control_long_sig <- esc_ko_control_long %>%
   filter(sig == TRUE)
 ```
 
-```{r}
+```{r lfcplot-deseq-esc-ko-control}
 make_timecourse_lfc_plot(deseq_res = esc_ko_control_long,
                          genes_to_include = unique(esc_ko_control_long_sig$gene_id),
                          y_lim = c(-5.5,8.2),
