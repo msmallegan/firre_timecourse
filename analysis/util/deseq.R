@@ -10,7 +10,7 @@ deseq_vs_zero <- function(ct, tc_len, fko, fi) {
            timecourse_length == tc_len,
            firre_ko == fko,
            firre_induced == fi)
-  counts <- salmon_gene_counts[,samples$sample_id]
+  counts <- counts[,samples$sample_id]
   
   # Check ordering
   stopifnot(all(rownames(samples) == colnames(counts)))

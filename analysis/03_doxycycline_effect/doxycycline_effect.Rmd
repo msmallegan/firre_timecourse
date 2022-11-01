@@ -1,5 +1,7 @@
 ---
 title: "Doxycyline effect"
+author: "Michael Smallegan\n"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
 output: github_document
 editor_options: 
   chunk_output_type: console
@@ -19,17 +21,27 @@ source("../util/deseq.R")
 source("../util/figures.R")
 source("../01_setup/assumptions.R")
 
+if(!file.exists("data")) dir.create("data")
+if(!file.exists("results")) dir.create("results")
+if(!file.exists("figures")) dir.create("figures")
+
 # Keep track of thresholds for figure naming
 thresh <- paste0("pval", pval_thresh, "_l2fc", round(l2fc_thresh, 2))
+```
 
-(0.045/0.0449)*100
-(0.045/0.0289)*100
-
+```{r load, include=FALSE}
+load("../01_setup/results/rnaseq_data.RData",
+     verbose = TRUE)
+  
+rnaseq_samples <- rnaseq_samples %>%
+  filter(date_sequenced != "2018-09")
+samples <- samples %>%
+  filter(date_sequenced != "2018-09")
 ```
 
 ### EC KO long timecourse dox effect
 
-```{r}
+```{r run-deseq-esc-ko-control}
 if(!file.exists("results/esc_ko_control_long.RData")) {
   source("../util/deseq.R")
   esc_ko_control_long <- deseq_vs_zero(ct = "ESC", 
