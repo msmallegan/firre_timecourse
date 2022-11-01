@@ -1,5 +1,7 @@
 ---
 title: "Firre's expression profile"
+author: "Michael Smallegan\n"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
 output: github_document
 editor_options: 
   chunk_output_type: console
@@ -15,19 +17,363 @@ library(ggrepel)
 library(ggbeeswarm)
 source("../util/_plot_theme.R")
 source("../util/_util.R")
+
+if(!file.exists("data")) dir.create("data")
+if(!file.exists("results")) dir.create("results")
+if(!file.exists("figures")) dir.create("figures")
 ```
 
 ```{r load, include=FALSE}
-load("../01_setup/results/rnaseq_data.RData")
+load("../01_setup/results/rnaseq_data.RData",
+     verbose = TRUE)
+  
+rnaseq_samples <- rnaseq_samples %>%
+  filter(date_sequenced != "2018-09")
 ```
 
-### Interpolation of Firre expression at 15 minutes
+## Firre expression at time zero
 
-```{r}
+```{r firre-at-zero}
+# Firre's expression in WT
+firre_tpm <- tpm %>%
+  filter(gene_name == "Firre") %>%
+  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
+  left_join(rnaseq_samples, by = "sample_id") %>%
+  filter(cell_type == "ESC", timepoint == 0)
+
+firre_mean <- firre_tpm %>%
+  group_by(firre_induced, firre_ko) %>%
+  summarize(sd = sd(tpm),
+            tpm = mean(tpm))
+
+ggplot(firre_tpm, aes(x = firre_induced, y = tpm)) +
+  geom_beeswarm(cex = 6, alpha = 0.8) +
+  stat_summary(aes(y = tpm, group = firre_induced), fun=mean, colour="red", geom="point") +
+  stat_summary(fun='mean', geom='text', 
+               aes(label=signif(..y..,3),x=firre_induced)) +
+  facet_grid(~firre_ko) +
+  ggtitle("Firre expression at 0 min")
+ggsave("figures/firre_expression_at_zero.pdf", height = 2, width = 2)
+
+(firre_wt_level <- firre_mean$tpm[firre_mean$firre_induced == "control" & firre_mean$firre_ko == "WT"])
+```
+
+
+## ESC KO (rescue)
+
+### ESC KO long timecourse
+
+```{r esc_ko_long_firre_profile, message=FALSE}
+firre_tpm <- tpm %>%
+  filter(gene_name == "Firre") %>%
+  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
+  left_join(rnaseq_samples, by = "sample_id") %>%
+  filter(cell_type == "ESC", firre_ko == "KO", timecourse_length == "long")
+
+firre_means <- firre_tpm %>%
+  group_by(timepoint, firre_induced) %>%
+  summarize(tpm = mean(tpm)) %>%
+  mutate(timepoint = as.numeric(as.character(timepoint)))
+
+## FIG 1B
+ggplot(firre_tpm, 
+       aes(x = as.numeric(as.character(timepoint)), y = tpm, color = firre_induced)) +
+  geom_line(data = firre_means, aes(x = timepoint, y = tpm, color = firre_induced,
+                                    group = firre_induced)) +
+  geom_point() + 
+  theme(legend.position = "none") +
+  xlab("T (min)") +
+  ggtitle("FirreRescue Firre expr. long",
+          subtitle = "Fig. 1B")
+ggsave("figures/firre_esc_ko_profile_long.pdf", height = 3, width = 3, useDingbats = FALSE)
+
+firre_means <- firre_means %>%
+  mutate(rel_wt = tpm / firre_wt_level)
+ggplot(firre_means, 
+       aes(x = timepoint, y = rel_wt, color = firre_induced)) +
+  geom_line(data = firre_means, aes(x = timepoint, y = rel_wt, color = firre_induced,
+                                    group = firre_induced)) +
+  geom_point() + 
+  theme(legend.position = "none") +
+  xlab("T (min)") +
+  ggtitle("FirreRescue Firre expr. rel. WT Firre")
+ggsave("figures/firre_esc_ko_profile_long_relwt.pdf", height = 2, width = 2, useDingbats = FALSE)
+```
+
+
+
+### ESC KO short timecourse
+
+```{r esc_ko_short_firre_profile, message=FALSE}
+firre_tpm <- tpm %>%
+  filter(gene_name == "Firre") %>%
+  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
+  left_join(rnaseq_samples, by = "sample_id") %>%
+  filter(cell_type == "ESC", firre_ko == "KO", timecourse_length == "short")
+
+firre_means <- firre_tpm %>%
+  group_by(timepoint, firre_induced) %>%
+  summarize(tpm = mean(tpm)) %>%
+  mutate(timepoint = as.numeric(as.character(timepoint)))
+
+## Fig. 2A
+ggplot(firre_tpm, 
+       aes(x = as.numeric(as.character(timepoint)), y = tpm, color = firre_induced)) +
+  geom_line(data = firre_means, aes(x = timepoint, y = tpm, color = firre_induced,
+                                    group = firre_induced)) +
+  geom_point() + 
+  theme(legend.position = "none") +
+  xlab("T (min)") +
+  ggtitle("FirreRescue short Firre expr.",
+          subtitle = "Fig. 2A")
+ggsave("figures/firre_esc_ko_profile_short.pdf", height = 3, width = 3, useDingbats = FALSE)
+
+firre_means <- firre_means %>%
+  mutate(rel_wt = tpm / firre_wt_level)
+
+## Fig. S4A
+ggplot(firre_means, 
+       aes(x = timepoint, y = rel_wt, color = firre_induced)) +
+  geom_line(data = firre_means, aes(x = timepoint, y = rel_wt, color = firre_induced,
+                                    group = firre_induced)) +
+  geom_point() + 
+  theme(legend.position = "none") +
+  geom_text(data = firre_means %>% filter(rel_wt == max(rel_wt)), aes(y = rel_wt + 2, label = round(rel_wt,1))) +
+  scale_x_continuous(breaks = seq(0,330, by = 30), labels = c("0", "", "1", "", "2", "", "3", "", "4", "", "5", "")) +
+  xlab("Time (h)") +
+  ggtitle("FirreRescue Firre rel. WT",
+          subtitle = "Fig. S4A")
+ggsave("figures/firre_esc_ko_profile_short_relwt.pdf", height = 2, width = 2, useDingbats = FALSE)
+```
+
+### ESC KO Combined
+
+```{r esc_ko_combined_firre_profile, message=FALSE}
+firre_tpm <- tpm %>%
+  filter(gene_name == "Firre") %>%
+  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
+  left_join(rnaseq_samples, by = "sample_id") %>%
+  filter(cell_type == "ESC", firre_ko == "KO")
+
+firre_means <- firre_tpm %>%
+  group_by(timepoint, firre_induced) %>%
+  summarize(tpm = mean(tpm)) %>%
+  mutate(timepoint = as.numeric(as.character(timepoint)))
+
+ggplot(firre_tpm, 
+       aes(x = as.numeric(as.character(timepoint)), y = tpm, color = firre_induced)) +
+  geom_line(data = firre_means, aes(x = timepoint, y = tpm, color = firre_induced,
+                                    group = firre_induced)) +
+  geom_point() + 
+  theme(legend.position = "none") +
+  xlab("T (min)") +
+  ggtitle("FirreRescue full Firre expr.")
+ggsave("figures/firre_esc_ko_profile.pdf", height = 3, width = 3, useDingbats = FALSE)
+```
+
+## ESC WT (overexpression)
+
+### ESC WT long timecourse
+
+```{r esc_wt_long_firre_profile, message=FALSE}
+firre_tpm <- tpm %>%
+  filter(gene_name == "Firre") %>%
+  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
+  left_join(rnaseq_samples, by = "sample_id") %>%
+  filter(cell_type == "ESC", firre_ko == "WT", timecourse_length == "long")
+
+firre_means <- firre_tpm %>%
+  group_by(timepoint, firre_induced) %>%
+  summarize(tpm = mean(tpm)) %>%
+  mutate(timepoint = as.numeric(as.character(timepoint)))
+
+## Fig. S2C
+ggplot(firre_tpm, 
+       aes(x = as.numeric(as.character(timepoint)), y = tpm, color = firre_induced)) +
+  geom_line(data = firre_means, aes(x = timepoint, y = tpm, color = firre_induced,
+                                    group = firre_induced)) +
+  geom_point() + 
+  theme(legend.position = "none") +
+  xlab("T (min)") +
+  ggtitle("FirreOE Firre expr.",
+          subtitle = "Fig. S2C")
+ggsave("figures/firre_esc_wt_profile_long.pdf", height = 3, width = 3, useDingbats = FALSE)
+
+firre_means <- firre_means %>%
+  mutate(rel_wt = tpm / firre_wt_level)
+
+ggplot(firre_means, 
+       aes(x = timepoint, y = rel_wt, color = firre_induced)) +
+  geom_line(data = firre_means, aes(x = timepoint, y = rel_wt, color = firre_induced,
+                                    group = firre_induced)) +
+  geom_point() + 
+  theme(legend.position = "none") +
+  geom_text(data = firre_means %>% filter(rel_wt == max(rel_wt)), aes(y = rel_wt + 0.5, label = round(rel_wt,1))) +
+  scale_x_continuous(breaks = c(0, 720, 1440, 2880, 5670), labels = c("0", "12", "24", "48", "96")) +
+  xlab("Time (h)") +
+  ylim(0,6) +
+  ggtitle("FirreOE Firre rel. WT")
+ggsave("figures/firre_esc_wt_profile_long_relwt.pdf", height = 2, width = 2, useDingbats = FALSE)
+```
+
+### ESC WT short timecourse
+
+```{r esc_wt_short_firre_profile, message=FALSE}
+firre_tpm <- tpm %>%
+  filter(gene_name == "Firre") %>%
+  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
+  left_join(rnaseq_samples, by = "sample_id") %>%
+  filter(cell_type == "ESC", firre_ko == "WT", timecourse_length == "short")
+
+firre_means <- firre_tpm %>%
+  group_by(timepoint, firre_induced) %>%
+  summarize(tpm = mean(tpm)) %>%
+  mutate(timepoint = as.numeric(as.character(timepoint)))
+
+
+ggplot(firre_tpm, 
+       aes(x = as.numeric(as.character(timepoint)), y = tpm, color = firre_induced)) +
+  geom_line(data = firre_means, aes(x = timepoint, y = tpm, color = firre_induced,
+                                    group = firre_induced)) +
+  geom_point() + 
+  theme(legend.position = "none") +
+  xlab("T (min)") +
+  ggtitle("FirreOE short Firre expr.")
+ggsave("figures/firre_esc_wt_profile_short.pdf", height = 3, width = 3, useDingbats = FALSE)
+
+firre_means <- firre_means %>%
+  mutate(rel_wt = tpm / firre_wt_level)
+
+## Fig. S4B
+ggplot(firre_means, 
+       aes(x = timepoint, y = rel_wt, color = firre_induced)) +
+  geom_line(data = firre_means, aes(x = timepoint, y = rel_wt, color = firre_induced,
+                                    group = firre_induced)) +
+  geom_point() + 
+  theme(legend.position = "none") +
+  geom_text(data = firre_means %>% filter(rel_wt == max(rel_wt)), aes(y = rel_wt + 2, label = round(rel_wt,1))) +
+  scale_x_continuous(breaks = seq(0,330, by = 30), labels = c("0", "", "1", "", "2", "", "3", "", "4", "", "5", "")) +
+  xlab("Time (h)") +
+  ylim(0,50) +
+  ggtitle("FirreOE short Firre rel. WT",
+          subtitle = "Fig. S4B")
+ggsave("figures/firre_esc_wt_profile_short_relwt.pdf", height = 2, width = 2, useDingbats = FALSE)
+```
+
+### ESC WT Combined
+
+```{r esc_wt_combined_firre_profile, message=FALSE}
+firre_tpm <- tpm %>%
+  filter(gene_name == "Firre") %>%
+  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
+  left_join(rnaseq_samples, by = "sample_id") %>%
+  filter(cell_type == "ESC", firre_ko == "WT")
+
+firre_means <- firre_tpm %>%
+  group_by(timepoint, firre_induced) %>%
+  summarize(tpm = mean(tpm)) %>%
+  mutate(timepoint = as.numeric(as.character(timepoint)))
+
+ggplot(firre_tpm, 
+       aes(x = as.numeric(as.character(timepoint)), y = tpm, color = firre_induced)) +
+  geom_line(data = firre_means, aes(x = timepoint, y = tpm, color = firre_induced,
+                                    group = firre_induced)) +
+  geom_point() + 
+  theme(legend.position = "none") +
+  xlab("T (min)") +
+  ggtitle("FirreOE full Firre expr.")
+ggsave("figures/firre_esc_wt_profile.pdf", height = 3, width = 3, useDingbats = FALSE)
+```
+
+## Example Firre responder gene profiles
+
+```{r rapgef4-profile}
+rapgef4_tpm <- tpm %>%
+  filter(gene_name == "Rapgef4") %>%
+  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
+  left_join(rnaseq_samples, by = "sample_id") %>%
+  filter(cell_type == "ESC", timecourse_length == "short")
+
+rapgef4_means <- rapgef4_tpm %>%
+  group_by(timepoint, firre_induced) %>%
+  summarize(tpm = mean(tpm)) %>%
+  mutate(timepoint = as.numeric(as.character(timepoint)))
+
+## Fig. 2E
+ggplot(rapgef4_tpm, 
+       aes(x = as.numeric(as.character(timepoint)), y = tpm, color = firre_induced)) +
+  geom_line(data = rapgef4_means, aes(x = timepoint, y = tpm, color = firre_induced,
+                                      group = firre_induced)) +
+  geom_point() + 
+  facet_wrap(~firre_ko) +
+  theme(legend.position = "none") +
+  xlab("T (min)") +
+  ggtitle("Rapgef4 profile short",
+          subtitle = "Fig. 2E")
+ggsave("figures/rapgef4_short.pdf", height = 1.5, width = 3, useDingbats = FALSE)
+```
+
+
+```{r adgrg1-profile}
+adgrg1_tpm <- tpm %>%
+  filter(gene_name == "Adgrg1") %>%
+  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
+  left_join(rnaseq_samples, by = "sample_id") %>%
+  filter(cell_type == "ESC", timecourse_length == "short")
+
+adgrg1_means <- adgrg1_tpm %>%
+  group_by(timepoint, firre_induced, firre_ko) %>%
+  summarize(tpm = mean(tpm)) %>%
+  mutate(timepoint = as.numeric(as.character(timepoint)))
+
+## Fig. 2E
+ggplot(adgrg1_tpm, 
+       aes(x = as.numeric(as.character(timepoint)), y = tpm, color = firre_induced)) +
+  geom_line(data = adgrg1_means, aes(x = timepoint, y = tpm, color = firre_induced,
+                                     group = firre_induced)) +
+  geom_point() + 
+  facet_grid(~firre_ko) +
+  theme(legend.position = "none") +
+  xlab("T (min)") +
+  ggtitle("Adgrg1 profile short",
+          subtitle = "Fig. 2E")
+ggsave("figures/adgrg1_short.pdf", height = 1.5, width = 3, useDingbats = FALSE)
+```
+
+```{r shf-profile}
+shf_tpm <- tpm %>%
+  filter(gene_name == "Shf") %>%
+  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
+  left_join(rnaseq_samples, by = "sample_id") %>%
+  filter(cell_type == "ESC", timecourse_length == "short")
+
+shf_means <- shf_tpm %>%
+  group_by(timepoint, firre_induced, firre_ko) %>%
+  summarize(tpm = mean(tpm)) %>%
+  mutate(timepoint = as.numeric(as.character(timepoint)))
+
+## Fig. 2E
+ggplot(shf_tpm, 
+       aes(x = as.numeric(as.character(timepoint)), y = tpm, color = firre_induced)) +
+  geom_line(data = shf_means, aes(x = timepoint, y = tpm, color = firre_induced,
+                                  group = firre_induced)) +
+  geom_point() + 
+  facet_grid(~firre_ko) +
+  theme(legend.position = "none") +
+  xlab("T (min)") +
+  ggtitle("Shf profile short",
+          subtitle = "Fig. 2E")
+ggsave("figures/shf_short.pdf", height = 1.5, width = 3, useDingbats = FALSE)
+```
+
+
+### Interpolation of Firre Rescue expression at 15 minutes
+
+```{r firre-rescue-at-15}
 firre_0_30 <- tpm %>%
   filter(gene_name == "Firre") %>%
   pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
-  left_join(samples) %>%
+  left_join(rnaseq_samples, by = "sample_id") %>%
   filter(cell_type == "ESC", timecourse_length == "short", timepoint %in% c(0,30, 60),
          firre_induced == "firre_induced", experiment == "ESC_KO") %>%
   group_by(gene_name, timepoint) %>%
@@ -40,7 +386,7 @@ firre_expr_at_15 <- (firre_0_30$tpm[which(firre_0_30$timepoint == 30)] - firre_0
 firre_wt_range <- tpm %>%
   filter(gene_name == "Firre") %>%
   pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
-  left_join(samples) %>%
+  left_join(rnaseq_samples, by = "sample_id") %>%
   filter(cell_type == "ESC", timepoint %in% c(0), experiment == "ESC_WT",
          firre_induced == "control")
 
@@ -69,450 +415,4 @@ ggplot(firre_0_30 %>% filter(timepoint %in% c(0,30)), aes(x = timepoint, y = tpm
   xlab("Time (min)") +
   ylab("TPM")
 ggsave("figures/firre_rescue_15min_crossing_point.pdf", height = 2.6, width = 3.5)
-
-ggplot(firre_wt_range, aes(x = gene_name, y = tpm, color = firre_induced)) +
-  geom_point()
-```
-
-
-We would like to check that Firre's expression is actually induced by the addition of
-doxycycline.
-
-```{r}
-huh <- tpm %>%
-  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
-  left_join(samples) %>%
-  filter(cell_type == "ESC", timepoint == 0) %>%
-  group_by(gene_id, firre_induced, firre_ko) %>%
-  summarize(sd = sd(tpm),
-            tpm = mean(tpm))
-
-
-
-huh <- huh %>%
-  left_join(hmm)
-
-huh  <- huh %>%
-  arrange(-tpm)
-table(huh$gene_type)
-lncRNA_hun <- huh %>% filter(gene_type == "")
-# Firre's expression in WT
-firre_tpm <- tpm %>%
-  filter(gene_name == "Firre") %>%
-  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
-  left_join(samples) %>%
-  filter(cell_type == "ESC", timepoint == 0)
-
-firre_mean <- firre_tpm %>%
-  group_by(firre_induced, firre_ko) %>%
-  summarize(sd = sd(tpm),
-            tpm = mean(tpm))
-ggplot(firre_tpm, aes(x = firre_induced, y = tpm)) +
-  geom_beeswarm(cex = 6, alpha = 0.8) +
-    stat_summary(aes(y = tpm, group = firre_induced), fun=mean, colour="red", geom="point") +
-    stat_summary(fun='mean', geom='text', 
-               aes(label=signif(..y..,3),x=firre_induced)) +
-  facet_grid(~firre_ko)
-ggsave("figures/firre_expression_at_zero.pdf", height = 2, width = 2)
-
-firre_wt_level <- firre_mean$tpm[firre_mean$firre_induced == "control" & firre_mean$firre_ko == "WT"]
-
-
-```
-
-
-## ESC KO (rescue)
-
-### ESC KO long timecourse
-
-```{r esc_ko_long_firre_profile, message=FALSE}
-firre_tpm <- tpm %>%
-  filter(gene_name == "Firre") %>%
-  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
-  left_join(samples) %>%
-  filter(cell_type == "ESC", firre_ko == "KO", timecourse_length == "long")
-
-firre_means <- firre_tpm %>%
-  group_by(timepoint, firre_induced) %>%
-  summarize(tpm = mean(tpm)) %>%
-  mutate(timepoint = as.numeric(as.character(timepoint)))
-ggplot(firre_tpm, 
-       aes(x = as.numeric(as.character(timepoint)), y = tpm, color = firre_induced)) +
-  geom_line(data = firre_means, aes(x = timepoint, y = tpm, color = firre_induced,
-                                    group = firre_induced)) +
-  geom_point() + 
-  theme(legend.position = "none") +
-  xlab("T (min)")
-ggsave("figures/firre_esc_ko_profile_long.pdf", height = 3, width = 3, useDingbats = FALSE)
-
-firre_means <- firre_means %>%
-  mutate(rel_wt = tpm / firre_wt_level)
-ggplot(firre_means, 
-       aes(x = timepoint, y = rel_wt, color = firre_induced)) +
-  geom_line(data = firre_means, aes(x = timepoint, y = rel_wt, color = firre_induced,
-                                    group = firre_induced)) +
-  geom_point() + 
-  theme(legend.position = "none") +
-  xlab("T (min)")
-ggsave("figures/firre_esc_ko_profile_long_relwt.pdf", height = 2, width = 2, useDingbats = FALSE)
-
-```
-
-```{r}
-firre_tpm <- tpm %>%
-  filter(gene_name == "Rapgef4") %>%
-  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
-  left_join(samples) %>%
-  filter(cell_type == "ESC", timecourse_length == "short")
-
-firre_means <- firre_tpm %>%
-  group_by(timepoint, firre_induced) %>%
-  summarize(tpm = mean(tpm)) %>%
-  mutate(timepoint = as.numeric(as.character(timepoint)))
-ggplot(firre_tpm, 
-       aes(x = as.numeric(as.character(timepoint)), y = tpm, color = firre_induced)) +
-  geom_line(data = firre_means, aes(x = timepoint, y = tpm, color = firre_induced,
-                                    group = firre_induced)) +
-  geom_point() + 
-  facet_wrap(~firre_ko) +
-  theme(legend.position = "none") +
-  xlab("T (min)")
-ggsave("figures/rapgef4_short.pdf", height = 1.5, width = 3, useDingbats = FALSE)
-```
-
-
-```{r}
-firre_tpm <- tpm %>%
-  filter(gene_name == "Adgrg1") %>%
-  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
-  left_join(samples) %>%
-  filter(cell_type == "ESC", timecourse_length == "short")
-
-firre_means <- firre_tpm %>%
-  group_by(timepoint, firre_induced, firre_ko) %>%
-  summarize(tpm = mean(tpm)) %>%
-  mutate(timepoint = as.numeric(as.character(timepoint)))
-ggplot(firre_tpm, 
-       aes(x = as.numeric(as.character(timepoint)), y = tpm, color = firre_induced)) +
-  geom_line(data = firre_means, aes(x = timepoint, y = tpm, color = firre_induced,
-                                    group = firre_induced)) +
-  geom_point() + 
-  facet_grid(~firre_ko) +
-  theme(legend.position = "none") +
-  xlab("T (min)")
-ggsave("figures/adgrg1_short.pdf", height = 1.5, width = 3, useDingbats = FALSE)
-```
-
-```{r}
-firre_tpm <- tpm %>%
-  filter(gene_name == "Shf") %>%
-  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
-  left_join(samples) %>%
-  filter(cell_type == "ESC", timecourse_length == "short")
-
-firre_means <- firre_tpm %>%
-  group_by(timepoint, firre_induced, firre_ko) %>%
-  summarize(tpm = mean(tpm)) %>%
-  mutate(timepoint = as.numeric(as.character(timepoint)))
-ggplot(firre_tpm, 
-       aes(x = as.numeric(as.character(timepoint)), y = tpm, color = firre_induced)) +
-  geom_line(data = firre_means, aes(x = timepoint, y = tpm, color = firre_induced,
-                                    group = firre_induced)) +
-  geom_point() + 
-  facet_grid(~firre_ko) +
-  theme(legend.position = "none") +
-  xlab("T (min)")
-ggsave("figures/shf_short.pdf", height = 1.5, width = 3, useDingbats = FALSE)
-```
-
-```{r}
-firre_tpm <- tpm %>%
-  filter(gene_name == "Gfap") %>%
-  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
-  left_join(samples) %>%
-  filter(cell_type == "ESC", timecourse_length == "short")
-
-firre_means <- firre_tpm %>%
-  group_by(timepoint, firre_induced, firre_ko) %>%
-  summarize(tpm = mean(tpm)) %>%
-  mutate(timepoint = as.numeric(as.character(timepoint)))
-ggplot(firre_tpm, 
-       aes(x = as.numeric(as.character(timepoint)), y = tpm, color = firre_induced)) +
-  geom_line(data = firre_means, aes(x = timepoint, y = tpm, color = firre_induced,
-                                    group = firre_induced)) +
-  geom_point() + 
-  facet_grid(~firre_ko) +
-  theme(legend.position = "none") +
-  xlab("T (min)")
-ggsave("figures/gfap_short.pdf", height = 1.5, width = 3, useDingbats = FALSE)
-```
-
-```{r}
-load("../11_short_timecourse_combined/results/short_vszero_sig.RData", verbose = T)
-short_sig_genes <- unique(short_vszero_sig$gene_id)
-
-short_sig_tpm <- tpm %>%
-  filter(gene_id %in% short_sig_genes) %>%
-    pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
-  left_join(samples) %>%
-  filter(cell_type == "ESC", timecourse_length == "short")
-short_sig_tpm_summary <- short_sig_tpm %>%
-  group_by(gene_id, gene_name) %>%
-  summarize(max_tpm = max(tpm))
-
-```
-
-```{r}
-firre_tpm <- tpm %>%
-  filter(gene_name == "Dpf2") %>%
-  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
-  left_join(samples) %>%
-  filter(cell_type == "ESC", timecourse_length == "short")
-
-firre_means <- firre_tpm %>%
-  group_by(timepoint, firre_induced, firre_ko) %>%
-  summarize(tpm = mean(tpm)) %>%
-  mutate(timepoint = as.numeric(as.character(timepoint)))
-ggplot(firre_tpm, 
-       aes(x = as.numeric(as.character(timepoint)), y = tpm, color = firre_induced)) +
-  geom_line(data = firre_means, aes(x = timepoint, y = tpm, color = firre_induced,
-                                    group = firre_induced)) +
-  geom_point() + 
-  facet_grid(~firre_ko) +
-  theme(legend.position = "none") +
-  xlab("T (min)")
-ggsave("figures/dpf2_short.pdf", height = 1.5, width = 3, useDingbats = FALSE)
-```
-
-```{r}
-firre_tpm <- tpm %>%
-  filter(gene_name == "Nceh1") %>%
-  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
-  left_join(samples) %>%
-  filter(cell_type == "ESC", timecourse_length == "short")
-
-firre_means <- firre_tpm %>%
-  group_by(timepoint, firre_induced, firre_ko) %>%
-  summarize(tpm = mean(tpm)) %>%
-  mutate(timepoint = as.numeric(as.character(timepoint)))
-ggplot(firre_tpm, 
-       aes(x = as.numeric(as.character(timepoint)), y = tpm, color = firre_induced)) +
-  geom_line(data = firre_means, aes(x = timepoint, y = tpm, color = firre_induced,
-                                    group = firre_induced)) +
-  geom_point() + 
-  facet_grid(~firre_ko) +
-  theme(legend.position = "none") +
-  xlab("T (min)")
-ggsave("figures/nceh1_short.pdf", height = 1.5, width = 3, useDingbats = FALSE)
-```
-
-### ESC KO short timecourse
-
-```{r esc_ko_short_firre_profile, message=FALSE}
-firre_tpm <- tpm %>%
-  filter(gene_name == "Firre") %>%
-  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
-  left_join(samples) %>%
-  filter(cell_type == "ESC", firre_ko == "KO", timecourse_length == "short")
-
-firre_means <- firre_tpm %>%
-  group_by(timepoint, firre_induced) %>%
-  summarize(tpm = mean(tpm)) %>%
-  mutate(timepoint = as.numeric(as.character(timepoint)))
-ggplot(firre_tpm, 
-       aes(x = as.numeric(as.character(timepoint)), y = tpm, color = firre_induced)) +
-  geom_line(data = firre_means, aes(x = timepoint, y = tpm, color = firre_induced,
-                                    group = firre_induced)) +
-  geom_point() + 
-  theme(legend.position = "none") +
-  xlab("T (min)")
-ggsave("figures/firre_esc_ko_profile_short.pdf", height = 3, width = 3, useDingbats = FALSE)
-
-# Label max
-
-firre_means <- firre_means %>%
-  mutate(rel_wt = tpm / firre_wt_level)
-ggplot(firre_means, 
-       aes(x = timepoint, y = rel_wt, color = firre_induced)) +
-  geom_line(data = firre_means, aes(x = timepoint, y = rel_wt, color = firre_induced,
-                                    group = firre_induced)) +
-  geom_point() + 
-  theme(legend.position = "none") +
-  geom_text(data = firre_means %>% filter(rel_wt == max(rel_wt)), aes(y = rel_wt + 2, label = round(rel_wt,1))) +
-  scale_x_continuous(breaks = seq(0,330, by = 30), labels = c("0", "", "1", "", "2", "", "3", "", "4", "", "5", "")) +
-  xlab("Time (h)")
-ggsave("figures/firre_esc_ko_profile_short_relwt.pdf", height = 2, width = 2, useDingbats = FALSE)
-```
-
-### ESC KO Combined
-
-```{r esc_ko_combined_firre_profile, message=FALSE}
-firre_tpm <- tpm %>%
-  filter(gene_name == "Firre") %>%
-  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
-  left_join(samples) %>%
-  filter(cell_type == "ESC", firre_ko == "KO")
-
-firre_means <- firre_tpm %>%
-  group_by(timepoint, firre_induced) %>%
-  summarize(tpm = mean(tpm)) %>%
-  mutate(timepoint = as.numeric(as.character(timepoint)))
-ggplot(firre_tpm, 
-       aes(x = as.numeric(as.character(timepoint)), y = tpm, color = firre_induced)) +
-  geom_line(data = firre_means, aes(x = timepoint, y = tpm, color = firre_induced,
-                                    group = firre_induced)) +
-  geom_point() + 
-  theme(legend.position = "none") +
-  xlab("T (min)")
-ggsave("figures/firre_esc_ko_profile.pdf", height = 3, width = 3, useDingbats = FALSE)
-```
-
-## ESC WT (overexpression)
-
-### ESC WT long timecourse
-
-```{r esc_wt_long_firre_profile, message=FALSE}
-firre_tpm <- tpm %>%
-  filter(gene_name == "Firre") %>%
-  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
-  left_join(samples) %>%
-  filter(cell_type == "ESC", firre_ko == "WT", timecourse_length == "long")
-
-firre_means <- firre_tpm %>%
-  group_by(timepoint, firre_induced) %>%
-  summarize(tpm = mean(tpm)) %>%
-  mutate(timepoint = as.numeric(as.character(timepoint)))
-ggplot(firre_tpm, 
-       aes(x = as.numeric(as.character(timepoint)), y = tpm, color = firre_induced)) +
-  geom_line(data = firre_means, aes(x = timepoint, y = tpm, color = firre_induced,
-                                    group = firre_induced)) +
-  geom_point() + 
-  theme(legend.position = "none") +
-  xlab("T (min)")
-ggsave("figures/firre_esc_wt_profile_long.pdf", height = 3, width = 3, useDingbats = FALSE)
-
-firre_means <- firre_means %>%
-  mutate(rel_wt = tpm / firre_wt_level)
-
-ggplot(firre_means, 
-       aes(x = timepoint, y = rel_wt, color = firre_induced)) +
-  geom_line(data = firre_means, aes(x = timepoint, y = rel_wt, color = firre_induced,
-                                    group = firre_induced)) +
-  geom_point() + 
-  theme(legend.position = "none") +
-  geom_text(data = firre_means %>% filter(rel_wt == max(rel_wt)), aes(y = rel_wt + 0.5, label = round(rel_wt,1))) +
-  scale_x_continuous(breaks = c(0, 720, 1440, 2880, 5670), labels = c("0", "12", "24", "48", "96")) +
-  xlab("Time (h)") +
-  ylim(0,6)
-ggsave("figures/firre_esc_wt_profile_long_relwt.pdf", height = 2, width = 2, useDingbats = FALSE)
-```
-
-### ESC WT short timecourse
-
-```{r esc_wt_short_firre_profile, message=FALSE}
-firre_tpm <- tpm %>%
-  filter(gene_name == "Firre") %>%
-  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
-  left_join(samples) %>%
-  filter(cell_type == "ESC", firre_ko == "WT", timecourse_length == "short")
-
-firre_means <- firre_tpm %>%
-  group_by(timepoint, firre_induced) %>%
-  summarize(tpm = mean(tpm)) %>%
-  mutate(timepoint = as.numeric(as.character(timepoint)))
-ggplot(firre_tpm, 
-       aes(x = as.numeric(as.character(timepoint)), y = tpm, color = firre_induced)) +
-  geom_line(data = firre_means, aes(x = timepoint, y = tpm, color = firre_induced,
-                                    group = firre_induced)) +
-  geom_point() + 
-  theme(legend.position = "none") +
-  xlab("T (min)")
-ggsave("figures/firre_esc_wt_profile_short.pdf", height = 3, width = 3, useDingbats = FALSE)
-
-firre_means <- firre_means %>%
-  mutate(rel_wt = tpm / firre_wt_level)
-ggplot(firre_means, 
-       aes(x = timepoint, y = rel_wt, color = firre_induced)) +
-  geom_line(data = firre_means, aes(x = timepoint, y = rel_wt, color = firre_induced,
-                                    group = firre_induced)) +
-  geom_point() + 
-  theme(legend.position = "none") +
-  geom_text(data = firre_means %>% filter(rel_wt == max(rel_wt)), aes(y = rel_wt + 2, label = round(rel_wt,1))) +
-  scale_x_continuous(breaks = seq(0,330, by = 30), labels = c("0", "", "1", "", "2", "", "3", "", "4", "", "5", "")) +
-  xlab("Time (h)") +
-  ylim(0,50)
-ggsave("figures/firre_esc_wt_profile_short_relwt.pdf", height = 2, width = 2, useDingbats = FALSE)
-```
-
-### ESC WT Combined
-
-```{r esc_wt_combined_firre_profile, message=FALSE}
-firre_tpm <- tpm %>%
-  filter(gene_name == "Firre") %>%
-  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
-  left_join(samples) %>%
-  filter(cell_type == "ESC", firre_ko == "WT")
-
-firre_means <- firre_tpm %>%
-  group_by(timepoint, firre_induced) %>%
-  summarize(tpm = mean(tpm)) %>%
-  mutate(timepoint = as.numeric(as.character(timepoint)))
-ggplot(firre_tpm, 
-       aes(x = as.numeric(as.character(timepoint)), y = tpm, color = firre_induced)) +
-  geom_line(data = firre_means, aes(x = timepoint, y = tpm, color = firre_induced,
-                                    group = firre_induced)) +
-  geom_point() + 
-  theme(legend.position = "none") +
-  xlab("T (min)")
-ggsave("figures/firre_esc_wt_profile.pdf", height = 3, width = 3, useDingbats = FALSE)
-```
-
-## NPC KO (rescue)
-
-### NPC KO short timecourse
-
-```{r npc_ko_short_firre_profile, message=FALSE}
-firre_tpm <- tpm %>%
-  filter(gene_name == "Firre") %>%
-  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
-  left_join(samples) %>%
-  filter(cell_type == "NPC", firre_ko == "KO", timecourse_length == "short")
-
-firre_means <- firre_tpm %>%
-  group_by(timepoint, firre_induced) %>%
-  summarize(tpm = mean(tpm)) %>%
-  mutate(timepoint = as.numeric(as.character(timepoint)))
-ggplot(firre_tpm, 
-       aes(x = as.numeric(as.character(timepoint)), y = tpm, color = firre_induced)) +
-  geom_line(data = firre_means, aes(x = timepoint, y = tpm, color = firre_induced,
-                                    group = firre_induced)) +
-  geom_point() + 
-  theme(legend.position = "none") +
-  xlab("T (min)")
-ggsave("figures/firre_npc_ko_profile_short.pdf", height = 3, width = 3, useDingbats = FALSE)
-```
-
-## NPC WT (overexpression)
-
-### NPC WT short timecourse
-
-```{r npc_wt_short_firre_profile, message=FALSE}
-firre_tpm <- tpm %>%
-  filter(gene_name == "Firre") %>%
-  pivot_longer(3:ncol(.), names_to = "sample_id", values_to = "tpm") %>%
-  left_join(samples) %>%
-  filter(cell_type == "NPC", firre_ko == "WT", timecourse_length == "short")
-
-firre_means <- firre_tpm %>%
-  group_by(timepoint, firre_induced) %>%
-  summarize(tpm = mean(tpm)) %>%
-  mutate(timepoint = as.numeric(as.character(timepoint)))
-ggplot(firre_tpm, 
-       aes(x = as.numeric(as.character(timepoint)), y = tpm, color = firre_induced)) +
-  geom_line(data = firre_means, aes(x = timepoint, y = tpm, color = firre_induced,
-                                    group = firre_induced)) +
-  geom_point() + 
-  theme(legend.position = "none") +
-  xlab("T (min)")
-ggsave("figures/firre_npc_wt_profile_short.pdf", height = 3, width = 3, useDingbats = FALSE)
 ```
